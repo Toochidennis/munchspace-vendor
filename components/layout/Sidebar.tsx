@@ -313,7 +313,7 @@ export default function RestaurantSidebar() {
                 </p>
                 <ul className="space-y-1">
                   {managementItems.map((item) => (
-                    <li key={item.label}>
+                    <a key={item.label} href={item.href}>
                       <button
                         className={cn(
                           "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3",
@@ -323,7 +323,7 @@ export default function RestaurantSidebar() {
                         <item.icon className="h-5 w-5 shrink-0" />
                         <span className="text-sm">{item.label}</span>
                       </button>
-                    </li>
+                    </a>
                   ))}
                 </ul>
 
@@ -332,7 +332,7 @@ export default function RestaurantSidebar() {
                 </p>
                 <ul className="space-y-1">
                   {accountItems.map((item) => (
-                    <li key={item.label}>
+                    <a key={item.label} href={item.href}>
                       <button
                         className={cn(
                           "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
@@ -342,7 +342,7 @@ export default function RestaurantSidebar() {
                         <item.icon className="h-5 w-5 shrink-0" />
                         <span className="text-sm">{item.label}</span>
                       </button>
-                    </li>
+                    </a>
                   ))}
                 </ul>
               </nav>
