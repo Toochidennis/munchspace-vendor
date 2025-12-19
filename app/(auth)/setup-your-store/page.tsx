@@ -537,9 +537,15 @@ export default function SetupStorePage() {
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0">
+                          <PopoverContent
+                            className="w-full p-0"
+                            onOpenAutoFocus={(e) => e.preventDefault()}
+                          >
                             <Command>
-                              <CommandInput placeholder="Search store type..." />
+                              <CommandInput
+                                autoFocus={false}
+                                placeholder="Search store type..."
+                              />
                               <CommandEmpty>No type found.</CommandEmpty>
                               <CommandGroup>
                                 {storeTypeOptions.map((option) => (
@@ -648,9 +654,15 @@ export default function SetupStorePage() {
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0">
+                          <PopoverContent
+                            onOpenAutoFocus={(e) => e.preventDefault()}
+                            className="w-full p-0"
+                          >
                             <Command>
-                              <CommandInput placeholder="Search operation..." />
+                              <CommandInput
+                                autoFocus={false}
+                                placeholder="Search operation..."
+                              />
                               <CommandEmpty>No operation found.</CommandEmpty>
                               <CommandGroup>
                                 {serviceOperationOptions.map((option) => (
