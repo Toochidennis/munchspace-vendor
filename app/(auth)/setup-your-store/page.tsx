@@ -263,7 +263,7 @@ export default function SetupStorePage() {
       </div>
 
       {/* Right Form */}
-      <div className="flex items-center justify-center p-8  mt-10">
+      <div className="flex items-center justify-center px-4 py-8 md:p-8  mt-10">
         <div className="w-full max-w-lg space-y-8">
           <Image
             src={"/images/logo.svg"}
@@ -790,7 +790,7 @@ export default function SetupStorePage() {
                             <span className="font-medium">{day}</span>
                           </div>
 
-                          <div className="flex justify-between w-full items-center gap-3">
+                          <div className="flex justify-between whitespace-nowrap w-full items-center gap-3">
                             <span className="text-sm text-muted-foreground">
                               {formatTime(start)} - {formatTime(end)}
                             </span>
