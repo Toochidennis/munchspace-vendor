@@ -150,7 +150,7 @@ export default function RestaurantSidebar() {
                 <button
                   className={cn(
                     "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
-                    collapsed && "justify-center px-0",
+                    collapsed && "justify-center px-0 mt-2",
                     item.active ? "bg-black/13" : "hover:bg-black/10",
                     "hover:bg-black/10"
                   )}
