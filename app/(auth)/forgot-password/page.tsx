@@ -35,8 +35,8 @@ export default function LoginPage() {
   });
 
   function onSubmit(values: FormValues) {
-      console.log(values);
-      setEmailSent(true);
+    console.log(values);
+    setEmailSent(true);
     // Integrate with your authentication logic here (e.g., NextAuth, server action).
   }
 
@@ -44,20 +44,22 @@ export default function LoginPage() {
     <div className="min-h-screen grid md:grid-cols-2">
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
-        <Image
-          src={"/images/logo.svg"}
-          width={100}
-          height={75}
-          alt="logo"
-          className="hidden md:block absolute ms-5 mt-5"
-        />
-        <Image
-          src={"/images/auth/hero.png"}
-          width={500}
-          height={900}
-          alt="hero"
-          className="object-cover h-full w-full max-h-screen"
-        />
+        <div className="fixed w-1/2 pe-5">
+          <Image
+            src={"/images/logo.svg"}
+            width={100}
+            height={75}
+            alt="logo"
+            className="hidden md:block absolute z-20 ms-5 mt-5"
+          />
+          <Image
+            src={"/images/auth/hero.png"}
+            width={500}
+            height={900}
+            alt="hero"
+            className="object-cover h-full max-h-screen w-full"
+          />
+        </div>
       </div>
 
       {/* Right Side: Login Form */}
@@ -91,7 +93,7 @@ export default function LoginPage() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="font-normal text-slate-500">
                           Email
                           <span className="-ms-1 pt-1 text-xl text-munchred">
                             *

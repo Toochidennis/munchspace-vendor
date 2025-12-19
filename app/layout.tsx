@@ -24,7 +24,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${rubik.variable} ${inter.variable} antialiased`}>
+      <body
+        className={`${rubik.variable} ${inter.variable} antialiased overflow-x-hidden max-w-500 mx-auto`}
+      >
         {children}
       </body>
     </html>

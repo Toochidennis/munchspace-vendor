@@ -124,6 +124,14 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
+@safelist {
+  data-[state=active]:text-orange-600;
+  data-[state=active]:border-orange-600;
+  data-[state=active]:border-b-4;
+  /* Or use patterns if supported in your version */
+  data-[state=active]:*;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

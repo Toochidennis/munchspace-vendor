@@ -51,21 +51,23 @@ export default function LoginPage() {
     <div className="min-h-screen grid md:grid-cols-2">
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
-        <Image
-          src={"/images/logo.svg"}
-          width={100}
-          height={75}
-          alt="logo"
-          className="hidden md:block absolute ms-5 mt-5"
-        />
-        <Image
-          src={"/images/auth/hero.png"}
-          width={500}
-          height={900}
-          alt="hero"
-          className="object-cover h-full w-full max-h-screen"
-        />
-      </div>
+              <div className="fixed w-1/2 pe-5">
+                <Image
+                  src={"/images/logo.svg"}
+                  width={100}
+                  height={75}
+                  alt="logo"
+                  className="hidden md:block absolute z-20 ms-5 mt-5"
+                />
+                <Image
+                  src={"/images/auth/hero.png"}
+                  width={500}
+                  height={900}
+                  alt="hero"
+                  className="object-cover h-full max-h-screen w-full"
+                />
+              </div>
+            </div>
 
       {/* Right Side: Login Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
@@ -93,7 +95,7 @@ export default function LoginPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
+                    <FormLabel className="font-normal text-slate-500">
                       Email
                       <span className="-ms-1 pt-1 text-xl text-munchred">
                         *
@@ -117,7 +119,9 @@ export default function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center">
+                    <FormLabel
+                      className="flex items-center font-normal text-slate-500"
+                    >
                       Password
                       <span className="-ms-1 pt-1 text-xl text-munchred">
                         *
@@ -153,7 +157,7 @@ export default function LoginPage() {
               <div className="flex items-center justify-end">
                 <Link
                   href="/forgot-password"
-                  className="text-sm font-medium text-munchprimary hover:text-munchprimaryDark hover:underline"
+                  className="text-sm font-medium underline text-munchprimary hover:text-munchprimaryDark hover:underline"
                 >
                   Forgot password?
                 </Link>
@@ -176,7 +180,7 @@ export default function LoginPage() {
             Don't have an account?{" "}
             <Link
               href="/register"
-              className="font-medium text-munchprimary hover:text-munchprimaryDark hover:underline"
+              className="font-medium underline text-munchprimary hover:text-munchprimaryDark hover:underline"
             >
               Signup
             </Link>

@@ -121,20 +121,22 @@ export default function RegisterPage() {
     <div className="min-h-screen grid md:grid-cols-2">
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
-        <Image
-          src={"/images/logo.svg"}
-          width={100}
-          height={75}
-          alt="logo"
-          className="hidden md:block absolute ms-5 mt-5"
-        />
-        <Image
-          src={"/images/auth/hero.png"}
-          width={500}
-          height={900}
-          alt="hero"
-          className="object-cover h-full max-h-screen w-1/2 fixed"
-        />
+        <div className="fixed w-1/2 pe-5">
+          <Image
+            src={"/images/logo.svg"}
+            width={100}
+            height={75}
+            alt="logo"
+            className="hidden md:block absolute z-20 ms-5 mt-5"
+          />
+          <Image
+            src={"/images/auth/hero.png"}
+            width={500}
+            height={900}
+            alt="hero"
+            className="object-cover h-full max-h-screen w-full"
+          />
+        </div>
       </div>
 
       {/* Right Side: Multi-Step Form */}
@@ -171,7 +173,7 @@ export default function RegisterPage() {
                       name="firstName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>
+                          <FormLabel className="font-normal text-slate-500">
                             First Name
                             <span className="-ms-1 pt-1 text-xl text-munchred">
                               *
@@ -193,7 +195,7 @@ export default function RegisterPage() {
                       name="lastName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>
+                          <FormLabel className="font-normal text-slate-500">
                             Last Name
                             <span className="-ms-1 pt-1 text-xl text-munchred">
                               *
@@ -217,7 +219,7 @@ export default function RegisterPage() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="font-normal text-slate-500">
                           Email
                           <span className="-ms-1 pt-1 text-xl text-munchred">
                             *
@@ -242,7 +244,7 @@ export default function RegisterPage() {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="font-normal text-slate-500">
                           Password
                           <span className="-ms-1 pt-1 text-xl text-munchred">
                             *
@@ -295,7 +297,7 @@ export default function RegisterPage() {
                           </span>
                         </div>
 
-                        <ul className="mt-4 space-y-1 text-sm">
+                        <ul className="mt-4 space-y-1 text-sm text-slate-500">
                           <li className="flex items-center gap-2">
                             {hasLength ? (
                               <Image
@@ -379,7 +381,7 @@ export default function RegisterPage() {
                     name="confirmPassword"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="font-normal text-slate-500">
                           Confirm Password
                           <span className="-ms-1 pt-1 text-xl text-munchred">
                             *
@@ -447,7 +449,7 @@ export default function RegisterPage() {
                   Verify your email
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Enter the verification code we just sent to {savedEmail}.
+                  Enter the verification code we just sent to {savedEmail}
                 </p>
               </div>
 
