@@ -87,7 +87,7 @@ export default function ChangePasswordPage() {
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
         <Image
-          src={"/images/logo.png"}
+          src={"/images/logo.svg"}
           width={100}
           height={75}
           alt="logo"
@@ -107,7 +107,7 @@ export default function ChangePasswordPage() {
         {!passwordChanged && (
           <div className="w-full max-w-md space-y-8">
             <Image
-              src={"/images/logo.png"}
+              src={"/images/logo.svg"}
               width={100}
               height={75}
               alt="logo"
@@ -191,14 +191,14 @@ export default function ChangePasswordPage() {
                         <li className="flex items-center gap-2">
                           {hasLength ? (
                             <Image
-                              src={"/images/icon/CheckCircleSuccess.png"}
+                              src={"/images/icons/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
                             <Image
-                              src={"/images/icon/CheckCircle.png"}
+                              src={"/images/icons/CheckCircle.svg"}
                               width={20}
                               height={20}
                               alt="unchecked"
@@ -209,14 +209,14 @@ export default function ChangePasswordPage() {
                         <li className="flex items-center gap-2">
                           {hasUppercase ? (
                             <Image
-                              src={"/images/icon/CheckCircleSuccess.png"}
+                              src={"/images/icons/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
                             <Image
-                              src={"/images/icon/CheckCircle.png"}
+                              src={"/images/icons/CheckCircle.svg"}
                               width={20}
                               height={20}
                               alt="unchecked"
@@ -227,14 +227,14 @@ export default function ChangePasswordPage() {
                         <li className="flex items-center gap-2">
                           {hasNumber ? (
                             <Image
-                              src={"/images/icon/CheckCircleSuccess.png"}
+                              src={"/images/icons/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
                             <Image
-                              src={"/images/icon/CheckCircle.png"}
+                              src={"/images/icons/CheckCircle.svg"}
                               width={20}
                               height={20}
                               alt="unchecked"
@@ -245,14 +245,14 @@ export default function ChangePasswordPage() {
                         <li className="flex items-center gap-2">
                           {hasSpecial ? (
                             <Image
-                              src={"/images/icon/CheckCircleSuccess.png"}
+                              src={"/images/icons/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
                             <Image
-                              src={"/images/icon/CheckCircle.png"}
+                              src={"/images/icons/CheckCircle.svg"}
                               width={20}
                               height={20}
                               alt="unchecked"
@@ -335,7 +335,7 @@ export default function ChangePasswordPage() {
               <h2 className="text-2xl font-bold tracking-tight font-rubik flex gap-3">
                 <span>All Done!</span>
                 <Image
-                  src={"/images/icon/CheckCircleSuccess.png"}
+                  src={"/images/icons/CheckCircleSuccess.svg"}
                   width={25}
                   height={25}
                   alt="success icon"
