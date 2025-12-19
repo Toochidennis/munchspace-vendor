@@ -48,7 +48,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="h-screen grid md:grid-cols-2">
+    <div className="min-h-screen grid md:grid-cols-2">
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
         <div className="fixed w-1/2 pe-5">

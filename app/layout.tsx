@@ -24,8 +24,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Essential for mobile responsiveness */}
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
       <body
-        className={`${rubik.variable} ${inter.variable} antialiased overflow-x-hidden max-w-500 mx-auto`}
+        className={`${rubik.variable} ${inter.variable} antialiased overflow-x-hidden max-w-500 mx-auto w-screen`}
       >
         {children}
       </body>
