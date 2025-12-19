@@ -83,7 +83,7 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
+    <div className="min-h-dvh grid md:grid-cols-2">
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
         <Image
@@ -188,7 +188,7 @@ export default function ChangePasswordPage() {
 
                       {/* Requirements Checklist */}
                       <ul className="mt-4 space-y-1 text-sm">
-                        <li className="flex items-center gap-2">
+                        <li className="flex gap-2">
                           {hasLength ? (
                             <Image
                               src={"/images/CheckCircleSuccess.svg"}
@@ -206,7 +206,7 @@ export default function ChangePasswordPage() {
                           )}
                           At least 8 characters
                         </li>
-                        <li className="flex items-center gap-2">
+                        <li className="flex gap-2">
                           {hasUppercase ? (
                             <Image
                               src={"/images/CheckCircleSuccess.svg"}
@@ -224,7 +224,7 @@ export default function ChangePasswordPage() {
                           )}
                           At least 1 uppercase character (A-Z)
                         </li>
-                        <li className="flex items-center gap-2">
+                        <li className="flex gap-2">
                           {hasNumber ? (
                             <Image
                               src={"/images/CheckCircleSuccess.svg"}
@@ -242,24 +242,28 @@ export default function ChangePasswordPage() {
                           )}
                           At least 1 number (0-9)
                         </li>
-                        <li className="flex items-center gap-2">
-                          {hasSpecial ? (
-                            <Image
-                              src={"/images/CheckCircleSuccess.svg"}
-                              width={20}
-                              height={20}
-                              alt="checked"
-                            />
-                          ) : (
-                            <Image
-                              src={"/images/CheckCircle.svg"}
-                              width={20}
-                              height={20}
-                              alt="unchecked"
-                            />
-                          )}
-                          At least 1 special character (e.g., ! @ # $ % ^ & *
-                          etc.)
+                        <li className="flex gap-2">
+                          <div>
+                            {hasSpecial ? (
+                              <Image
+                                src={"/images/CheckCircleSuccess.svg"}
+                                width={20}
+                                height={20}
+                                alt="checked"
+                              />
+                            ) : (
+                              <Image
+                                src={"/images/CheckCircle.svg"}
+                                width={20}
+                                height={20}
+                                alt="unchecked"
+                              />
+                            )}
+                          </div>
+                          <span className="block">
+                            At least 1 special character (e.g., ! @ # $ % ^ & *
+                            etc.)
+                          </span>
                         </li>
                       </ul>
                     </FormItem>
