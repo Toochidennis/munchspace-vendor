@@ -106,13 +106,13 @@ export default function ChangePasswordPage() {
       <div className="w-full flex items-center justify-center bg-background px-8">
         {!passwordChanged && (
           <div className="w-full max-w-md space-y-8">
-            <Image
+            {/* <Image
               src={"/images/logo.svg"}
               width={100}
               height={75}
               alt="logo"
               className="lg:hidden"
-            />
+            /> */}
             <div className="">
               <h2 className="text-2xl font-bold tracking-tight font-rubik">
                 Change Password
