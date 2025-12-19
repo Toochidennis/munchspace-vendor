@@ -191,14 +191,14 @@ export default function ChangePasswordPage() {
                         <li className="flex items-center gap-2">
                           {hasLength ? (
                             <Image
-                              src={"/images/icons/CheckCircleSuccess.svg"}
+                              src={"/images/icons/CheckCircleSuccess.png"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
                             <Image
-                              src={"/images/icons/CheckCircle.svg"}
+                              src={"/images/icons/CheckCircle.png"}
                               width={20}
                               height={20}
                               alt="unchecked"
