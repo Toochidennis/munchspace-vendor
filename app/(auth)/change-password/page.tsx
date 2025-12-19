@@ -86,7 +86,7 @@ export default function ChangePasswordPage() {
     <div className="min-h-screen grid md:grid-cols-2">
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
-        <Image
+        <img
           src={"/images/logo.svg"}
           width={100}
           height={75}
@@ -106,7 +106,7 @@ export default function ChangePasswordPage() {
       <div className="w-full flex items-center justify-center bg-background px-8">
         {!passwordChanged && (
           <div className="w-full max-w-md space-y-8">
-            <Image
+            <img
               src={"/images/logo.svg"}
               width={100}
               height={75}
@@ -190,14 +190,14 @@ export default function ChangePasswordPage() {
                       <ul className="mt-4 space-y-1 text-sm">
                         <li className="flex items-center gap-2">
                           {hasLength ? (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircle.svg"}
                               width={20}
                               height={20}
@@ -208,14 +208,14 @@ export default function ChangePasswordPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           {hasUppercase ? (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircle.svg"}
                               width={20}
                               height={20}
@@ -226,14 +226,14 @@ export default function ChangePasswordPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           {hasNumber ? (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircle.svg"}
                               width={20}
                               height={20}
@@ -244,14 +244,14 @@ export default function ChangePasswordPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           {hasSpecial ? (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircleSuccess.svg"}
                               width={20}
                               height={20}
                               alt="checked"
                             />
                           ) : (
-                            <Image
+                            <img
                               src={"/images/icon/CheckCircle.svg"}
                               width={20}
                               height={20}
@@ -334,7 +334,7 @@ export default function ChangePasswordPage() {
             <div className="">
               <h2 className="text-2xl font-bold tracking-tight font-rubik flex gap-3">
                 <span>All Done!</span>
-                <Image
+                <img
                   src={"/images/icon/CheckCircleSuccess.svg"}
                   width={25}
                   height={25}

@@ -45,7 +45,7 @@ export default function LoginPage() {
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
         <div className="fixed w-1/2 pe-5">
-          <Image
+          <img
             src={"/images/logo.svg"}
             width={100}
             height={75}
