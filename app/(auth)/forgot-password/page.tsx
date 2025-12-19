@@ -65,7 +65,7 @@ export default function LoginPage() {
       {/* Right Side: Login Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
         <div className="w-full max-w-md space-y-8">
-          <Image
+          <img
             src={"/images/logo.svg"}
             width={100}
             height={75}
@@ -136,7 +136,7 @@ export default function LoginPage() {
               <div className="">
                 <h2 className="text-2xl font-bold tracking-tight font-rubik flex gap-3">
                   <span>Email Sent!</span>
-                  <Image
+                  <img
                     src={"/images/icon/CheckCircleSuccess.svg"}
                     width={25}
                     height={25}
