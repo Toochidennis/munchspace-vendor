@@ -263,7 +263,7 @@ export default function SetupStorePage() {
       </div>
 
       {/* Right Form */}
-      <div className="flex items-center justify-center px-4 py-8 md:p-8  mt-10">
+      <div className="flex items-center justify-center p-4 md:p-8  mt-10">
         <div className="w-full max-w-lg space-y-8">
           <Image
             src={"/images/logo.svg"}
