@@ -29,8 +29,8 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export default function LoginPage() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -41,33 +41,33 @@ export default function LoginPage() {
 
   async function onSubmit(values: FormValues) {
     console.log(values);
-    setIsLoading(true)
+    setIsLoading(true);
     await new Promise((r) => setTimeout(r, 1500));
     // Integrate with your authentication logic here (e.g., NextAuth, server action).
-    setIsLoading(false)
+    setIsLoading(false);
   }
 
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
+    <div className="h-screen grid md:grid-cols-2">
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
-              <div className="fixed w-1/2 pe-5">
-                <Image
-                  src={"/images/logo.svg"}
-                  width={100}
-                  height={75}
-                  alt="logo"
-                  className="hidden md:block absolute z-20 ms-5 mt-5"
-                />
-                <Image
-                  src={"/images/auth/hero.png"}
-                  width={500}
-                  height={900}
-                  alt="hero"
-                  className="object-cover h-full max-h-screen w-full"
-                />
-              </div>
-            </div>
+        <div className="fixed w-1/2 pe-5">
+          <Image
+            src={"/images/logo.svg"}
+            width={100}
+            height={75}
+            alt="logo"
+            className="hidden md:block absolute z-20 ms-5 mt-5"
+          />
+          <Image
+            src={"/images/auth/hero.png"}
+            width={500}
+            height={900}
+            alt="hero"
+            className="object-cover h-full max-h-screen w-full"
+          />
+        </div>
+      </div>
 
       {/* Right Side: Login Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
@@ -77,7 +77,7 @@ export default function LoginPage() {
             width={100}
             height={75}
             alt="logo"
-            className="lg:hidden"
+            className="md:hidden"
           />
           <div className="">
             <h2 className="text-2xl font-bold tracking-tight font-rubik">
@@ -119,9 +119,7 @@ export default function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel
-                      className="flex items-center font-normal text-slate-500"
-                    >
+                    <FormLabel className="flex items-center font-normal text-slate-500">
                       Password
                       <span className="-ms-1 pt-1 text-xl text-munchred">
                         *
