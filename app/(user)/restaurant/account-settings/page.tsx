@@ -109,7 +109,7 @@ export default function AccountSettingsPage() {
                 <label className="flex flex-col bg-opacity-40 cursor-pointer text-sm group-hover:opacity-100">
                   <div className="flex gap-2 items-center">
                     <Image
-                      src={"/images/icon/frame.svg"}
+                      src={"/images/frame.svg"}
                       width={15}
                       height={15}
                       alt="frame"

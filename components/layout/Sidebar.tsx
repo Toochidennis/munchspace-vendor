@@ -91,7 +91,7 @@ export default function RestaurantSidebar() {
           className={cn("w-fit mb-7 p-1.5", collapsed && "mx-auto")}
         >
           <Image
-            src={"/images/icon/MenuFold.svg"}
+            src={"/images/MenuFold.svg"}
             width={18}
             height={18}
             alt="menu trigger"
@@ -201,7 +201,7 @@ export default function RestaurantSidebar() {
                     )}
                   >
                     <Image
-                      src={"/images/icon/SmileFace.svg"}
+                      src={"/images/SmileFace.svg"}
                       width={18}
                       height={18}
                       alt="logout"
@@ -219,7 +219,7 @@ export default function RestaurantSidebar() {
                     )}
                   >
                     <Image
-                      src={"/images/icon/SettingFilled.svg"}
+                      src={"/images/SettingFilled.svg"}
                       width={18}
                       height={18}
                       alt="logout"
@@ -237,7 +237,7 @@ export default function RestaurantSidebar() {
                     )}
                   >
                     <Image
-                      src={"/images/icon/Logout.svg"}
+                      src={"/images/Logout.svg"}
                       width={18}
                       height={18}
                       alt="logout"
@@ -284,7 +284,7 @@ export default function RestaurantSidebar() {
                 className={cn("w-fit mb-7 p-1.5", mobileCollapsed && "mx-auto")}
               >
                 <Image
-                  src={"/images/icon/MenuFold.svg"}
+                  src={"/images/MenuFold.svg"}
                   width={18}
                   height={18}
                   alt="menu trigger"
@@ -381,7 +381,7 @@ export default function RestaurantSidebar() {
                         )}
                       >
                         <Image
-                          src={"/images/icon/SmileFace.svg"}
+                          src={"/images/SmileFace.svg"}
                           width={18}
                           height={18}
                           alt="logout"
@@ -398,7 +398,7 @@ export default function RestaurantSidebar() {
                         )}
                       >
                         <Image
-                          src={"/images/icon/SettingFilled.svg"}
+                          src={"/images/SettingFilled.svg"}
                           width={18}
                           height={18}
                           alt="logout"
@@ -415,7 +415,7 @@ export default function RestaurantSidebar() {
                         )}
                       >
                         <Image
-                          src={"/images/icon/Logout.svg"}
+                          src={"/images/Logout.svg"}
                           width={18}
                           height={18}
                           alt="logout"
@@ -450,7 +450,7 @@ export default function RestaurantSidebar() {
               )}
             >
               <Image
-                src={"/images/icon/MenuFoldDark.svg"}
+                src={"/images/MenuFoldDark.svg"}
                 width={24}
                 height={24}
                 alt="menu trigger"

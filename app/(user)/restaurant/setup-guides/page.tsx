@@ -107,7 +107,7 @@ export default function SetupGuidePage() {
               <div className="flex items-start gap-3">
                 {task.completed ? (
                   <Image
-                    src="/images/icon/CheckCircleSuccess.svg"
+                    src="/images/CheckCircleSuccess.svg"
                     alt="Completed"
                     width={27}
                     height={27}

@@ -234,7 +234,7 @@ export default function MenuPage() {
                         className="hover:bg-gray-100"
                       >
                         <Image
-                          src="/images/icon/Edit.svg"
+                          src="/images/Edit.svg"
                           alt="Edit"
                           width={33}
                           height={33}

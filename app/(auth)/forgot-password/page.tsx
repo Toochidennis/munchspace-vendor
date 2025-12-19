@@ -137,7 +137,7 @@ export default function LoginPage() {
                 <h2 className="text-2xl font-bold tracking-tight font-rubik flex gap-3">
                   <span>Email Sent!</span>
                   <Image
-                    src={"/images/icon/CheckCircleSuccess.svg"}
+                    src={"/images/CheckCircleSuccess.svg"}
                     width={25}
                     height={25}
                     alt="success icon"

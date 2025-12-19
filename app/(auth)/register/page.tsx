@@ -301,14 +301,14 @@ export default function RegisterPage() {
                           <li className="flex items-center gap-2">
                             {hasLength ? (
                               <Image
-                                src={"/images/icon/CheckCircleSuccess.svg"}
+                                src={"/images/CheckCircleSuccess.svg"}
                                 width={20}
                                 height={20}
                                 alt="checked"
                               />
                             ) : (
                               <Image
-                                src={"/images/icon/CheckCircle.svg"}
+                                src={"/images/CheckCircle.svg"}
                                 width={20}
                                 height={20}
                                 alt="unchecked"
@@ -319,14 +319,14 @@ export default function RegisterPage() {
                           <li className="flex items-center gap-2">
                             {hasUppercase ? (
                               <Image
-                                src={"/images/icon/CheckCircleSuccess.svg"}
+                                src={"/images/CheckCircleSuccess.svg"}
                                 width={20}
                                 height={20}
                                 alt="checked"
                               />
                             ) : (
                               <Image
-                                src={"/images/icon/CheckCircle.svg"}
+                                src={"/images/CheckCircle.svg"}
                                 width={20}
                                 height={20}
                                 alt="unchecked"
@@ -337,14 +337,14 @@ export default function RegisterPage() {
                           <li className="flex items-center gap-2">
                             {hasNumber ? (
                               <Image
-                                src={"/images/icon/CheckCircleSuccess.svg"}
+                                src={"/images/CheckCircleSuccess.svg"}
                                 width={20}
                                 height={20}
                                 alt="checked"
                               />
                             ) : (
                               <Image
-                                src={"/images/icon/CheckCircle.svg"}
+                                src={"/images/CheckCircle.svg"}
                                 width={20}
                                 height={20}
                                 alt="unchecked"
@@ -355,14 +355,14 @@ export default function RegisterPage() {
                           <li className="flex items-center gap-2">
                             {hasSpecial ? (
                               <Image
-                                src={"/images/icon/CheckCircleSuccess.svg"}
+                                src={"/images/CheckCircleSuccess.svg"}
                                 width={20}
                                 height={20}
                                 alt="checked"
                               />
                             ) : (
                               <Image
-                                src={"/images/icon/CheckCircle.svg"}
+                                src={"/images/CheckCircle.svg"}
                                 width={20}
                                 height={20}
                                 alt="unchecked"
@@ -490,7 +490,7 @@ export default function RegisterPage() {
                 <h2 className="text-2xl font-bold tracking-tight font-rubik flex items-center gap-3">
                   <span>Welcome Onboard!</span>
                   <Image
-                    src={"/images/icon/CheckCircleSuccess.svg"}
+                    src={"/images/CheckCircleSuccess.svg"}
                     width={25}
                     height={25}
                     alt="success icon"

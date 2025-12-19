@@ -340,7 +340,7 @@ export default function SetupStorePage() {
                               <span>
                                 <p className="text-xs text-center text-blue-600 flex gap-1">
                                   <Image
-                                    src={"/images/icon/frame.svg"}
+                                    src={"/images/frame.svg"}
                                     width={15}
                                     height={15}
                                     alt="gallery"
@@ -789,7 +789,7 @@ export default function SetupStorePage() {
                               onClick={() => toggleOpen(day)}
                             >
                               <Image
-                                src={"/images/icon/ChevronUp.svg"}
+                                src={"/images/ChevronUp.svg"}
                                 width={15}
                                 height={15}
                                 alt="up arrow"
