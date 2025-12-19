@@ -374,11 +374,12 @@ export default function CreateMenuPage() {
                       aria-expanded={categoryOpen}
                       className="w-full justify-between h-12"
                     >
-                      <span className="truncate">
+                      {/* <span className="truncate">
                         {selectedCategories.length > 0
                           ? selectedCategories.join(", ")
                           : "Category"}
-                      </span>
+                      </span> */}
+                      <span className="truncate font-normal">Category</span>
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -415,7 +416,11 @@ export default function CreateMenuPage() {
                 {selectedCategories.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {selectedCategories.map((cat) => (
-                      <Badge key={cat} variant="secondary" className="text-sm">
+                      <Badge
+                        key={cat}
+                        variant="secondary"
+                        className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
+                      >
                         {cat}
                         <button
                           onClick={() => toggleCategory(cat)}
