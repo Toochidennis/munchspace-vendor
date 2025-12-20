@@ -126,7 +126,7 @@ export default function BestSellingItemsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-white text-gray-900 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto p-6 space-y-8">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -174,7 +174,7 @@ export default function BestSellingItemsPage() {
             <TableHeader className="bg-gray-100 h-13">
               <TableRow className="border-b border-gray-200">
                 <TableHead className="text-gray-600 my-5 ps-4">Item</TableHead>
-                <TableHead className="text-gray-600">
+                <TableHead className="text-gray-600 ps-5 md:ps-0">
                   Orders
                 </TableHead>
                 <TableHead className="text-gray-600">
@@ -188,7 +188,7 @@ export default function BestSellingItemsPage() {
                   key={item.id}
                   className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
                 >
-                  <TableCell className="py-4 max-w-80 ps-4">
+                  <TableCell className="py-4 ps-4">
                     <div className="flex items-center gap-4 w-fit">
                       <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
                         <Image
@@ -207,10 +207,10 @@ export default function BestSellingItemsPage() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-gray-900 font-medium">
+                  <TableCell className="text-gray-900 min-w-20 ps-5 md:ps-0 md:min-w-30 font-medium">
                     {item.orders}
                   </TableCell>
-                  <TableCell className="text-gray-600">
+                  <TableCell className="text-gray-600 min-w-20 md:min-w-30">
                     {item.category}
                   </TableCell>
                 </TableRow>
@@ -220,16 +220,16 @@ export default function BestSellingItemsPage() {
         </Card>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between text-sm">
-          <p className="text-gray-600">
+        <div className="flex items-center justify-center mx-2 gap-5 text-sm">
+          <p className="text-gray-600 hidden md:block">
             Total{" "}
-            <span className="text-gray-900 font-medium">
+            <span>
               {filteredItems.length}
             </span>{" "}
             items
           </p>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <Button
               variant="ghost"
               size="icon"
@@ -279,7 +279,7 @@ export default function BestSellingItemsPage() {
               value={`${itemsPerPage}`}
               onValueChange={handleItemsPerPageChange}
             >
-              <SelectTrigger className="w-32 bg-white border-gray-300">
+              <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:block">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

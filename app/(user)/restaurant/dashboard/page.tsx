@@ -241,7 +241,7 @@ export default function DashboardPage() {
         {/* Store Traffic + KPI Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Store Traffic Chart */}
-          <div className="overflow-x-auto scrollbar-custom scrollbar-no-arrows md:col-span-3">
+          <div className="overflow-x-auto scrollbar-custom scrollbar-no-arrows pb-2 md:col-span-3">
             <Card className="md:col-span-3 rounded-lg pb-0 pe-4 shadow-none min-w-130 border-gray-100">
               <CardHeader>
                 <CardTitle className="text-lg">Store Traffic</CardTitle>
@@ -274,7 +274,7 @@ export default function DashboardPage() {
           </div>
 
           {/* KPI Cards */}
-          <div className="md:col-span-3 lg:col-span-2 scrollbar-custom scrollbar-no-arrows pb-1 w-full overflow-x-auto relative">
+          <div className="md:col-span-3 lg:col-span-2 scrollbar-custom scrollbar-no-arrows pb-2 w-full overflow-x-auto relative">
             <div className="grid grid-cols-2 gap-2 md:gap-4 whitespace-nowrap text-center min-w-95 ">
               <Card className="gap-1 shadow-none md:gap-4 border-gray-100 px-0">
                 <CardHeader className="pb-3">
