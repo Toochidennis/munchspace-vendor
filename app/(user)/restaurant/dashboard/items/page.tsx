@@ -295,7 +295,7 @@ export default function BestSellingItemsPage() {
                 value={`${itemsPerPage}`}
                 onValueChange={handleItemsPerPageChange}
               >
-                <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:block">
+                <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:flex">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

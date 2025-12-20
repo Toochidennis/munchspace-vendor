@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -72,6 +72,7 @@ export default function MenuPage() {
   const [period, setPeriod] = useState<"last30" | "last7" | "today">("last30");
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [items, setItems] = useState(mockData.last30.items);
+  const [showSearchMobile, setShowSearchMobile] = useState(false);
 
   // Update items when period changes
   useEffect(() => {
@@ -123,67 +124,118 @@ export default function MenuPage() {
       for (let i = 1; i <= 5; i++) {
         pages.push(i);
       }
-      pages.push("...");
-      pages.push(totalPages);
-    } else if (currentPage > 5 && currentPage < totalPages - 1) {
-      pages.push(1, 2);
+      if (totalPages > 5) {
+        pages.push("...");
+        pages.push(totalPages);
+      }
+    } else if (currentPage > 5 && currentPage < totalPages) {
+      pages.push(1);
       pages.push("...");
       pages.push(currentPage - 1, currentPage, currentPage + 1);
       pages.push("...");
-      pages.push(totalPages - 1, totalPages);
+      pages.push(totalPages);
     } else {
       for (let i = 1; i <= 5; i++) {
         pages.push(i);
       }
       pages.push("...");
-      pages.push(totalPages - 1, totalPages);
+      pages.push(totalPages);
     }
 
     return pages;
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
       {mockData.last30.items.length > 0 ? (
-        <div className="max-w-7xl mx-auto p-6 space-y-8">
-          {/* Header with Search and New Menu Button */}
-          <div className="flex justify-between items-center gap-6">
-            <div className="relative flex-1 max-w-lg">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                placeholder="Search"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="pl-10"
-              />
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="flex justify-between items-center mb-8 md:mb-15">
+            <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
+            {/* Search and Period Filter */}
+            <div className="md:flex items-center hidden  gap-6">
+              <div className="relative flex-1 max-w-lg">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input
+                  placeholder="Search"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-10 w-full h-12 md:min-w-90"
+                />
+              </div>
+              <Link href="/restaurant/menu/new">
+                <Button className="bg-orange-500 h-12 hover:bg-orange-600 text-white">
+                  New Menu
+                </Button>
+              </Link>
             </div>
-
-            <Link href="/restaurant/menu/new">
-              <Button className="bg-orange-500 hover:bg-orange-600 text-white">
-                New Menu
-              </Button>
-            </Link>
+            <div
+              onClick={() => setShowSearchMobile(!showSearchMobile)}
+              className={cn(
+                "border border-gray-300 items-center md:hidden rounded-lg p-2 w-15 h-12 text-slate-800 flex justify-center",
+                showSearchMobile && "bg-munchprimary text-white"
+              )}
+            >
+              <Settings2 className="" />
+            </div>
           </div>
+          {showSearchMobile && (
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input
+                  placeholder="Search"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-10 w-full h-12 md:min-w-90"
+                />
+              </div>
+              <Link href="/restaurant/menu/new" className="w-full">
+                <Button className="bg-orange-500 h-12 w-full hover:bg-orange-600 text-white">
+                  New Menu
+                </Button>
+              </Link>
+            </div>
+          )}
 
-          {/* Table */}
-          <Card className="border border-gray-200">
+          {/* Table - Desktop Version */}
+          <Card className="border hidden md:block border-gray-200 py-0">
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
-                  <TableHead className="text-gray-700">Item</TableHead>
-                  <TableHead className="text-gray-700 text-center">
+                  <TableHead
+                    className="text-gray-700 ps-4"
+                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                  >
+                    Item
+                  </TableHead>
+                  <TableHead
+                    className="text-gray-700 text-center"
+                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                  >
                     Cost Price
                   </TableHead>
-                  <TableHead className="text-gray-700 text-center">
+                  <TableHead
+                    className="text-gray-700 text-center"
+                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                  >
                     Selling Price
                   </TableHead>
-                  <TableHead className="text-gray-700 text-center">
+                  <TableHead
+                    className="text-gray-700 text-center"
+                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                  >
                     Availability
                   </TableHead>
-                  <TableHead className="text-gray-700 text-right">
+                  <TableHead
+                    className="text-gray-700 text-right pe-4"
+                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                  >
                     Action
                   </TableHead>
                 </TableRow>
@@ -194,7 +246,7 @@ export default function MenuPage() {
                     key={item.id}
                     className="border-b border-gray-200 hover:bg-gray-50"
                   >
-                    <TableCell className="py-4">
+                    <TableCell className="py-4 ps-4">
                       <div className="flex items-center gap-4">
                         <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden">
                           <Image
@@ -205,9 +257,14 @@ export default function MenuPage() {
                             className="object-cover w-full h-full"
                           />
                         </div>
-                        <span className="font-medium text-gray-900">
-                          {item.name}
-                        </span>
+                        <div className="flex flex-col max-w-40">
+                          <span className="font-medium text-gray-900">
+                            {item.name}
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            {item.description}
+                          </span>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-center text-gray-900">
@@ -227,7 +284,7 @@ export default function MenuPage() {
                         )}
                       />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right pe-4">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -247,77 +304,127 @@ export default function MenuPage() {
             </Table>
           </Card>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between mt-8">
-            <p className="text-sm text-gray-600">
-              Total{" "}
-              <span className="font-medium text-gray-900">
-                {filteredItems.length}
-              </span>{" "}
-              items
-            </p>
-
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="hover:bg-gray-100 disabled:opacity-50"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-
-              <div className="flex items-center gap-2">
-                {getPageNumbers().map((page, index) => (
-                  <div key={index}>
-                    {page === "..." ? (
-                      <span className="text-gray-500 px-2">...</span>
-                    ) : (
-                      <Button
-                        variant={currentPage === page ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => handlePageChange(page as number)}
+          {/* Table - Mobile Version */}
+          <div className="md:hidden">
+            <Card className="border border-gray-200 rounded-lg shadow-sm py-1">
+              <div className="p-4">
+                {paginatedItems.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "mb-4 pb-4 border-b flex gap-2 justify-between border-gray-200",
+                      index === paginatedItems.length - 1 && "mb-0 pb-0 border-0")}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-29 h-16 bg-gray-100 rounded-lg overflow-hidden">
+                        <Image
+                          src={item.image}
+                          alt={item.name}
+                          width={64}
+                          height={64}
+                          className="object-cover w-full h-full"
+                        />
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-900 text-sm">
+                          {item.name}
+                        </span>
+                        <span className="text-gray-500 text-xs block">
+                          {item.description}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-3 items-end">
+                      <span className="text-center text-gray-900 font-medium">
+                        {item.sellingPrice}
+                      </span>
+                      <Switch
+                        checked={item.available}
+                        onCheckedChange={() =>
+                          handleToggleAvailability(item.id)
+                        }
                         className={cn(
-                          "min-w-10",
-                          currentPage === page &&
-                            "bg-orange-500 hover:bg-orange-600 text-white"
+                          item.available && "data-[state=checked]:bg-orange-500"
                         )}
-                      >
-                        {page}
-                      </Button>
-                    )}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() =>
-                  handlePageChange(Math.min(totalPages, currentPage + 1))
-                }
-                disabled={currentPage === totalPages}
-                className="hover:bg-gray-100 disabled:opacity-50"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </Button>
-
-              <Select
-                value={`${itemsPerPage}`}
-                onValueChange={handleItemsPerPageChange}
-              >
-                <SelectTrigger className="w-32 bg-white border-gray-300">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10 / page</SelectItem>
-                  <SelectItem value="20">20 / page</SelectItem>
-                  <SelectItem value="50">50 / page</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            </Card>
           </div>
+
+          {/* Pagination */}
+          {paginatedItems.length > 0 && (
+            <div className="flex items-center justify-center mx-2 gap-5 text-sm">
+              <p className="text-gray-600 hidden md:block">
+                Total <span>{filteredItems.length}</span> items
+              </p>
+
+              <div className="flex items-center gap-2 md:gap-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="hover:bg-gray-100 disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  {getPageNumbers().map((page, index) => (
+                    <div key={index}>
+                      {page === "..." ? (
+                        <span className="text-gray-500 px-2 flex items-center">
+                          <p className="-mt-2">...</p>
+                        </span>
+                      ) : (
+                        <Button
+                          variant={currentPage === page ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => handlePageChange(page as number)}
+                          className={cn(
+                            "min-w-8 md:min-w-10",
+                            currentPage === page &&
+                              "bg-orange-500 hover:bg-orange-600 text-white"
+                          )}
+                        >
+                          {page}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() =>
+                    handlePageChange(Math.min(totalPages, currentPage + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="hover:bg-gray-100 disabled:opacity-50"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </Button>
+
+                <Select
+                  value={`${itemsPerPage}`}
+                  onValueChange={handleItemsPerPageChange}
+                >
+                  <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:flex">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 / page</SelectItem>
+                    <SelectItem value="20">20 / page</SelectItem>
+                    <SelectItem value="50">50 / page</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="p-3">
