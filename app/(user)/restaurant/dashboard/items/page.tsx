@@ -262,7 +262,6 @@ export default function BestSellingItemsPage() {
                 </div>
               ))}
             </div>
-
             <Button
               variant="ghost"
               size="icon"
