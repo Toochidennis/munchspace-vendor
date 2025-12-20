@@ -108,18 +108,18 @@ export default function BestSellingItemsPage() {
         pages.push("...");
         pages.push(totalPages);
       }
-    } else if (currentPage > 5 && currentPage < totalPages - 1) {
-      pages.push(1, 2);
+    } else if (currentPage > 5 && currentPage < totalPages) {
+      pages.push(1);
       pages.push("...");
       pages.push(currentPage - 1, currentPage, currentPage + 1);
       pages.push("...");
-      pages.push(totalPages - 1, totalPages);
+      pages.push(totalPages);
     } else {
       for (let i = 1; i <= 5; i++) {
         pages.push(i);
       }
       pages.push("...");
-      pages.push(totalPages - 1, totalPages);
+      pages.push(totalPages);
     }
 
     return pages;
