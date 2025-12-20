@@ -136,7 +136,7 @@ export default function BestSellingItemsPage() {
         </div>
 
         {/* Header with Search and Period */}
-        <div className="flex justify-between items-center gap-6">
+        <div className="flex justify-between items-center gap-2 md:gap-6">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <Input
@@ -146,7 +146,7 @@ export default function BestSellingItemsPage() {
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              className="pl-10 bg-white border-gray-300 text-gray-900 h-10 placeholder-gray-500 focus:border-gray-400"
+              className="pl-10 bg-white border-gray-300 text-gray-900 md:h-10 placeholder-gray-500 focus:border-gray-400"
             />
           </div>
 
@@ -157,7 +157,7 @@ export default function BestSellingItemsPage() {
               setCurrentPage(1);
             }}
           >
-            <SelectTrigger className="w-40 bg-white border-gray-300 text-gray-900">
+            <SelectTrigger className="md:w-40 bg-white border-gray-300 text-gray-900">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -251,7 +251,7 @@ export default function BestSellingItemsPage() {
                       size="sm"
                       onClick={() => handlePageChange(page as number)}
                       className={cn(
-                        "min-w-10",
+                        "min-w-8 md:min-w-10",
                         currentPage === page &&
                           "bg-orange-500 hover:bg-orange-600 text-white"
                       )}
@@ -262,6 +262,7 @@ export default function BestSellingItemsPage() {
                 </div>
               ))}
             </div>
+
             <Button
               variant="ghost"
               size="icon"
