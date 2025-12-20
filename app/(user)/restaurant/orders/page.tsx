@@ -379,10 +379,10 @@ export default function OrdersPage() {
           </div>
 
           {/* Mobile View */}
-          <div className="md:hidden border p-1">
+          <div className="md:hidden border p-1 rounded">
             {paginatedOrders.map((order) => (
               <Link key={order.id} href={`/restaurant/orders/${order.id}`}>
-                <div className="border-b border-gray-200 rounded-lg p-4 mb-4 flex justify-between items-center hover:bg-gray-50">
+                <div className="border-b border-gray-200 p-4 flex justify-between items-center hover:bg-gray-50">
                   <div className="flex flex-col mb-2">
                     <span
                       className={cn(
