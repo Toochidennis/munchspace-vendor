@@ -179,6 +179,7 @@ export default function RestaurantSidebar() {
           <div
             onMouseEnter={() => setShowMore(true)}
             onMouseLeave={() => setShowMore(false)}
+            onClick={() => setShowMore(!showMore)}
             className={cn(
               "flex items-center gap-3 pt-4",
               collapsed && "flex-col gap-2"
