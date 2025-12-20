@@ -208,7 +208,7 @@ export default function DashboardPage() {
   const totalSales = top5Items.reduce((sum, item) => sum + item.sales, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 lg:p-8">
+    <div className="min-h-screen bg-gray-50 p-6 lg:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex justify-between items-start">
@@ -232,17 +232,17 @@ export default function DashboardPage() {
         </div>
 
         {/* Store Traffic + KPI Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Store Traffic Chart */}
-          <Card className="lg:col-span-2 rounded-lg">
+          <Card className="md:col-span-3 rounded-lg pb-0 pe-4 shadow-none">
             <CardHeader>
               <CardTitle className="text-lg">Store Traffic</CardTitle>
               <CardDescription>
                 Track the number of customers who visited your store.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+            <CardContent className="p-0">
+              <ResponsiveContainer width="100%" height={275}>
                 <BarChart data={data.traffic}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="time" tickLine={false} axisLine={false} />
@@ -263,124 +263,128 @@ export default function DashboardPage() {
           </Card>
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 gap-6 lg:col-span-3 text-center">
-            <Card className="rounded-lg">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 justify-center">
-                  <ShoppingBag className="h-5 w-5 text-blue-600" />
-                  Total Orders
-                </CardTitle>
-                <p
-                  className={cn(
-                    "text-sm flex items-center gap-1 justify-center",
-                    data.kpis.totalOrdersTrend > 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  )}
-                >
-                  {data.kpis.totalOrdersTrend > 0 ? "+" : ""}
-                  {data.kpis.totalOrdersTrend}%
-                </p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">
-                  {data.kpis.totalOrders.toLocaleString()}
-                </p>
-                <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all"
-                    style={{ width: "75%" }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+          <div className="overflow-x-scroll md:col-span-2 scrollbar-custom scrollbar-no-arrows pb-1 mt-0.5">
+            <div className="grid grid-cols-2 gap-2 md:gap-4 whitespace-nowrap text-center min-w-95 ">
+              <Card className="gap-1 md:gap-4 border-gray-100 h-full px-0">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 justify-center">
+                    <ShoppingBag className="h-5 w-5 text-blue-600" />
+                    Total Orders
+                  </CardTitle>
+                  <p
+                    className={cn(
+                      "text-sm flex items-center gap-1 justify-center",
+                      data.kpis.totalOrdersTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    )}
+                  >
+                    {data.kpis.totalOrdersTrend > 0 ? "+" : ""}
+                    {data.kpis.totalOrdersTrend}%
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">
+                    {data.kpis.totalOrders.toLocaleString()}
+                  </p>
+                  <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{ width: "75%" }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 justify-center">
-                  <ShoppingBag className="h-5 w-5 text-purple-600" />
-                  Total Returns
-                </CardTitle>
-                <p
-                  className={cn(
-                    "text-sm flex items-center gap-1 justify-center",
-                    data.kpis.totalReturnsTrend > 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  )}
-                >
-                  {data.kpis.totalReturnsTrend > 0 ? "+" : ""}
-                  {data.kpis.totalReturnsTrend}%
-                </p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{data.kpis.totalReturns}</p>
-                <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                  <div
-                    className="bg-purple-600 h-2 rounded-full transition-all"
-                    style={{ width: "40%" }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              <Card className="gap-1 md:gap-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 justify-center">
+                    <ShoppingBag className="h-5 w-5 text-purple-600" />
+                    Total Returns
+                  </CardTitle>
+                  <p
+                    className={cn(
+                      "text-sm flex items-center gap-1 justify-center",
+                      data.kpis.totalReturnsTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    )}
+                  >
+                    {data.kpis.totalReturnsTrend > 0 ? "+" : ""}
+                    {data.kpis.totalReturnsTrend}%
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{data.kpis.totalReturns}</p>
+                  <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
+                    <div
+                      className="bg-purple-600 h-2 rounded-full transition-all"
+                      style={{ width: "40%" }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 justify-center">
-                  <Users className="h-5 w-5 text-yellow-600" />
-                  New Customers
-                </CardTitle>
-                <p
-                  className={cn(
-                    "text-sm flex items-center gap-1 justify-center",
-                    data.kpis.newCustomersTrend > 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  )}
-                >
-                  {data.kpis.newCustomersTrend > 0 ? "+" : ""}
-                  {data.kpis.newCustomersTrend}%
-                </p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{data.kpis.newCustomers}</p>
-                <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                  <div
-                    className="bg-yellow-600 h-2 rounded-full transition-all"
-                    style={{ width: "65%" }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              <Card className="gap-1 md:gap-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 justify-center">
+                    <Users className="h-5 w-5 text-yellow-600" />
+                    <span>New Customers</span>
+                  </CardTitle>
+                  <p
+                    className={cn(
+                      "text-sm flex items-center gap-1 justify-center",
+                      data.kpis.newCustomersTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    )}
+                  >
+                    {data.kpis.newCustomersTrend > 0 ? "+" : ""}
+                    {data.kpis.newCustomersTrend}%
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{data.kpis.newCustomers}</p>
+                  <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
+                    <div
+                      className="bg-yellow-600 h-2 rounded-full transition-all"
+                      style={{ width: "65%" }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 justify-center">
-                  <Percent className="h-5 w-5 text-red-600" />
-                  Total discount
-                </CardTitle>
-                <p
-                  className={cn(
-                    "text-sm flex items-center gap-1 justify-center",
-                    data.kpis.totalDiscountTrend > 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  )}
-                >
-                  {data.kpis.totalDiscountTrend > 0 ? "+" : ""}
-                  {data.kpis.totalDiscountTrend}%
-                </p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{data.kpis.totalDiscount}</p>
-                <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                  <div
-                    className="bg-red-600 h-2 rounded-full transition-all"
-                    style={{ width: "85%" }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              <Card className="gap-1 md:gap-4 px-0">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 justify-center">
+                    <Percent className="h-5 w-5 text-red-600" />
+                    Total discount
+                  </CardTitle>
+                  <p
+                    className={cn(
+                      "text-sm flex items-center gap-1 justify-center",
+                      data.kpis.totalDiscountTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    )}
+                  >
+                    {data.kpis.totalDiscountTrend > 0 ? "+" : ""}
+                    {data.kpis.totalDiscountTrend}%
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">
+                    {data.kpis.totalDiscount}
+                  </p>
+                  <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
+                    <div
+                      className="bg-red-600 h-2 rounded-full transition-all"
+                      style={{ width: "85%" }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
 
@@ -403,7 +407,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="space-y-6">
               {/* Single Progress Bar with Stacked Segments */}
-              <div className="w-full bg-gray-200 h-2 overflow-hidden">
+              <div className="w-full bg-gray-200 h-2">
                 <div className="flex h-full">
                   {top5Items.map((item, index) => {
                     const percentage = (item.sales / totalSales) * 100;
@@ -421,7 +425,7 @@ export default function DashboardPage() {
                   })}
                 </div>
               </div>
-              <div className="w-full overflow-hidden">
+              <div className="w-full whitespace-nowrap overflow-x-auto pb-2">
                 <div className="flex h-full gap-10">
                   {top5Items.map((item, index) => {
                     const color = colorPalette[index % colorPalette.length];

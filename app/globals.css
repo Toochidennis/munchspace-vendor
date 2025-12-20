@@ -5,8 +5,8 @@
 
 @theme inline {
   /* My style */
-  --color-munchprimary: #E76A39;
-  --color-munchred: #C43A3A;
+  --color-munchprimary: #e76a39;
+  --color-munchred: #c43a3a;
   --color-munchprimaryDark: #d45a2f;
 
   /* Font */
@@ -125,11 +125,11 @@
 }
 
 @safelist {
-  data-[state=active]:text-orange-600;
-  data-[state=active]:border-orange-600;
-  data-[state=active]:border-b-4;
+  data-[state=active]: text-orange-600;
+  data-[state=active]: border-orange-600;
+  data-[state=active]: border-b-4;
   /* Or use patterns if supported in your version */
-  data-[state=active]:*;
+  data-[state=active]: *;
 }
 
 @layer base {
@@ -139,7 +139,32 @@
   body {
     @apply bg-background text-foreground;
   }
-  input[type="password"]::-ms-reveal, input[type="password"]::-ms-clear{
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
     display: none;
   }
+
+  .scrollbar-custom::-webkit-scrollbar {
+    width: 2px;
+    height: 2px;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-track {
+    background: #fff;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-thumb {
+    background: #b5b3b3;
+    height: 2px;
+  }
+
+  /* .scrollbar-custom::-webkit-scrollbar-button {
+    display: none;
+  }
+
+  .scrollbar-no-arrows::-webkit-scrollbar-button {
+    width: 10;
+    height: 10;
+    display: none;
+  } */
 }
