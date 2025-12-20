@@ -146,7 +146,7 @@ export default function BestSellingItemsPage() {
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              className="pl-10 bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-gray-400"
+              className="pl-10 bg-white border-gray-300 text-gray-900 h-10 placeholder-gray-500 focus:border-gray-400"
             />
           </div>
 
@@ -169,15 +169,15 @@ export default function BestSellingItemsPage() {
         </div>
 
         {/* Table */}
-        <Card className="bg-white border border-gray-200 shadow-sm">
+        <Card className="p-0 border border-gray-100 shadow-sm">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-gray-100 h-13">
               <TableRow className="border-b border-gray-200">
-                <TableHead className="text-gray-600">Item</TableHead>
-                <TableHead className="text-gray-600 text-center">
+                <TableHead className="text-gray-600 my-5 ps-4">Item</TableHead>
+                <TableHead className="text-gray-600">
                   Orders
                 </TableHead>
-                <TableHead className="text-gray-600 text-right">
+                <TableHead className="text-gray-600">
                   Category
                 </TableHead>
               </TableRow>
@@ -188,8 +188,8 @@ export default function BestSellingItemsPage() {
                   key={item.id}
                   className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
                 >
-                  <TableCell className="py-6">
-                    <div className="flex items-center gap-4">
+                  <TableCell className="py-4 max-w-80 ps-4">
+                    <div className="flex items-center gap-4 w-fit">
                       <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
                         <Image
                           src={item.image}
@@ -207,10 +207,10 @@ export default function BestSellingItemsPage() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-center text-gray-900 font-medium">
+                  <TableCell className="text-gray-900 font-medium">
                     {item.orders}
                   </TableCell>
-                  <TableCell className="text-right text-gray-600">
+                  <TableCell className="text-gray-600">
                     {item.category}
                   </TableCell>
                 </TableRow>

@@ -144,9 +144,18 @@
     display: none;
   }
 
+  .recharts-wrapper:focus,
+  .recharts-surface:focus,
+  .recharts-bar-rectangle:focus,
+  .recharts-tooltip-wrapper:focus {
+    outline: none !important;
+  }
+
+  
+  @media (min-width: 1022px) {
   .scrollbar-custom::-webkit-scrollbar {
-    width: 2px;
-    height: 2px;
+    width: 4px;
+    height: 4px;
   }
 
   .scrollbar-custom::-webkit-scrollbar-track {
@@ -157,8 +166,7 @@
     background: #b5b3b3;
     height: 2px;
   }
-
-  /* .scrollbar-custom::-webkit-scrollbar-button {
+  .scrollbar-custom::-webkit-scrollbar-button {
     display: none;
   }
 
@@ -166,5 +174,7 @@
     width: 10;
     height: 10;
     display: none;
-  } */
+  }
+  }
+
 }

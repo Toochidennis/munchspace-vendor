@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { TrendingUp, TrendingDown, ShoppingBag, Users, Percent, ChevronRight } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  ShoppingBag,
+  Users,
+  Percent,
+  ChevronRight,
+} from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -208,7 +215,7 @@ export default function DashboardPage() {
   const totalSales = top5Items.reduce((sum, item) => sum + item.sales, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 lg:p-8 mt-10 md:mt-0">
+    <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex justify-between items-start">
@@ -234,38 +241,42 @@ export default function DashboardPage() {
         {/* Store Traffic + KPI Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Store Traffic Chart */}
-          <Card className="md:col-span-3 rounded-lg pb-0 pe-4 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-lg">Store Traffic</CardTitle>
-              <CardDescription>
-                Track the number of customers who visited your store.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ResponsiveContainer width="100%" height={275}>
-                <BarChart data={data.traffic}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="time" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#000",
-                      border: "none",
-                      borderRadius: "0px",
-                    }}
-                    labelStyle={{ color: "#fff" }}
-                    itemStyle={{ color: "#fff" }}
-                  />
-                  <Bar dataKey="customers" fill="#f97316" barSize={40} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          <div className="overflow-x-auto scrollbar-custom scrollbar-no-arrows md:col-span-3">
+            <Card className="md:col-span-3 rounded-lg pb-0 pe-4 shadow-none min-w-130 border-gray-100">
+              <CardHeader>
+                <CardTitle className="text-lg">Store Traffic</CardTitle>
+                <CardDescription>
+                  Track the number of customers who visited your store.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={data.traffic}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="time" tickLine={false} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#000",
+                        border: "none",
+                        borderRadius: "8px",
+                      }}
+                      isAnimationActive={false}
+                      labelStyle={{ color: "#fff" }}
+                      itemStyle={{ color: "#fff" }}
+                      cursor={false}
+                    />
+                    <Bar dataKey="customers" fill="#f97316" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* KPI Cards */}
-          <div className="overflow-x-scroll md:col-span-2 scrollbar-custom scrollbar-no-arrows pb-1 mt-0.5">
+          <div className="md:col-span-3 lg:col-span-2 scrollbar-custom scrollbar-no-arrows pb-1 w-full overflow-x-auto relative">
             <div className="grid grid-cols-2 gap-2 md:gap-4 whitespace-nowrap text-center min-w-95 ">
-              <Card className="gap-1 md:gap-4 border-gray-100 h-full px-0">
+              <Card className="gap-1 shadow-none md:gap-4 border-gray-100 px-0">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2 justify-center">
                     <ShoppingBag className="h-5 w-5 text-blue-600" />
@@ -296,7 +307,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="gap-1 md:gap-4">
+              <Card className="gap-1 shadow-none md:gap-4 border-gray-100">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2 justify-center">
                     <ShoppingBag className="h-5 w-5 text-purple-600" />
@@ -325,7 +336,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="gap-1 md:gap-4">
+              <Card className="gap-1 shadow-none md:gap-4 border-gray-100">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2 justify-center">
                     <Users className="h-5 w-5 text-yellow-600" />
@@ -354,7 +365,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="gap-1 md:gap-4 px-0">
+              <Card className="gap-1 shadow-none md:gap-4 border-gray-100 px-0">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2 justify-center">
                     <Percent className="h-5 w-5 text-red-600" />
@@ -389,7 +400,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Best Selling Items - Top 5 with Single Progress Bar */}
-        <Card>
+        <Card className="border-transparent shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg">Best selling Items</CardTitle>
@@ -426,7 +437,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="w-full whitespace-nowrap overflow-x-auto pb-2">
-                <div className="flex h-full gap-10">
+                <div className="flex h-full gap-5">
                   {top5Items.map((item, index) => {
                     const color = colorPalette[index % colorPalette.length];
                     return (
@@ -456,7 +467,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Recent Orders */}
-        <Card>
+        <Card className="border-gray-100 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg">Recent orders</CardTitle>
@@ -464,20 +475,22 @@ export default function DashboardPage() {
                 See your items that are sold recently.
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm" className="gap-2">
-              All Orders
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <Link href="/restaurant/orders">
+              <Button variant="outline" size="sm" className="gap-2">
+                All Orders
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
+            <Table className="rounded">
+              <TableHeader className="bg-gray-100 py-2">
                 <TableRow>
-                  <TableHead>Order ID</TableHead>
-                  <TableHead>Order Date</TableHead>
-                  <TableHead>Total Price</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right"></TableHead>
+                  <TableHead className="text-gray-600">Order ID</TableHead>
+                  <TableHead className="text-gray-600">Order Date</TableHead>
+                  <TableHead className="text-gray-600">Total Price</TableHead>
+                  <TableHead className="text-gray-600">Status</TableHead>
+                  <TableHead className="text-right text-gray-500"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
