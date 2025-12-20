@@ -379,10 +379,14 @@ export default function OrdersPage() {
           </div>
 
           {/* Mobile View */}
-          <div className="md:hidden border p-1 rounded">
-            {paginatedOrders.map((order) => (
+          <div className="md:hidden border p-1 px-2 rounded">
+            {paginatedOrders.map((order, index) => (
               <Link key={order.id} href={`/restaurant/orders/${order.id}`}>
-                <div className="border-b border-gray-200 p-4 flex justify-between items-center hover:bg-gray-50">
+                <div
+                  className={cn(
+                    "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50", paginatedOrders.length - 1 === index && "border-0"
+                  )}
+                >
                   <div className="flex flex-col mb-2">
                     <span
                       className={cn(
@@ -397,11 +401,13 @@ export default function OrdersPage() {
                     <span className="font-medium">#{order.id}</span>
                   </div>
                   <div className="text-right">
-                    <p className="text-gray-600 mb-2">{order.date}</p>
+                    <p className="text-gray-600 mb-2 text-sm">{order.date}</p>
                     <p className="text-gray-900 font-semibold text-xl mb-2">
                       N{order.price}
                     </p>
-                    <p className="text-gray-600 mb-2 text-xs">order channel: Store</p>
+                    <p className="text-gray-600 mb-2 text-xs">
+                      order channel: Store
+                    </p>
                   </div>
                 </div>
               </Link>
