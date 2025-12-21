@@ -871,7 +871,7 @@ export default function SetupStorePage() {
               {/* Step 4: Store Address */}
               {step === 4 && (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid md:grid-cols-2 gap-6">
                     <FormField
                       control={form.control}
                       name="country"
