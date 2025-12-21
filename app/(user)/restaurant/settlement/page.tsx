@@ -368,16 +368,16 @@ export default function EarningsPage() {
                 Our team is ready to help.
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-6 pb-0">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+                <div className="p-3 md:p-6 pb-0">
                   <p className="text-gray-500 mb-2 text-sm">Total balance</p>
                   <p className="text-3xl font-bold text-gray-900">₦0.00</p>
                 </div>
-                <div className="p-6 pb-0">
+                <div className="p-3 md:p-6 pb-0">
                   <p className="text-gray-500 mb-2 text-sm">Funds on hold</p>
                   <p className="text-3xl font-bold text-gray-900">₦0.00</p>
                 </div>
-                <div className="p-6 pb-0">
+                <div className="p-3 md:p-6 pb-0">
                   <p className="text-gray-500 mb-2 text-sm">
                     In transit to bank
                   </p>
