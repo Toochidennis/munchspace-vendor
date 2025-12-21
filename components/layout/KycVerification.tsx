@@ -56,7 +56,7 @@ const initialDocuments: DocumentSection[] = [
   },
 ];
 
-export default function VerificationDocumentsPage() {
+export default function KycVerification() {
   const [documents, setDocuments] =
     useState<DocumentSection[]>(initialDocuments);
 
@@ -117,10 +117,7 @@ export default function VerificationDocumentsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-4xl mx-auto p-8 space-y-12">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Business Verification
-        </h1>
+      <div className="mx-auto p-8 space-y-12">
 
         <div className="space-y-8">
           {documents.map((doc) => (
