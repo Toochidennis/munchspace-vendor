@@ -69,33 +69,33 @@ const mockData = {
     ],
     recentOrders: [
       {
-        id: "#45DF65",
+        id: "45DF65",
         date: "Aug 21, 2024 3:25 PM",
-        price: "N1,250",
+        price: 1250,
         status: "Cancelled",
       },
       {
-        id: "#45DF66",
+        id: "45DF66",
         date: "Aug 21, 2024 2:45 PM",
-        price: "N2,800",
+        price: 2800,
         status: "Completed",
       },
       {
-        id: "#45DF67",
+        id: "45DF67",
         date: "Aug 21, 2024 1:10 PM",
-        price: "N1,500",
+        price: 1500,
         status: "Completed",
       },
       {
-        id: "#45DF68",
+        id: "45DF68",
         date: "Aug 20, 2024 7:30 PM",
-        price: "N3,200",
+        price: 3200,
         status: "Pending",
       },
       {
-        id: "#45DF69",
+        id: "45DF69",
         date: "Aug 20, 2024 5:15 PM",
-        price: "N900",
+        price: 900,
         status: "Completed",
       },
     ],
@@ -128,21 +128,21 @@ const mockData = {
     ],
     recentOrders: [
       {
-        id: "#45DF70",
+        id: "45DF70",
         date: "Aug 17, 2024 4:10 PM",
-        price: "N1,800",
+        price: 1800,
         status: "Completed",
       },
       {
-        id: "#45DF71",
+        id: "45DF71",
         date: "Aug 17, 2024 2:30 PM",
-        price: "N950",
+        price: "950",
         status: "Pending",
       },
       {
-        id: "#45DF72",
+        id: "45DF72",
         date: "Aug 16, 2024 6:45 PM",
-        price: "N2,200",
+        price: 2200,
         status: "Completed",
       },
     ],
@@ -173,15 +173,15 @@ const mockData = {
     ],
     recentOrders: [
       {
-        id: "#45DF73",
+        id: "45DF73",
         date: "Aug 21, 2024 11:20 AM",
-        price: "N1,100",
+        price: 1100,
         status: "Completed",
       },
       {
-        id: "#45DF74",
+        id: "45DF74",
         date: "Aug 21, 2024 10:05 AM",
-        price: "N750",
+        price: 750,
         status: "Pending",
       },
     ],
@@ -483,46 +483,103 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent>
-            <Table className="rounded">
-              <TableHeader className="bg-gray-100 py-2">
-                <TableRow>
-                  <TableHead className="text-gray-600">Order ID</TableHead>
-                  <TableHead className="text-gray-600">Order Date</TableHead>
-                  <TableHead className="text-gray-600">Total Price</TableHead>
-                  <TableHead className="text-gray-600">Status</TableHead>
-                  <TableHead className="text-right text-gray-500"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.recentOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.id}</TableCell>
-                    <TableCell>{order.date}</TableCell>
-                    <TableCell>{order.price}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
+            <div className="hidden md:block">
+              <Table className="rounded">
+                <TableHeader className="bg-gray-100 py-2">
+                  <TableRow>
+                    <TableHead className="text-gray-600">Order ID</TableHead>
+                    <TableHead className="text-gray-600">Order Date</TableHead>
+                    <TableHead className="text-gray-600">Total Price</TableHead>
+                    <TableHead className="text-gray-600">Status</TableHead>
+                    <TableHead className="text-right text-gray-500"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.recentOrders.map((order) => (
+                    <TableRow
+                      key={order.id}
+                      style={{ paddingTop: "10px", paddingBottom: "10px" }}
+                      className="font-medium border-gray-100 text-base hover:bg-white"
+                    >
+                      <TableCell
+                        className="ps-4"
+                        style={{ paddingTop: "25px", paddingBottom: "25px" }}
+                      >
+                        #{order.id}
+                      </TableCell>
+                      <TableCell
+                        style={{ paddingTop: "25px", paddingBottom: "25px" }}
+                      >
+                        {order.date}
+                      </TableCell>
+                      <TableCell
+                        style={{ paddingTop: "25px", paddingBottom: "25px" }}
+                      >
+                        ₦{order.price}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={cn(
+                            "rounded px-4 py-1.5",
+                            order.status === "Completed" &&
+                              "bg-green-100 text-green-500 border border-green-200",
+                            order.status === "Pending" &&
+                              "bg-blue-100 text-blue-500 border border-blue-200",
+                            order.status === "Cancelled" &&
+                              "bg-red-100 text-red-400 border border-red-200"
+                          )}
+                        >
+                          {order.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Link href={`/restaurant/orders/${order.id}`}>
+                          <Button variant="outline" className="border-gray-200">
+                            View Details
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {/* Mobile view */}
+            <div className="md:hidden">
+              {data.recentOrders.map((order, index) => (
+                <Link key={order.id} href={`/restaurant/orders/${order.id}`}>
+                  <div
+                    className={cn(
+                      "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50",
+                      data.recentOrders.length - 1 === index && "border-0"
+                    )}
+                  >
+                    <div className="flex flex-col mb-2">
+                      <span
                         className={cn(
-                          order.status === "Completed" &&
-                            "bg-green-50 text-green-700 border-green-200",
-                          order.status === "Cancelled" &&
-                            "bg-red-50 text-red-700 border-red-200",
-                          order.status === "Pending" &&
-                            "bg-yellow-50 text-yellow-700 border-yellow-200"
+                          "py-1.5",
+                          order.status === "Completed" && "text-green-500",
+                          order.status === "Pending" && "text-blue-500",
+                          order.status === "Cancelled" && "text-red-400"
                         )}
                       >
                         {order.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      </span>
+                      <span className="font-medium">#{order.id}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-gray-600 mb-2 text-sm">{order.date}</p>
+                      <p className="text-gray-900 font-semibold text-xl mb-2">
+                        N{order.price}
+                      </p>
+                      <p className="text-gray-600 mb-2 text-xs">
+                        order channel: Store
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>

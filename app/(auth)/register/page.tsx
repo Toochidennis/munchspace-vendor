@@ -447,7 +447,7 @@ export default function RegisterPage() {
 
           {/* Step 2: OTP Verification */}
           {step === 2 && (
-            <div className="space-y-8">
+            <div className="space-y-8 max-w-screen overflow-hidden">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
                   Verify your email
