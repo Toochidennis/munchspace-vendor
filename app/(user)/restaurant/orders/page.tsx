@@ -37,7 +37,7 @@ const mockData = {
     orders: Array.from({ length: 64 }, (_, i) => ({
       id: `45DF${String(100 + i).padStart(3, "0")}`,
       date: `Aug ${21 - Math.floor(i / 10)}, 2024 3:25 PM`,
-      price: `${Math.floor(Math.random() * 3000 + 500)}`,
+      price: Math.floor(Math.random() * 3000 + 500),
       status: ["Completed", "Pending", "Cancelled"][
         Math.floor(Math.random() * 3)
       ] as "Completed" | "Pending" | "Cancelled",
@@ -47,7 +47,7 @@ const mockData = {
     orders: Array.from({ length: 25 }, (_, i) => ({
       id: `45DF${String(200 + i).padStart(3, "0")}`,
       date: `Aug ${18 + i}, 2024 2:45 PM`,
-      price: `${Math.floor(Math.random() * 2500 + 800)}`,
+      price: Math.floor(Math.random() * 2500 + 800),
       status: ["Completed", "Pending", "Cancelled"][
         Math.floor(Math.random() * 3)
       ] as "Completed" | "Pending" | "Cancelled",
@@ -57,7 +57,7 @@ const mockData = {
     orders: Array.from({ length: 12 }, (_, i) => ({
       id: `45DF${String(300 + i).padStart(3, "0")}`,
       date: `Aug 21, 2024 ${11 + i}:00 AM`,
-      price: `{Math.floor(Math.random() * 2000 + 600)}`,
+      price: Math.floor(Math.random() * 2000 + 600),
       status: ["Completed", "Pending", "Cancelled"][
         Math.floor(Math.random() * 3)
       ] as "Completed" | "Pending" | "Cancelled",

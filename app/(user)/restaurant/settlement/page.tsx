@@ -537,10 +537,10 @@ export default function EarningsPage() {
                   <Button
                     variant="outline"
                     onClick={() => handleDelete(account.id)}
-                    className="border-red-600 text-red-600 hover:bg-red-50"
+                    className="border-red-600 text-red-600 hover:bg-red-50 flex justify-center"
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
+                    <Trash2 className="h-4 w-4" />
+                    <span className="hidden md:inline">Delete</span>
                   </Button>
                 </div>
               ))}
