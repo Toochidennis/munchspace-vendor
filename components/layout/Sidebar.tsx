@@ -149,8 +149,8 @@ export default function RestaurantSidebar() {
               <Link href={item.href} key={item.label}>
                 <button
                   className={cn(
-                    "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
-                    collapsed && "justify-center px-0 mt-2",
+                    "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full mt-2",
+                    collapsed && "justify-center px-0",
                     item.active ? "bg-black/13" : "hover:bg-black/10",
                     "hover:bg-black/10"
                   )}
@@ -335,7 +335,7 @@ export default function RestaurantSidebar() {
                     <a key={item.label} href={item.href}>
                       <button
                         className={cn(
-                          "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
+                          "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3",
                           "hover:bg-black/10"
                         )}
                       >

@@ -246,8 +246,8 @@ export default function AccountSettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white mt-5">
-      <div className="max-w-7xl mx-auto p-5 mt-9 md:p-8 space-y-12">
+    <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
+      <div className="max-w-7xl mx-auto">
         {/* Page Title */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Account Settings</h1>
@@ -257,7 +257,7 @@ export default function AccountSettingsPage() {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="store-details" className="w-full">
+        <Tabs defaultValue="store-details" className="w-full mt-10">
           <TabsList className="inline-flex h-auto bg-transparent rounded-none w-full overflow-x-auto overflow-y-hidden md:w-fit shadow-none p-0 md:gap-4 border-b-2 border-gray-200">
             <TabsTrigger
               value="store-details"
@@ -405,7 +405,7 @@ export default function AccountSettingsPage() {
             </div>
 
             {/* Working Hours */}
-            <Card className="md:p-8p-2 py-4 border-gray-100 shadow-none">
+            <Card className="md:p-8 p-3 py-4 border-gray-100 shadow-none">
               <Accordion type="single" collapsible>
                 <AccordionItem value="working-hours">
                   <AccordionTrigger className="text-xl font-bold text-gray-900">

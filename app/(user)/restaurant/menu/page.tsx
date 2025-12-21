@@ -146,11 +146,11 @@ export default function MenuPage() {
   };
 
   return (
-    <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
+    <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
       {mockData.last30.items.length > 0 ? (
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="flex justify-between items-center mb-8 md:mb-15">
-            <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Menu</h1>
             {/* Search and Period Filter */}
             <div className="md:flex items-center hidden  gap-6">
               <div className="relative flex-1 max-w-lg">
