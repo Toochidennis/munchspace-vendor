@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import Link from "next/link";
 
 const setupSchema = z.object({
   storeImage: z.url().optional(),
@@ -245,13 +246,15 @@ export default function SetupStorePage() {
       {/* Left Background */}
       <div className="w-full relative hidden md:block">
         <div className="fixed w-1/2 pe-5">
-          <Image
-            src={"/images/logo.svg"}
-            width={100}
-            height={75}
-            alt="logo"
-            className="hidden md:block absolute z-20 ms-5 mt-5"
-          />
+          <Link href="/">
+            <Image
+              src={"/images/logo.svg"}
+              width={100}
+              height={75}
+              alt="logo"
+              className="hidden md:block absolute z-20 ms-5 mt-5"
+            />
+          </Link>
           <Image
             src={"/images/auth/hero.png"}
             width={500}
@@ -265,13 +268,15 @@ export default function SetupStorePage() {
       {/* Right Form */}
       <div className="flex items-center justify-center p-4 md:p-8  mt-10">
         <div className="w-full max-w-lg space-y-8">
-          <Image
-            src={"/images/logo.svg"}
-            width={100}
-            height={75}
-            alt="logo"
-            className="lg:hidden"
-          />
+          <Link href="/">
+            <Image
+              src={"/images/logo.svg"}
+              width={100}
+              height={75}
+              alt="logo"
+              className="lg:hidden"
+            />
+          </Link>
           <div>
             <h2 className="text-2xl font-bold">Setup your Store</h2>
             <p className="text-muted-foreground mt-5 text-sm">

@@ -122,13 +122,15 @@ export default function RegisterPage() {
       {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
         <div className="fixed w-1/2 pe-5">
-          <Image
-            src={"/images/logo.svg"}
-            width={100}
-            height={75}
-            alt="logo"
-            className="hidden md:block absolute z-20 ms-5 mt-5"
-          />
+          <Link href="/">
+            <Image
+              src={"/images/logo.svg"}
+              width={100}
+              height={75}
+              alt="logo"
+              className="hidden md:block absolute z-20 ms-5 mt-5"
+            />
+          </Link>
           <Image
             src={"/images/auth/hero.png"}
             width={500}
@@ -142,13 +144,15 @@ export default function RegisterPage() {
       {/* Right Side: Multi-Step Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
         <div className="w-full max-w-md space-y-8 my-20">
-          <Image
-            src={"/images/logo.svg"}
-            width={100}
-            height={75}
-            alt="logo"
-            className="lg:hidden"
-          />
+          <Link href="/">
+            <Image
+              src={"/images/logo.svg"}
+              width={100}
+              height={75}
+              alt="logo"
+              className="lg:hidden"
+            />
+          </Link>
 
           {/* Step 1: Registration Form */}
           {step === 1 && (
