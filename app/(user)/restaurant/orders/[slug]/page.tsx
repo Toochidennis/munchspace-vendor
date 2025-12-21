@@ -13,6 +13,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { ShoppingCart, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Mock data for a single order
 const orderData = {
@@ -76,9 +77,9 @@ export default function OrderDetailsPage() {
         <span>/</span>
         <span className="text-gray-900 font-medium">{orderData.id}</span>
       </div>
-      <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0">
+      <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0 gap-0">
         {/* Header */}
-        <CardHeader className="pb-4">
+        <CardHeader className="pb-4 mb-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
               <Image
@@ -90,7 +91,19 @@ export default function OrderDetailsPage() {
               />
             </div>
             <div>
-              <Badge className="bg-blue-100 text-blue-800 mb-1">Pending</Badge>
+              <Badge
+                className={cn(
+                  "rounded px-4 py-1 mb-1",
+                  orderData.status === "Completed" &&
+                    "bg-green-100 text-green-500 border border-green-200",
+                  orderData.status === "Pending" &&
+                    "bg-blue-100 text-blue-500 border border-blue-200",
+                  orderData.status === "Cancelled" &&
+                    "bg-red-100 text-red-400 border border-red-200"
+                )}
+              >
+                {orderData.status}
+              </Badge>
               <h2 className="text-xl font-bold text-gray-900">
                 Order {orderData.id}
               </h2>
@@ -102,9 +115,9 @@ export default function OrderDetailsPage() {
         </CardHeader>
 
         {/* Order Information Accordion */}
-        <Accordion type="single" collapsible defaultValue="item-1">
+        <Accordion className="mb-4" type="single" collapsible defaultValue="item-1">
           <AccordionItem value="item-1">
-            <AccordionTrigger className="px-6">
+            <AccordionTrigger className="px-6 bg-gray-50 rounded-none mb-2">
               <div className="flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5" />
                 Order Information
@@ -153,10 +166,10 @@ export default function OrderDetailsPage() {
           </AccordionItem>
         </Accordion>
 
-        <Separator />
+        <Separator className="mb-4" />
 
         {/* Customer's Order */}
-        <div className="p-6">
+        <div className="p-6 mb-4">
           <h3 className="text-lg font-semibold text-orange-600 mb-4">
             Customer's Order
           </h3>
@@ -178,10 +191,9 @@ export default function OrderDetailsPage() {
           </div>
         </div>
 
-        <Separator />
-
+        <hr className="border-dashed" />
         {/* Summary */}
-        <div className="p-6">
+        <div className="p-6 bg-gray-50 py-9">
           <h3 className="text-lg font-bold text-gray-900 mb-4">Summary</h3>
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
@@ -219,7 +231,7 @@ export default function OrderDetailsPage() {
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 rounded-b-3xl px-6 py-4 flex justify-between items-center">
+        <div className="rounded-b-3xl px-6 py-4 flex justify-between items-center">
           <p className="text-sm text-gray-600">
             Order {currentOrder} of {orderData.totalOrders}
           </p>
