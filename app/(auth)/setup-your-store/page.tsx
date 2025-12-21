@@ -187,14 +187,14 @@ export default function SetupStorePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2000000) {
-      alert("File exceeds 2MB limit. Please select a smaller image.");
-      return;
-    }
-    if (!["image/png", "image/jpeg", "image/jpg"].includes(file.type)) {
-      alert("Only PNG or JPEG images are allowed.");
-      return;
-    }
+    // if (file.size > 2000000) {
+    //   alert("File exceeds 2MB limit. Please select a smaller image.");
+    //   return;
+    // }
+    // if (!["image/png", "image/jpeg", "image/jpg"].includes(file.type)) {
+    //   alert("Only PNG or JPEG images are allowed.");
+    //   return;
+    // }
 
     setUploading(true);
 
@@ -228,7 +228,7 @@ export default function SetupStorePage() {
       }
     } catch (error: any) {
       console.error("Cloudinary upload error:", error);
-      alert(`Upload failed: ${error.message || "Please try again."}`);
+      // alert(`Upload failed: ${error.message || "Please try again."}`);
     } finally {
       setUploading(false);
     }
@@ -453,7 +453,7 @@ export default function SetupStorePage() {
                               <Button
                                 variant="outline"
                                 className={cn(
-                                  "w-full justify-start text-left font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white",
+                                  "w-full justify-start text-left font-normal h-12 hover:text-slate-400 hover:bg-white",
                                   !field.value && "text-muted-foreground"
                                 )}
                               >
