@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/accordion";
 import { ShoppingCart, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 // Mock data for a single order
 const orderData = {
@@ -73,7 +74,7 @@ export default function OrderDetailsPage() {
     <div className="min-h-screen flex flex-col items-center p-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-5 w-full mt-14 md:mt-0 max-w-3xl">
-        <span>Order</span>
+        <Link href="/restaurant/orders">Orders</Link>
         <span>/</span>
         <span className="text-gray-900 font-medium">{orderData.id}</span>
       </div>

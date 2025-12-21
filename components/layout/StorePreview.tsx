@@ -248,7 +248,9 @@ export default function StorePreview() {
                       key={i}
                       className="flex gap-4 pb-4 border-b border-gray-100 last:border-0"
                     >
-                      <div className="bg-gray-200 border-2 border-dashed rounded-xl w-24 h-24 flex-shrink-0" />
+                      <div className="bg-gray-200 border-2 border-dashed rounded-xl w-24 h-24 shrink-0 overflow-hidden">
+                        <Image src={"/images/rice.jpeg"} width={400} height={400} alt="fried rice" className="object-cover h-full" />
+                        </div>
                       <div className="flex-1">
                         <h3 className="font-semibold">
                           Jollof Rice and Chicken

@@ -165,7 +165,8 @@ export default function RestaurantSidebar() {
 
         {/* Footer - Fixed at bottom */}
         <div className="shrink-0 text-white relative">
-          <button
+          <Link
+            href={"/restaurant/preview-store"}
             className={cn(
               "flex items-center gap-4 px-4 py-3 rounded-lg transition-colors justify-center bg-white w-full text-munchprimary",
               collapsed && "justify-center px-0",
@@ -174,7 +175,7 @@ export default function RestaurantSidebar() {
           >
             <Globe className="h-5 w-5 shrink-0" />
             {!collapsed && <span className="text-sm">Preview Store</span>}
-          </button>
+          </Link>
 
           <div
             onMouseEnter={() => setShowMore(true)}
@@ -350,7 +351,8 @@ export default function RestaurantSidebar() {
 
             {/* Footer - Fixed at bottom */}
             <div className="shrink-0 text-white relative bottom-0 mb-5">
-              <button
+              <Link
+                href={"/restaurant/preview-store"}
                 className={cn(
                   "flex items-center gap-4 px-4 py-3 rounded-lg transition-colors justify-center bg-white w-full text-munchprimary",
                   mobileCollapsed && "justify-center px-0",
@@ -359,7 +361,7 @@ export default function RestaurantSidebar() {
               >
                 <Globe className="h-5 w-5 shrink-0" />
                 <span className="text-sm">Preview Store</span>
-              </button>
+              </Link>
 
               <div
                 onMouseEnter={() => setShowMore(true)}
