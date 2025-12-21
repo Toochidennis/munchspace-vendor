@@ -49,15 +49,7 @@ export default function SetupGuidePage() {
       completed: false,
       actionLabel: "Add charges",
       href: "/restaurant/dashboard",
-    },
-    {
-      title: "Add Team Members",
-      description:
-        "Invite your staff members to manage orders, menus and operations.",
-      completed: false,
-      actionLabel: "Add team members",
-      href: "/restaurant/dashboard",
-    },
+    }
   ];
 
   let [modifiedTasks, setModifiedTasks] = useState(tasks);

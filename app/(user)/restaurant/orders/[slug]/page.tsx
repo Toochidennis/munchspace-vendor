@@ -76,7 +76,7 @@ export default function OrderDetailsPage() {
         <span>/</span>
         <span className="text-gray-900 font-medium">{orderData.id}</span>
       </div>
-      <Card className="w-full max-w-3xl bg-white rounded-2xl">
+      <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0">
         {/* Header */}
         <CardHeader className="pb-4">
           <div className="flex items-center gap-4">
