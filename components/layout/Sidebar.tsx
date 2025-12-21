@@ -57,12 +57,12 @@ export default function RestaurantSidebar() {
   ];
 
   const accountItems = [
-    {
-      icon: Users,
-      label: "Team",
-      href: "/restaurant/team",
-      active: pathname.startsWith("/restaurant/team"),
-    },
+    // {
+    //   icon: Users,
+    //   label: "Team",
+    //   href: "/restaurant/team",
+    //   active: pathname.startsWith("/restaurant/team"),
+    // },
     {
       icon: DollarSign,
       label: "Settlement",
@@ -179,7 +179,6 @@ export default function RestaurantSidebar() {
           <div
             onMouseEnter={() => setShowMore(true)}
             onMouseLeave={() => setShowMore(false)}
-            onClick={() => setShowMore(!showMore)}
             className={cn(
               "flex items-center gap-3 pt-4",
               collapsed && "flex-col gap-2"
