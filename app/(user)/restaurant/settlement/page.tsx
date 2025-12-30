@@ -571,7 +571,7 @@ export default function EarningsPage() {
 
         {/* Payout Accounts Tab remains unchanged */}
         {activeTab === "payout" && (
-          <div className="space-y-8 mt-5">
+          <div className="space-y-8  mt-5">
             <div className="space-y-6">
               {accounts.map((account) => (
                 <div
