@@ -576,7 +576,7 @@ export default function EarningsPage() {
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center justify-between bg-gray-50 rounded-lg p-2 md:p-6"
+                  className="flex items-center justify-between bg-gray-50 rounded-lg px-2 py-6 md:p-6"
                 >
                   <div className="flex items-center gap-4">
                     <div className="bg-red-600 rounded-full ">
@@ -624,7 +624,7 @@ export default function EarningsPage() {
       {/* Dialog remains unchanged */}
       <div
         className={cn(
-          "bg-black/50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
+          "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
           isDialogOpen ? "absolute" : "hidden"
         )}
       >
