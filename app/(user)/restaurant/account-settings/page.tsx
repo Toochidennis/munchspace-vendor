@@ -247,7 +247,7 @@ export default function AccountSettingsPage() {
   };
 
   return (
-    <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
+    <div className="min-h-screen p-4 md:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto">
         {/* Page Title */}
         <div>
@@ -332,7 +332,7 @@ export default function AccountSettingsPage() {
 
             {/* Store Information */}
             <div className="space-y-6">
-              <Card className="p-8 border-gray-100 shadow-none">
+              <Card className="p-4 md:p-8 border-gray-100 shadow-none">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-semibold text-gray-900">
                     Store Information
