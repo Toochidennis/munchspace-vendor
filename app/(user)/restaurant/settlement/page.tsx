@@ -9,6 +9,7 @@ import {
   LoaderCircle,
   ChevronsUpDown,
   Check,
+  X,
 } from "lucide-react";
 import { format, subDays, parse } from "date-fns";
 
@@ -246,7 +247,7 @@ export default function EarningsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [filterPeriod, setFilterPeriod] = useState<"7" | "30" | "90">("30");
   const [isLoading, setIsLoading] = useState(false);
-  const [storeTypeOpen, setStoreTypeOpen] = useState(false);
+  const [banklogo, setBanklogo] = useState("/images");
   const [bankNameOpen, setBankNameOpen] = useState(false);
 
   // const [formData, setFormData] = useState({
@@ -621,16 +622,30 @@ export default function EarningsPage() {
       </div>
 
       {/* Dialog remains unchanged */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-white text-gray-900 max-w-md">
+      <div
+        className={cn(
+          "bg-black/50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
+          isDialogOpen ? "absolute" : "hidden"
+        )}
+      >
+        {/* <DialogContent className="bg-white text-gray-900 max-w-md">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold">
               Add Settlement Accounts
             </DialogTitle>
-          </DialogHeader>
+          </DialogHeader> */}
 
-          <div className="space-y-2 py-4">
-            <p className="text-gray-600">
+        <div className="w-85 max-w-sm md:max-w-lg bg-white font-rubik rounded-lg py-5 relative">
+          <div className="flex justify-between px-6">
+            <h1 className="text-xl font-semibold">Add Settlement Accounts</h1>
+            <X
+              className="text-gray-600"
+              onClick={() => setIsDialogOpen(false)}
+            />
+          </div>
+          <hr className="mt-3" />
+          <div className="space-y-2 py-4 px-6">
+            <p className="text-gray-600 text-sm">
               Provide the bank account MunchSpace will use to pay out your
               store's earnings.
             </p>
@@ -639,7 +654,7 @@ export default function EarningsPage() {
           <Form {...addSettlementForm}>
             <form
               onSubmit={addSettlementForm.handleSubmit(onAddSettlementSubmit)}
-              className="space-y-6"
+              className="space-y-6 px-6 mt-2"
             >
               <FormField
                 control={addSettlementForm.control}
@@ -662,31 +677,35 @@ export default function EarningsPage() {
                                 : "text-slate-400"
                             )}
                           >
-                            {/*
-                              {addSettlementForm.watch("bankName").length > 0
-                                ? `${
-                                    addSettlementForm.watch("bankName").length
-                                  } selected`
-                                : "Select store types"}
-                            */}
-                            {addSettlementForm.getValues("bankName")
-                              ? addSettlementForm.getValues("bankName")
-                              : "Select Bank"}
+                            <div className="flex gap-2 items-center">
+                              {banklogo !== "/images" && (
+                                <Image
+                                  src={banklogo}
+                                  width={300}
+                                  height={300}
+                                  alt={`bank logo`}
+                                  className="w-7 bg-red-500 h-7 rounded-full"
+                                />
+                              )}
+                              {addSettlementForm.getValues("bankName")
+                                ? addSettlementForm.getValues("bankName")
+                                : "Select Bank"}
+                            </div>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent
-                        className="w-md bg-black h-50 p-0"
+                        className="w-80 md:w-md px-10"
                         onOpenAutoFocus={(e) => e.preventDefault()}
                       >
                         <Command>
                           <CommandInput
                             // autoFocus={false}
-                            placeholder="Search store type..."
+                            placeholder="Search bank ..."
                           />
                           <CommandEmpty>No type found.</CommandEmpty>
-                          <CommandGroup className="w-full overflow-y-auto">
+                          <CommandGroup className="w-full max-h-50 overflow-y-auto">
                             {bankOptions.map((option) => (
                               <CommandItem
                                 key={option.value}
@@ -697,7 +716,7 @@ export default function EarningsPage() {
                                     "bankName",
                                     option.name
                                   );
-
+                                  setBanklogo(option.logo);
                                   await addSettlementForm.trigger("bankName");
                                   setBankNameOpen(false);
                                 }}
@@ -716,35 +735,6 @@ export default function EarningsPage() {
                         </Command>
                       </PopoverContent>
                     </Popover>
-                    {/* <div className="flex flex-wrap gap-2">
-                      {form.watch("storeTypes").map((value) => {
-                        const label =
-                          storeTypeOptions.find((o) => o.value === value)
-                            ?.label || value;
-                        return (
-                          <Badge
-                            key={value}
-                            variant="secondary"
-                            className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
-                          >
-                            {label}
-                            <span
-                              className="ml-2 cursor-pointer text-2x"
-                              onClick={() =>
-                                form.setValue(
-                                  "storeTypes",
-                                  form
-                                    .getValues("storeTypes")
-                                    .filter((v) => v !== value)
-                                )
-                              }
-                            >
-                              <X className="w-4 font-black" />
-                            </span>
-                          </Badge>
-                        );
-                      })}
-                    </div> */}
                     <FormMessage className="" />
                   </FormItem>
                 )}
@@ -796,111 +786,33 @@ export default function EarningsPage() {
                 />
               </div>
 
-              <div className="flex gap-4 items-center">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                  className="px-8"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
-                >
-                  {isLoading ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    "Add"
-                  )}
-                </Button>
+              <div className="flex justify-end">
+                <div className="flex gap-4 items-center">
+                  <Button
+                    onClick={() => setIsDialogOpen(false)}
+                    className="px-6 bg-gray-100 h-10 text-black"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isLoading}
+                    className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
+                  >
+                    {isLoading ? (
+                      <LoaderCircle className="animate-spin" />
+                    ) : (
+                      "Add"
+                    )}
+                  </Button>
+                </div>
               </div>
             </form>
           </Form>
+        </div>
 
-          {/* <div className="space-y-6">
-            <div className="space-y-2">
-              <Label>
-                <span>Select Bank</span>{" "}
-                <span className="text-red-600 mt-1">*</span>
-              </Label>
-              <Select
-                // value={formData.bankName}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, bankName: value })
-                }
-              >
-                <SelectTrigger className="w-full" style={{ height: "2.75rem" }}>
-                  <SelectValue placeholder="Choose your bank" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bankOptions.map((bank) => (
-                    <>
-                      <SelectItem
-                        className="my-1.5 border-b border-gray-100"
-                        key={bank.name}
-                        value={bank.name}
-                      >
-                        <span>
-                          <Image
-                            src={bank.logo}
-                            width={300}
-                            height={300}
-                            alt={`${bank.name} logo`}
-                            className="w-7 bg-red-500 h-7 rounded-full"
-                          />
-                        </span>
-                        <span>{bank.name}</span>
-                      </SelectItem>
-                    </>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>
-                Account Name <span className="text-red-600 mt-1">*</span>
-              </Label>
-              <Input
-                placeholder="Account Name"
-                value={formData.accountName}
-                onChange={(e) =>
-                  setFormData({ ...formData, accountName: e.target.value })
-                }
-                className="h-11"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>
-                Account Number <span className="text-red-600 mt-1">*</span>
-              </Label>
-              <Input
-                placeholder="1234567890"
-                value={formData.accountNumber}
-                onChange={(e) =>
-                  setFormData({ ...formData, accountNumber: e.target.value })
-                }
-                className="h-11"
-              />
-            </div>
-          </div> */}
-
-          {/* <DialogFooter className="gap-3 mt-8">
-            <Button
-              variant="outline"
-              onClick={() => setIsDialogOpen(false)}
-              className="px-8"
-            >
-              Cancel
-            </Button>
-            <Button className="bg-orange-500 hover:bg-orange-600 text-white px-8 rounded-lg">
-              Submit
-            </Button>
-          </DialogFooter> */}
-        </DialogContent>
-      </Dialog>
+        {/* </DialogContent> */}
+      </div>
     </div>
   );
 }
