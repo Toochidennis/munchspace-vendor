@@ -576,7 +576,7 @@ export default function EarningsPage() {
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center justify-between bg-gray-50 rounded-lg p-6"
+                  className="flex items-center justify-between bg-gray-50 rounded-lg p-2 md:p-6"
                 >
                   <div className="flex items-center gap-4">
                     <div className="bg-red-600 rounded-full ">
