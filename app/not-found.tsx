@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import React from 'react'
 
-const restaurant = () => {
+const Error = () => {
   return (
     <div className="flex items-center min-h-screen justify-center">
       <div className="text-center max-w-sm">
@@ -13,10 +13,10 @@ const restaurant = () => {
           This page doesn't exist or was removed, we suggest you return back to
           dashboard
         </p>
-        <Link href={"/"}>
+        <Link href={"/"} >
           <Button className="bg-munchprimary hover:bg-munchprimaryDark mt-5 cursor-pointer">
             <ArrowLeft />
-            <p>Go to Dashboard</p>
+            <p>Go to Homepage</p>
           </Button>
         </Link>
       </div>
@@ -24,4 +24,4 @@ const restaurant = () => {
   );
 }
 
-export default restaurant
+export default Error

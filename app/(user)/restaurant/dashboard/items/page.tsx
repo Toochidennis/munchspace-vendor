@@ -23,6 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 // Mock data for different periods
 const mockData = {
@@ -130,7 +131,7 @@ export default function BestSellingItemsPage() {
       <div className="max-w-7xl mx-auto p-6 space-y-8">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500">
-          <span>Dashboard</span>
+          <Link href="/restaurant/dashboard">Dashboard</Link>
           <span>/</span>
           <span className="text-gray-900 font-medium">Best selling items</span>
         </div>
