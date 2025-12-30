@@ -696,10 +696,10 @@ export default function EarningsPage() {
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent
-                        className="w-80 md:w-md px-10"
+                        className="w-70 md:w-md"
                         onOpenAutoFocus={(e) => e.preventDefault()}
                       >
-                        <Command>
+                        <Command className="w-70">
                           <CommandInput
                             // autoFocus={false}
                             placeholder="Search bank ..."
