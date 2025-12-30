@@ -677,7 +677,7 @@ export default function EarningsPage() {
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent
-                        className="w-full p-0"
+                        className="w-md bg-black h-50 p-0"
                         onOpenAutoFocus={(e) => e.preventDefault()}
                       >
                         <Command>
@@ -697,17 +697,6 @@ export default function EarningsPage() {
                                     "bankName",
                                     option.name
                                   );
-                                  // if (current.includes(option.value)) {
-                                  //   addSettlementForm.setValue(
-                                  //     "bankName",
-                                  //     current.filter((v) => v !== option.value)
-                                  //   );
-                                  // } else {
-                                  //   addSettlementForm.setValue("bankName", [
-                                  //     ...current,
-                                  //     option.value,
-                                  //   ]);
-                                  // }
 
                                   await addSettlementForm.trigger("bankName");
                                   setBankNameOpen(false);
