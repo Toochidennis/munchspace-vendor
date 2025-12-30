@@ -699,13 +699,13 @@ export default function EarningsPage() {
                         className="w-70 md:w-md"
                         onOpenAutoFocus={(e) => e.preventDefault()}
                       >
-                        <Command className="w-70">
+                        <Command className="">
                           <CommandInput
                             // autoFocus={false}
                             placeholder="Search bank ..."
                           />
                           <CommandEmpty>No type found.</CommandEmpty>
-                          <CommandGroup className="w-full max-h-50 overflow-y-auto">
+                          <CommandGroup className="max-h-50 overflow-y-auto">
                             {bankOptions.map((option) => (
                               <CommandItem
                                 key={option.value}
