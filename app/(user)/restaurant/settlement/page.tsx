@@ -635,8 +635,8 @@ export default function EarningsPage() {
             </DialogTitle>
           </DialogHeader> */}
 
-        <div className="w-85 max-w-sm md:max-w-lg bg-white font-rubik rounded-lg py-5 relative">
-          <div className="flex justify-between px-6">
+        <div className="w-85  md:w-lg bg-white font-rubik rounded-lg py-5 relative">
+          <div className="flex justify-between px-3 md:px-6">
             <h1 className="text-xl font-semibold">Add Settlement Accounts</h1>
             <X
               className="text-gray-600"
@@ -644,7 +644,7 @@ export default function EarningsPage() {
             />
           </div>
           <hr className="mt-3" />
-          <div className="space-y-2 py-4 px-6">
+          <div className="space-y-2 py-4 px-3 md:px-6">
             <p className="text-gray-600 text-sm">
               Provide the bank account MunchSpace will use to pay out your
               store's earnings.
@@ -654,7 +654,7 @@ export default function EarningsPage() {
           <Form {...addSettlementForm}>
             <form
               onSubmit={addSettlementForm.handleSubmit(onAddSettlementSubmit)}
-              className="space-y-6 px-6 mt-2"
+              className="space-y-6 px-3 md:px-6 mt-2"
             >
               <FormField
                 control={addSettlementForm.control}

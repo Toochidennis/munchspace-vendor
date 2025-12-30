@@ -272,7 +272,7 @@ export default function RestaurantSidebar() {
       {/* Mobile sidebar */}
       <div
         className={cn(
-          "fixed flex md:hidden flex-col bg-munchprimary border-r border-gray-200 transition-all duration-300 z-30 min-h-screen",
+          "absolute flex md:hidden flex-col bg-munchprimary border-r border-gray-200 transition-all duration-300 z-30 min-h-screen",
           mobileCollapsed ? "w-full" : "w-2"
         )}
       >
@@ -364,8 +364,8 @@ export default function RestaurantSidebar() {
               </a>
 
               <div
-                onMouseEnter={() => setShowMore(true)}
-                onMouseLeave={() => setShowMore(false)}
+                // onMouseEnter={() => setShowMore(true)}
+                // onMouseLeave={() => setShowMore(false)}
                 className={cn("flex items-center gap-3 pt-4")}
               >
                 <Card
@@ -435,7 +435,7 @@ export default function RestaurantSidebar() {
                   <p className="text-sm font-medium truncate">Idris Adegoke</p>
                   <p className="text-xs">Admin</p>
                 </div>
-                <button className={cn("p-2 rounded-lg  transition-colors")}>
+                <button className={cn("p-2 rounded-lg  transition-colors")} onClick={() => setShowMore(!showMore)}>
                   <Ellipsis className="h-4 w-4" />
                 </button>
               </div>
