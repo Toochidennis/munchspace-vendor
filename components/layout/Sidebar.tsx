@@ -350,7 +350,7 @@ export default function RestaurantSidebar() {
             </div>
 
             {/* Footer - Fixed at bottom */}
-            <div className="shrink-0 text-white relative bottom-0 mb-5">
+            <div className="shrink-0 text-white relative bottom-0 mb-1">
               <a
                 href={"/restaurant/preview-store"}
                 className={cn(
