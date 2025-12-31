@@ -93,6 +93,8 @@ const Charges = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [charges, setCharges] = useState<Charge[]>(initialCharges);
   const [isLoading, setIsLoading] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<Charge | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const chargesForm = useForm<ChargesFormType>({
     resolver: zodResolver(chargesFormSchema),
@@ -131,9 +133,16 @@ const Charges = () => {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this charge?")) {
-      setCharges(charges.filter((c) => c.id !== id));
+  const handleDeleteClick = (charge: Charge) => {
+    setDeleteCandidate(charge);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (deleteCandidate) {
+      setCharges(charges.filter((c) => c.id !== deleteCandidate.id));
+      setDeleteCandidate(null);
+      setIsDeleteDialogOpen(false);
     }
   };
 
@@ -248,7 +257,7 @@ const Charges = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDelete(charge.id)}
+                          onClick={() => handleDeleteClick(charge)}
                           className="hover:bg-red-100"
                         >
                           <Trash2
@@ -292,7 +301,7 @@ const Charges = () => {
         </div>
       </div>
 
-      {/* Dialog */}
+      {/* Add/Edit Dialog */}
       <div
         className={cn(
           "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
@@ -418,7 +427,7 @@ const Charges = () => {
                 <div className="flex gap-4 items-center">
                   <Button
                     onClick={() => setIsDialogOpen(false)}
-                    className="px-6 bg-gray-100 h-10 text-black"
+                    className="px-6 bg-gray-100 h-10 text-black hover:bg-gray-200"
                   >
                     Cancel
                   </Button>
@@ -437,6 +446,46 @@ const Charges = () => {
               </div>
             </form>
           </Form>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <div
+        className={cn(
+          "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
+          isDeleteDialogOpen ? "absolute" : "hidden"
+        )}
+      >
+        <div className="w-85  md:w-lg bg-white font-rubik rounded-lg py-5 relative">
+          <div className="flex justify-between px-3 md:px-6">
+            <h1 className="text-xl font-semibold">Confirm Deletion</h1>
+            <X
+              className="text-gray-600"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            />
+          </div>
+          <hr className="mt-3 mb-5" />
+
+          <div className="py-4 px-3 md:px-6">
+            <p className="text-gray-700">
+              Are you sure you want to delete the charge{" "}
+              <span className="font-medium">{deleteCandidate?.name}</span>? This
+              action cannot be undone.
+            </p>
+          </div>
+          <div className="flex justify-end px-3 md:px-6">
+            <div className="flex gap-4 items-center">
+              <Button
+                className="bg-gray-100 text-black hover:bg-gray-200"
+                onClick={() => setIsDeleteDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete}>
+                Delete
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
