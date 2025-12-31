@@ -247,7 +247,7 @@ export default function AccountSettingsPage() {
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-8 mt-10 md:mt-0">
+    <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto">
         {/* Page Title */}
         <div>
@@ -332,7 +332,7 @@ export default function AccountSettingsPage() {
 
             {/* Store Information */}
             <div className="space-y-6">
-              <Card className="p-4 md:p-8 border-gray-100 shadow-none">
+              <Card className="p-8 border-gray-100 shadow-none">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-semibold text-gray-900">
                     Store Information
@@ -579,10 +579,10 @@ export default function AccountSettingsPage() {
             <div className="min-h-screen bg-white text-gray-900">
               <div className="max-w-7xl mx-auto space-y-8">
                 {/* Header with Search and Add Button */}
-                <div className="flex justify-between items-center">
+                <div className="md:flex justify-between items-center">
                   <h1 className="text-xl font-bold">Charges & Fees</h1>
-                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                    <div className="relative w-md">
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mt-4 md:mt-0">
+                    <div className="relative w-full md:w-md">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                       <Input
                         placeholder="Search"
@@ -594,7 +594,7 @@ export default function AccountSettingsPage() {
 
                     <Button
                       onClick={openAddDialog}
-                      className="bg-orange-500 hover:bg-orange-600 text-white rounded-lg h-10 px-6 font-normal"
+                      className="bg-orange-500 hover:bg-orange-600 text-white rounded-lg w-full md:w-fit h-10 px-6 font-normal"
                     >
                       + Add New Charges
                     </Button>
