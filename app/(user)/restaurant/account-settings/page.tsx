@@ -290,7 +290,7 @@ export default function AccountSettingsPage() {
 
           <TabsContent value="store-details" className="mt-5 space-y-12">
             {/* Store Image Upload */}
-            <Card className="p-8 bg-g border-gray-100 shadow-none">
+            <Card className="p-4 md:p-8 bg-g border-gray-100 shadow-none">
               <div className="flex items-center gap-4">
                 <div className="flex gap-8">
                   <div className="relative group">

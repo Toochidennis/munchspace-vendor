@@ -116,14 +116,14 @@ export default function KycVerification() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="mx-auto p-8 space-y-12">
+    <div className="min-h-screen">
+      <div className="mx-auto space-y-12">
 
         <div className="space-y-8">
           {documents.map((doc) => (
             <div
               key={doc.id}
-              className="rounded-lg border border-gray-300 bg-white p-6 space-y-4 shadow-sm"
+              className="rounded-lg border border-gray-100 bg-white p-6 space-y-4"
             >
               <div className="flex items-start justify-between">
                 <div>
