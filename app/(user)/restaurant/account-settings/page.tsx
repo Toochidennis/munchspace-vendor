@@ -408,7 +408,7 @@ export default function AccountSettingsPage() {
             </div>
 
             {/* Working Hours */}
-            <Card className="md:p-8 p-3 py-4 border-gray-100 shadow-none">
+            <Card className="md:p-8 p-2 py-4 border-gray-100 shadow-none">
               <Accordion type="single" collapsible>
                 <AccordionItem value="working-hours">
                   <AccordionTrigger className="text-xl font-bold text-gray-900">
@@ -447,9 +447,9 @@ export default function AccountSettingsPage() {
                         return (
                           <div
                             key={day}
-                            className="flex flex-col rounded-lg border p-4 space-y-3"
+                            className="flex flex-col rounded-lg border p-2 py-4 md:p-4 space-y-3"
                           >
-                            <div className="flex gap-4 items-center">
+                            <div className="flex gap-2 md:gap-4 items-center">
                               <div className="flex items-center gap-4">
                                 <Switch
                                   checked={isEnabled}
