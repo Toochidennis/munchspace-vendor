@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Camera, Plus, Trash2, Calendar } from "lucide-react";
+import {
+  Camera,
+  Plus,
+  Trash2,
+  Calendar,
+  ArrowLeft,
+  Check,
+  ChevronsUpDown,
+} from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -25,19 +35,15 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
-import { Check, ChevronsUpDown, ArrowLeft } from "lucide-react";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 
-type Size = { id: string; name: string; price: string };
-type Extra = { id: string; name: string; price: string };
-type Discount = {
-  id: string;
-  type: "percentage" | "flat" | "promo";
-  value: string;
-  startDate: Date | undefined;
-  endDate: Date | undefined;
-};
+import {
+  useForm,
+  useFieldArray,
+  Controller,
+  SubmitHandler,
+} from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
 const categories = [
   "Rice",
@@ -52,150 +58,147 @@ const categories = [
 
 const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 
+const formSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().min(1, "Description is required"),
+  image: z.string().min(1, "Image is required"),
+  categories: z.array(z.string()).min(1, "At least one category is required"),
+  costPrice: z.number().gte(0, "Cost price cannot be less than 0"),
+  sellingPrice: z.number().gte(0, "Selling price cannot be less than 0"),
+  quantity: z.number()
+    .int("Quantity must be a whole number")
+    .gte(0, "Quantity cannot be less than 0"),
+  remainingQuantity: z.number()
+    .int("Remaining quantity must be a whole number")
+    .gte(0, "Remaining quantity cannot be less than 0"),
+  availability: z.enum(["available", "sold-out", "unavailable"]),
+  sizes: z.array(
+    z.object({
+      name: z.string(),
+      price: z.string(),
+    })
+  ),
+  extras: z.array(
+    z.object({
+      name: z.string(),
+      price: z.string(),
+    })
+  ),
+  discounts: z.array(
+    z.object({
+      type: z.enum(["percentage", "flat", "promo"]),
+      value: z.string(),
+      startDate: z.date().optional(),
+      endDate: z.date().optional(),
+    })
+  ),
+});
+
+type FormData = z.infer<typeof formSchema>;
+
 export default function CreateMenuPage() {
   const [activeTab, setActiveTab] = useState("details");
-
-  // Details tab
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [image, setImage] = useState<string | null>(null);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [costPrice, setCostPrice] = useState("");
-  const [sellingPrice, setSellingPrice] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [remainingQuantity, setRemainingQuantity] = useState("");
-  const [availability, setAvailability] = useState("available");
 
-  // Validation errors
-  const [errors, setErrors] = useState<{
-    name?: string;
-    description?: string;
-    image?: string;
-    categories?: string;
-    costPrice?: string;
-    sellingPrice?: string;
-    quantity?: string;
-    remainingQuantity?: string;
-  }>({});
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors },
+    watch,
+    setValue,
+    trigger,
+  } = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    mode: "onChange",
+    defaultValues: {
+      availability: "available",
+      categories: [],
+      sizes: [{ name: "", price: "" }],
+      extras: [{ name: "", price: "" }],
+      discounts: [],
+      costPrice: 0,
+      sellingPrice: 0,
+      quantity: 0,
+      remainingQuantity: 0,
+    },
+  });
 
-  // Sizes tab - start with one default item
-  const [sizes, setSizes] = useState<Size[]>([
-    { id: "default-size", name: "", price: "" },
-  ]);
+  const image = watch("image");
 
-  const addSize = () => {
-    setSizes([...sizes, { id: Date.now().toString(), name: "", price: "" }]);
-  };
+  const {
+    fields: sizeFields,
+    append: appendSize,
+    remove: removeSize,
+  } = useFieldArray({
+    control,
+    name: "sizes",
+  });
 
-  const updateSize = (id: string, field: "name" | "price", value: string) => {
-    setSizes(sizes.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
-  };
+  const {
+    fields: extraFields,
+    append: appendExtra,
+    remove: removeExtra,
+  } = useFieldArray({
+    control,
+    name: "extras",
+  });
 
-  const removeSize = (id: string) => {
-    if (sizes.length > 1) {
-      setSizes(sizes.filter((s) => s.id !== id));
-    }
-  };
+  const {
+    fields: discountFields,
+    append: appendDiscount,
+    remove: removeDiscount,
+  } = useFieldArray({
+    control,
+    name: "discounts",
+  });
 
-  // Extras tab - start with one default item
-  const [extras, setExtras] = useState<Extra[]>([
-    { id: "default-extra", name: "", price: "" },
-  ]);
-
-  const addExtra = () => {
-    setExtras([...extras, { id: Date.now().toString(), name: "", price: "" }]);
-  };
-
-  const updateExtra = (id: string, field: "name" | "price", value: string) => {
-    setExtras(extras.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
-  };
-
-  const removeExtra = (id: string) => {
-    if (extras.length > 1) {
-      setExtras(extras.filter((e) => e.id !== id));
-    }
-  };
-
-  // Discounts tab
-  const [discounts, setDiscounts] = useState<Discount[]>([]);
-
-  const addDiscount = () => {
-    setDiscounts([
-      ...discounts,
-      {
-        id: Date.now().toString(),
-        type: "percentage",
-        value: "",
-        startDate: undefined,
-        endDate: undefined,
-      },
-    ]);
-  };
-
-  const updateDiscount = (
-    id: string,
-    field: "type" | "value" | "startDate" | "endDate",
-    value: any
-  ) => {
-    setDiscounts(
-      discounts.map((d) => (d.id === id ? { ...d, [field]: value } : d))
-    );
-  };
-
-  const removeDiscount = (id: string) => {
-    setDiscounts(discounts.filter((d) => d.id !== id));
-  };
+  const selectedCategories = watch("categories") || [];
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImage(reader.result as string);
+        setValue("image", reader.result as string, { shouldValidate: true });
       };
       reader.readAsDataURL(file);
     }
   };
 
   const toggleCategory = (category: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(category)
-        ? prev.filter((c) => c !== category)
-        : [...prev, category]
-    );
+    const current = selectedCategories;
+    const updated = current.includes(category)
+      ? current.filter((c) => c !== category)
+      : [...current, category];
+    setValue("categories", updated, { shouldValidate: true });
     setCategoryOpen(false);
   };
 
-  const validateDetails = () => {
-    const newErrors: typeof errors = {};
-
-    if (!name.trim()) newErrors.name = "Name is required";
-    if (!description.trim()) newErrors.description = "Description is required";
-    if (!image) newErrors.image = "Image is required";
-    if (selectedCategories.length === 0)
-      newErrors.categories = "At least one category is required";
-    if (!costPrice.trim()) newErrors.costPrice = "Cost price is required";
-    if (!sellingPrice.trim())
-      newErrors.sellingPrice = "Selling price is required";
-    if (!quantity.trim()) newErrors.quantity = "Quantity is required";
-    if (!remainingQuantity.trim())
-      newErrors.remainingQuantity = "Remaining quantity is required";
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const validateDetails = async () => {
+    const result = await trigger([
+      "name",
+      "description",
+      "image",
+      "categories",
+      "costPrice",
+      "sellingPrice",
+      "quantity",
+      "remainingQuantity",
+    ]);
+    return result;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (activeTab === "details") {
-      if (!validateDetails()) return;
+      if (!(await validateDetails())) return;
     }
 
     const currentIndex = tabOrder.indexOf(activeTab as any);
     if (currentIndex < tabOrder.length - 1) {
       setActiveTab(tabOrder[currentIndex + 1]);
     } else {
-      handleSubmit();
+      await handleSubmit(onSubmit)();
     }
   };
 
@@ -206,41 +209,43 @@ export default function CreateMenuPage() {
     }
   };
 
-  const handleSubmit = async () => {
+  const onSubmit: SubmitHandler<FormData> = async (data) => {
     const payload = {
-      name,
-      description,
-      categories: selectedCategories,
-      costPrice,
-      sellingPrice,
-      quantity,
-      remainingQuantity,
-      availability,
-      image,
-      sizes: sizes.filter((s) => s.name.trim() && s.price.trim()),
-      extras: extras.filter((e) => e.name.trim() && e.price.trim()),
-      discounts,
+      name: data.name,
+      description: data.description,
+      categories: data.categories,
+      costPrice: data.costPrice.toString(),
+      sellingPrice: data.sellingPrice.toString(),
+      quantity: data.quantity.toString(),
+      remainingQuantity: data.remainingQuantity.toString(),
+      availability: data.availability,
+      image: data.image,
+      sizes: data.sizes.filter((s) => s.name.trim() && s.price.trim()),
+      extras: data.extras.filter((e) => e.name.trim() && e.price.trim()),
+      discounts: data.discounts,
     };
 
-    try {
-      const response = await fetch("/api/menu", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    console.log(payload)
+    // try {
+    //   const response = await fetch("/api/menu", {
+    //     method: "POST",
+    //     headers: { "Content-Type": "application/json" },
+    //     body: JSON.stringify(payload),
+    //   });
 
-      if (response.ok) {
-        alert("Menu created successfully!");
-      } else {
-        alert("Failed to create menu");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("An error occurred");
-    }
+    //   if (response.ok) {
+    //     alert("Menu created successfully!");
+    //   } else {
+    //     alert("Failed to create menu");
+    //   }
+    // } catch (error) {
+    //   console.error(error);
+    //   alert("An error occurred");
+    // }
   };
 
   const isFirstTab = activeTab === "details";
+  const isLastTab = activeTab === "discounts";
 
   return (
     <div className="min-h-screen bg-white">
@@ -268,25 +273,25 @@ export default function CreateMenuPage() {
           <TabsList className="flex gap-10 rounded-none bg-transparent border-b border-gray-200 mb-12 pb-2 w-full justify-start">
             <TabsTrigger
               value="details"
-              className="data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none"
+              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
             >
               Details
             </TabsTrigger>
             <TabsTrigger
               value="sizes"
-              className="data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none"
+              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
             >
               Sizes
             </TabsTrigger>
             <TabsTrigger
               value="extras"
-              className="data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none"
+              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
             >
               Extras
             </TabsTrigger>
             <TabsTrigger
               value="discounts"
-              className="data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none"
+              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
             >
               Discounts
             </TabsTrigger>
@@ -296,38 +301,45 @@ export default function CreateMenuPage() {
           <TabsContent value="details" className="space-y-8">
             <div className="space-y-6">
               <div className="space-y-2">
-                <Label>
+                <Label className={cn(errors.name && "text-red-600")}>
                   Name <span className="text-red-600">*</span>
                 </Label>
                 <Input
                   placeholder="Name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="h-12"
+                  {...register("name")}
+                  className={cn(
+                    "h-12",
+                    errors.name && "border-red-600 focus-visible:ring-red-600"
+                  )}
                 />
                 {errors.name && (
-                  <p className="text-red-600 text-sm">{errors.name}</p>
+                  <p className="text-red-600 text-sm">{errors.name.message}</p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label>
+                <Label className={cn(errors.description && "text-red-600")}>
                   Description <span className="text-red-600">*</span>
                 </Label>
                 <Textarea
                   placeholder="Description"
-                  className="min-h-32"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  className={cn(
+                    "min-h-32",
+                    errors.description &&
+                      "border-red-600 focus-visible:ring-red-600"
+                  )}
+                  {...register("description")}
                 />
                 {errors.description && (
-                  <p className="text-red-600 text-sm">{errors.description}</p>
+                  <p className="text-red-600 text-sm">
+                    {errors.description.message}
+                  </p>
                 )}
               </div>
 
               {/* Image Upload */}
               <div className="space-y-2">
-                <Label>
+                <Label className={cn(errors.image && "text-red-600")}>
                   Image <span className="text-red-600">*</span>
                 </Label>
                 <label className="block cursor-pointer">
@@ -337,7 +349,12 @@ export default function CreateMenuPage() {
                     onChange={handleImageUpload}
                     className="hidden"
                   />
-                  <div className=" bg-gray-100 rounded-lg p-8 flex flex-col items-center justify-center gap-3 hover:border-gray-400 transition">
+                  <div
+                    className={cn(
+                      "bg-gray-100 rounded-lg p-8 flex flex-col items-center justify-center gap-3 hover:border-gray-400 transition",
+                      errors.image && "border-red-600"
+                    )}
+                  >
                     {image ? (
                       <Image
                         src={image}
@@ -357,13 +374,13 @@ export default function CreateMenuPage() {
                   </div>
                 </label>
                 {errors.image && (
-                  <p className="text-red-600 text-sm">{errors.image}</p>
+                  <p className="text-red-600 text-sm">{errors.image.message}</p>
                 )}
               </div>
 
               {/* Category */}
               <div className="space-y-2">
-                <Label>
+                <Label className={cn(errors.categories && "text-red-600")}>
                   Category <span className="text-red-600">*</span>
                 </Label>
                 <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
@@ -372,13 +389,12 @@ export default function CreateMenuPage() {
                       variant="outline"
                       role="combobox"
                       aria-expanded={categoryOpen}
-                      className="w-full justify-between h-12"
+                      className={cn(
+                        "w-full justify-between h-12",
+                        errors.categories &&
+                          "border-red-600 focus-visible:ring-red-600"
+                      )}
                     >
-                      {/* <span className="truncate">
-                        {selectedCategories.length > 0
-                          ? selectedCategories.join(", ")
-                          : "Category"}
-                      </span> */}
                       <span className="truncate font-normal">Category</span>
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
@@ -411,7 +427,9 @@ export default function CreateMenuPage() {
                   </PopoverContent>
                 </Popover>
                 {errors.categories && (
-                  <p className="text-red-600 text-sm">{errors.categories}</p>
+                  <p className="text-red-600 text-sm">
+                    {errors.categories.message}
+                  </p>
                 )}
                 {selectedCategories.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
@@ -436,32 +454,46 @@ export default function CreateMenuPage() {
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>
+                  <Label className={cn(errors.costPrice && "text-red-600")}>
                     Cost price <span className="text-red-600">*</span>
                   </Label>
                   <Input
-                    placeholder="₦ 0.00"
-                    value={costPrice}
-                    onChange={(e) => setCostPrice(e.target.value)}
-                    className="h-12"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0.00"
+                    {...register("costPrice", { valueAsNumber: true })}
+                    className={cn(
+                      "h-12",
+                      errors.costPrice &&
+                        "border-red-600 focus-visible:ring-red-600"
+                    )}
                   />
                   {errors.costPrice && (
-                    <p className="text-red-600 text-sm">{errors.costPrice}</p>
+                    <p className="text-red-600 text-sm">
+                      {errors.costPrice.message}
+                    </p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>
+                  <Label className={cn(errors.sellingPrice && "text-red-600")}>
                     Selling price <span className="text-red-600">*</span>
                   </Label>
                   <Input
-                    placeholder="₦ 0.00"
-                    value={sellingPrice}
-                    onChange={(e) => setSellingPrice(e.target.value)}
-                    className="h-12"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0.00"
+                    {...register("sellingPrice", { valueAsNumber: true })}
+                    className={cn(
+                      "h-12",
+                      errors.sellingPrice &&
+                        "border-red-600 focus-visible:ring-red-600"
+                    )}
                   />
                   {errors.sellingPrice && (
                     <p className="text-red-600 text-sm">
-                      {errors.sellingPrice}
+                      {errors.sellingPrice.message}
                     </p>
                   )}
                 </div>
@@ -469,34 +501,48 @@ export default function CreateMenuPage() {
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>
+                  <Label className={cn(errors.quantity && "text-red-600")}>
                     Quantity <span className="text-red-600">*</span>
                   </Label>
                   <Input
                     type="number"
+                    min={0}
+                    step="1"
                     placeholder="0"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    className="h-12"
+                    {...register("quantity", { valueAsNumber: true })}
+                    className={cn(
+                      "h-12",
+                      errors.quantity &&
+                        "border-red-600 focus-visible:ring-red-600"
+                    )}
                   />
                   {errors.quantity && (
-                    <p className="text-red-600 text-sm">{errors.quantity}</p>
+                    <p className="text-red-600 text-sm">
+                      {errors.quantity.message}
+                    </p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>
+                  <Label
+                    className={cn(errors.remainingQuantity && "text-red-600")}
+                  >
                     Remaining Quantity <span className="text-red-600">*</span>
                   </Label>
                   <Input
                     type="number"
+                    min={0}
+                    step="1"
                     placeholder="0"
-                    value={remainingQuantity}
-                    onChange={(e) => setRemainingQuantity(e.target.value)}
-                    className="h-12"
+                    {...register("remainingQuantity", { valueAsNumber: true })}
+                    className={cn(
+                      "h-12",
+                      errors.remainingQuantity &&
+                        "border-red-600 focus-visible:ring-red-600"
+                    )}
                   />
                   {errors.remainingQuantity && (
                     <p className="text-red-600 text-sm">
-                      {errors.remainingQuantity}
+                      {errors.remainingQuantity.message}
                     </p>
                   )}
                 </div>
@@ -504,40 +550,49 @@ export default function CreateMenuPage() {
 
               <div className="space-y-4">
                 <Label>Availability</Label>
-                <RadioGroup
-                  value={availability}
-                  onValueChange={setAvailability}
-                >
-                  <div className="flex items-center gap-8">
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem value="available" id="available" />
-                      <Label
-                        htmlFor="available"
-                        className="font-normal cursor-pointer text-munchprimary"
-                      >
-                        Available
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem value="sold-out" id="sold-out" />
-                      <Label
-                        htmlFor="sold-out"
-                        className="font-normal cursor-pointer"
-                      >
-                        Sold out
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <RadioGroupItem value="unavailable" id="unavailable" />
-                      <Label
-                        htmlFor="unavailable"
-                        className="font-normal cursor-pointer"
-                      >
-                        Unavailable
-                      </Label>
-                    </div>
-                  </div>
-                </RadioGroup>
+                <Controller
+                  control={control}
+                  name="availability"
+                  render={({ field }) => (
+                    <RadioGroup
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <div className="flex items-center gap-8">
+                        <div className="flex items-center gap-3">
+                          <RadioGroupItem value="available" id="available" />
+                          <Label
+                            htmlFor="available"
+                            className="font-normal cursor-pointer text-munchprimary"
+                          >
+                            Available
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <RadioGroupItem value="sold-out" id="sold-out" />
+                          <Label
+                            htmlFor="sold-out"
+                            className="font-normal cursor-pointer"
+                          >
+                            Sold out
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <RadioGroupItem
+                            value="unavailable"
+                            id="unavailable"
+                          />
+                          <Label
+                            htmlFor="unavailable"
+                            className="font-normal cursor-pointer"
+                          >
+                            Unavailable
+                          </Label>
+                        </div>
+                      </div>
+                    </RadioGroup>
+                  )}
+                />
               </div>
             </div>
           </TabsContent>
@@ -547,30 +602,24 @@ export default function CreateMenuPage() {
             <p className="text-gray-600">Specify the sizes for this menu.</p>
 
             <div className="space-y-4">
-              {sizes.map((size) => (
-                <div key={size.id} className="flex items-center gap-4">
+              {sizeFields.map((field, index) => (
+                <div key={field.id} className="flex items-center gap-4">
                   <Input
                     placeholder="Name"
-                    value={size.name}
-                    onChange={(e) =>
-                      updateSize(size.id, "name", e.target.value)
-                    }
+                    {...register(`sizes.${index}.name`)}
                     className="h-12"
                   />
                   <Input
                     placeholder="Price"
-                    value={size.price}
-                    onChange={(e) =>
-                      updateSize(size.id, "price", e.target.value)
-                    }
+                    {...register(`sizes.${index}.price`)}
                     className="h-12"
                   />
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => removeSize(size.id)}
+                    onClick={() => removeSize(index)}
                     className="text-red-600 hover:bg-red-50"
-                    disabled={sizes.length === 1}
+                    disabled={sizeFields.length === 1}
                   >
                     <Trash2 className="h-5 w-5" />
                   </Button>
@@ -578,8 +627,12 @@ export default function CreateMenuPage() {
               ))}
             </div>
 
-            <Button variant="outline" onClick={addSize} className="gap-2">
-              <Plus className="h-5 w-5" />
+            <Button
+              variant="outline"
+              onClick={() => appendSize({ name: "", price: "" })}
+              className="gap-2"
+            >
+              <Plus className="h-5 w-5 text-munchprimary" />
               Add Size
             </Button>
           </TabsContent>
@@ -591,30 +644,24 @@ export default function CreateMenuPage() {
             </p>
 
             <div className="space-y-4">
-              {extras.map((extra) => (
-                <div key={extra.id} className="flex items-center gap-4">
+              {extraFields.map((field, index) => (
+                <div key={field.id} className="flex items-center gap-4">
                   <Input
                     placeholder="Name"
-                    value={extra.name}
-                    onChange={(e) =>
-                      updateExtra(extra.id, "name", e.target.value)
-                    }
+                    {...register(`extras.${index}.name`)}
                     className="h-12"
                   />
                   <Input
                     placeholder="Price"
-                    value={extra.price}
-                    onChange={(e) =>
-                      updateExtra(extra.id, "price", e.target.value)
-                    }
+                    {...register(`extras.${index}.price`)}
                     className="h-12"
                   />
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => removeExtra(extra.id)}
+                    onClick={() => removeExtra(index)}
                     className="text-red-600 hover:bg-red-50"
-                    disabled={extras.length === 1}
+                    disabled={extraFields.length === 1}
                   >
                     <Trash2 className="h-5 w-5" />
                   </Button>
@@ -622,8 +669,12 @@ export default function CreateMenuPage() {
               ))}
             </div>
 
-            <Button variant="outline" onClick={addExtra} className="gap-2">
-              <Plus className="h-5 w-5" />
+            <Button
+              variant="outline"
+              onClick={() => appendExtra({ name: "", price: "" })}
+              className="gap-2"
+            >
+              <Plus className="h-5 w-5 text-munchprimary" />
               Add Extra
             </Button>
           </TabsContent>
@@ -636,15 +687,15 @@ export default function CreateMenuPage() {
             </p>
 
             <div className="space-y-8">
-              {discounts.map((discount) => (
+              {discountFields.map((field, index) => (
                 <div
-                  key={discount.id}
+                  key={field.id}
                   className="border border-gray-200 rounded-lg p-6 space-y-6 relative"
                 >
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => removeDiscount(discount.id)}
+                    onClick={() => removeDiscount(index)}
                     className="absolute top-4 right-4 text-red-600 hover:bg-red-50"
                   >
                     <Trash2 className="h-5 w-5" />
@@ -652,46 +703,46 @@ export default function CreateMenuPage() {
 
                   <div className="space-y-4">
                     <Label>Discount Type</Label>
-                    <RadioGroup
-                      value={discount.type}
-                      onValueChange={(value) =>
-                        updateDiscount(
-                          discount.id,
-                          "type",
-                          value as Discount["type"]
-                        )
-                      }
-                    >
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <RadioGroupItem value="percentage" />
-                          <Label className="font-normal cursor-pointer">
-                            Percentage off
-                            <p className="text-sm text-gray-500">
-                              Reduce price by a percentage
-                            </p>
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <RadioGroupItem value="flat" />
-                          <Label className="font-normal cursor-pointer">
-                            Flat amount off
-                            <p className="text-sm text-gray-500">
-                              ₦ amount off original price
-                            </p>
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <RadioGroupItem value="promo" />
-                          <Label className="font-normal cursor-pointer">
-                            Set promo price
-                            <p className="text-sm text-gray-500">
-                              Sell at a new fixed price
-                            </p>
-                          </Label>
-                        </div>
-                      </div>
-                    </RadioGroup>
+                    <Controller
+                      control={control}
+                      name={`discounts.${index}.type`}
+                      render={({ field: discountField }) => (
+                        <RadioGroup
+                          value={discountField.value}
+                          onValueChange={discountField.onChange}
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-3">
+                              <RadioGroupItem value="percentage" />
+                              <Label className="font-normal cursor-pointer">
+                                Percentage off
+                                <p className="text-sm text-gray-500">
+                                  Reduce price by a percentage
+                                </p>
+                              </Label>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <RadioGroupItem value="flat" />
+                              <Label className="font-normal cursor-pointer">
+                                Flat amount off
+                                <p className="text-sm text-gray-500">
+                                  ₦ amount off original price
+                                </p>
+                              </Label>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <RadioGroupItem value="promo" />
+                              <Label className="font-normal cursor-pointer">
+                                Set promo price
+                                <p className="text-sm text-gray-500">
+                                  Sell at a new fixed price
+                                </p>
+                              </Label>
+                            </div>
+                          </div>
+                        </RadioGroup>
+                      )}
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -699,16 +750,13 @@ export default function CreateMenuPage() {
                     <div className="flex items-center gap-2">
                       <Input
                         placeholder="0"
-                        value={discount.value}
-                        onChange={(e) =>
-                          updateDiscount(discount.id, "value", e.target.value)
-                        }
+                        {...register(`discounts.${index}.value`)}
                         className="h-12"
                       />
                       <span className="text-gray-600">
-                        {discount.type === "percentage"
+                        {watch(`discounts.${index}.type`) === "percentage"
                           ? "%"
-                          : discount.type === "flat"
+                          : watch(`discounts.${index}.type`) === "flat"
                           ? "₦"
                           : ""}
                       </span>
@@ -718,87 +766,104 @@ export default function CreateMenuPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Start Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-left font-normal h-12"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {discount.startDate
-                              ? format(discount.startDate, "dd/MM/yyyy")
-                              : "DD/MM/YYYY"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={discount.startDate}
-                            onSelect={(date) =>
-                              updateDiscount(discount.id, "startDate", date)
-                            }
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <Controller
+                        control={control}
+                        name={`discounts.${index}.startDate`}
+                        render={({ field: dateField }) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start text-left font-normal h-12"
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {dateField.value
+                                  ? format(dateField.value, "dd/MM/yyyy")
+                                  : "DD/MM/YYYY"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <CalendarComponent
+                                mode="single"
+                                selected={dateField.value ?? undefined}
+                                onSelect={dateField.onChange}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>End Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-left font-normal h-12"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {discount.endDate
-                              ? format(discount.endDate, "dd/MM/yyyy")
-                              : "DD/MM/YYYY"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={discount.endDate}
-                            onSelect={(date) =>
-                              updateDiscount(discount.id, "endDate", date)
-                            }
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <Controller
+                        control={control}
+                        name={`discounts.${index}.endDate`}
+                        render={({ field: dateField }) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start text-left font-normal h-12"
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {dateField.value
+                                  ? format(dateField.value, "dd/MM/yyyy")
+                                  : "DD/MM/YYYY"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <CalendarComponent
+                                mode="single"
+                                selected={dateField.value ?? undefined}
+                                onSelect={dateField.onChange}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <Button variant="outline" onClick={addDiscount} className="gap-2">
-              <Plus className="h-5 w-5" />
+            <Button
+              variant="outline"
+              onClick={() =>
+                appendDiscount({
+                  type: "percentage",
+                  value: "",
+                  startDate: undefined,
+                  endDate: undefined,
+                })
+              }
+              className="gap-2"
+            >
+              <Plus className="h-5 w-5 text-munchprimary" />
               Add Discount
             </Button>
           </TabsContent>
         </Tabs>
 
         {/* Footer Buttons */}
-        <div className="flex justify-between items-center mt-12 pt-8 border-t border-gray-200">
+        <div className="flex justify-end gap-2 items-center mt-12 pt-8 border-t border-gray-200">
           <div>
             {!isFirstTab && (
               <Button
-                variant="outline"
                 onClick={handleBack}
-                className="gap-2 px-8"
+                className="gap-2 px-8 bg-gray-100 hover:bg-gray-200 text-munchprimary"
               >
-                <ArrowLeft className="h-5 w-5" />
                 Back
               </Button>
             )}
           </div>
           <Button
             onClick={handleNext}
-            className="bg-orange-500 hover:bg-munchprimary text-white px-8 rounded-full"
+            className="bg-orange-500 hover:bg-munchprimary text-white px-8"
           >
-            Next
+            {isLastTab ? "Add Menu" : "Next"}
           </Button>
         </div>
       </div>

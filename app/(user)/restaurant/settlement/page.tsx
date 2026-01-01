@@ -66,6 +66,7 @@ import {
 import { Value } from "@radix-ui/react-select";
 
 const addSettlementSchema = z.object({
+  // id: z.number(),
   bankName: z.string("Bank name is required"),
   accountName: z.string("Account name is required"),
   accountNumber: z.string("Account number is required"),
@@ -236,13 +237,13 @@ const bankOptions = [
 export default function EarningsPage() {
   const [activeTab, setActiveTab] = useState<"earnings" | "payout">("earnings");
   const [accounts, setAccounts] = useState<SettlementAccount[]>([
-    {
-      id: 1,
-      logo: "/images/UBA.svg",
-      bankName: "United Bank for Africa",
-      accountName: "Meshack Daniel",
-      accountNumber: "2107622057",
-    },
+    // {
+    //   id: 1,
+    //   logo: "/images/UBA.svg",
+    //   bankName: "United Bank for Africa",
+    //   accountName: "Meshack Daniel",
+    //   accountNumber: "2107622057",
+    // },
   ]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [filterPeriod, setFilterPeriod] = useState<"7" | "30" | "90">("30");
@@ -342,7 +343,17 @@ export default function EarningsPage() {
     setIsDialogOpen(true);
   };
 
-  const onAddSettlementSubmit = () => {};
+  const onAddSettlementSubmit = (data: addSettlementType) => {
+    const newAccount: SettlementAccount = {
+      id: accounts.length + 1,
+      bankName: data.bankName,
+      accountName: data.accountName,
+      accountNumber: data.accountNumber,
+      logo: "/images/UBA.svg",
+    };
+    setAccounts([...accounts, newAccount]);
+    setIsDialogOpen(false);
+  };
 
   // const handleSubmit = () => {
   //   if (
@@ -408,165 +419,204 @@ export default function EarningsPage() {
 
         {/* Earnings & Activity Tab */}
         {activeTab === "earnings" && (
-          <div className="space-y-8">
-            {/* Earnings Card */}
-            <div className="bg-gray-100 mt-5 rounded-xl p-5">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Earnings</h2>
-              <p className="text-gray-600 text-sm mb-6">
-                Your available balance updates once an order is paid and
-                confirmed by the customer's bank.
-                <br />
-                Funds are held until the order is successfully delivered by our
-                dispatch rider. This can take up to 2 days.
-                <br />
-                <a href="#" className="text-orange-600 underline">
-                  Need assistance?
-                </a>{" "}
-                Our team is ready to help.
-              </p>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                <div className="p-3 md:p-6 pb-0">
-                  <p className="text-gray-500 mb-2 text-sm">Total balance</p>
-                  <p className="text-3xl font-bold text-gray-900">₦0.00</p>
-                </div>
-                <div className="p-3 md:p-6 pb-0">
-                  <p className="text-gray-500 mb-2 text-sm">Funds on hold</p>
-                  <p className="text-3xl font-bold text-gray-900">₦0.00</p>
-                </div>
-                <div className="p-3 md:p-6 pb-0">
-                  <p className="text-gray-500 mb-2 text-sm">
-                    In transit to bank
+          <>
+            {accounts.length > 0 ? (
+              <div className="space-y-8">
+                {/* Earnings Card */}
+                <div className="bg-gray-100 mt-5 rounded-xl p-5">
+                  <h2 className="text-xl font-bold text-gray-900 mb-4">
+                    Earnings
+                  </h2>
+                  <p className="text-gray-600 text-sm mb-6">
+                    Your available balance updates once an order is paid and
+                    confirmed by the customer's bank.
+                    <br />
+                    Funds are held until the order is successfully delivered by
+                    our dispatch rider. This can take up to 2 days.
+                    <br />
+                    <a href="#" className="text-orange-600 underline">
+                      Need assistance?
+                    </a>{" "}
+                    Our team is ready to help.
                   </p>
-                  <p className="text-3xl font-bold text-gray-900">₦0.00</p>
-                </div>
-              </div>
-            </div>
 
-            {/* Activity Filter */}
-            <div className="flex justify-end mb-4">
-              <Select value={filterPeriod} onValueChange={handleFilterChange}>
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Last 7 days</SelectItem>
-                  <SelectItem value="30">Last 30 days</SelectItem>
-                  <SelectItem value="90">Last 90 days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead>ID</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedData.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={4}
-                        className="text-center text-gray-500 py-12"
-                      >
-                        No activity found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedData.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.id}</TableCell>
-                        <TableCell>{item.type}</TableCell>
-                        <TableCell>{item.date}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {item.amount}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination */}
-            {paginatedData.length > 0 && (
-              <div className="flex items-center justify-center mx-2 gap-5 text-sm">
-                <p className="text-gray-600 hidden md:block">
-                  Total <span>{filteredData.length}</span> items
-                </p>
-
-                <div className="flex items-center gap-2 md:gap-4">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      handlePageChange(Math.max(1, currentPage - 1))
-                    }
-                    disabled={currentPage === 1}
-                    className="hover:bg-gray-100 disabled:opacity-50"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </Button>
-
-                  <div className="flex items-center gap-2">
-                    {getPageNumbers().map((page, index) => (
-                      <div key={index}>
-                        {page === "..." ? (
-                          <span className="text-gray-500 px-2 flex items-center">
-                            <p className="-mt-2">...</p>
-                          </span>
-                        ) : (
-                          <Button
-                            variant={currentPage === page ? "default" : "ghost"}
-                            size="sm"
-                            onClick={() => handlePageChange(page as number)}
-                            className={cn(
-                              "min-w-8 md:min-w-10",
-                              currentPage === page &&
-                                "bg-orange-500 hover:bg-orange-600 text-white"
-                            )}
-                          >
-                            {page}
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+                    <div className="p-3 md:p-6 pb-0">
+                      <p className="text-gray-500 mb-2 text-sm">
+                        Total balance
+                      </p>
+                      <p className="text-3xl font-bold text-gray-900">₦0.00</p>
+                    </div>
+                    <div className="p-3 md:p-6 pb-0">
+                      <p className="text-gray-500 mb-2 text-sm">
+                        Funds on hold
+                      </p>
+                      <p className="text-3xl font-bold text-gray-900">₦0.00</p>
+                    </div>
+                    <div className="p-3 md:p-6 pb-0">
+                      <p className="text-gray-500 mb-2 text-sm">
+                        In transit to bank
+                      </p>
+                      <p className="text-3xl font-bold text-gray-900">₦0.00</p>
+                    </div>
                   </div>
+                </div>
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      handlePageChange(Math.min(totalPages, currentPage + 1))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="hover:bg-gray-100 disabled:opacity-50"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </Button>
-
+                {/* Activity Filter */}
+                <div className="flex justify-end mb-4">
                   <Select
-                    value={`${itemsPerPage}`}
-                    onValueChange={handleItemsPerPageChange}
+                    value={filterPeriod}
+                    onValueChange={handleFilterChange}
                   >
-                    <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:flex">
+                    <SelectTrigger className="w-48">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="10">10 / page</SelectItem>
-                      <SelectItem value="20">20 / page</SelectItem>
-                      <SelectItem value="50">50 / page</SelectItem>
+                      <SelectItem value="7">Last 7 days</SelectItem>
+                      <SelectItem value="30">Last 30 days</SelectItem>
+                      <SelectItem value="90">Last 90 days</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead>ID</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedData.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={4}
+                            className="text-center text-gray-500 py-12"
+                          >
+                            No activity found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedData.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">
+                              {item.id}
+                            </TableCell>
+                            <TableCell>{item.type}</TableCell>
+                            <TableCell>{item.date}</TableCell>
+                            <TableCell className="text-right font-medium">
+                              {item.amount}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                {paginatedData.length > 0 && (
+                  <div className="flex items-center justify-center mx-2 gap-5 text-sm">
+                    <p className="text-gray-600 hidden md:block">
+                      Total <span>{filteredData.length}</span> items
+                    </p>
+
+                    <div className="flex items-center gap-2 md:gap-4">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handlePageChange(Math.max(1, currentPage - 1))
+                        }
+                        disabled={currentPage === 1}
+                        className="hover:bg-gray-100 disabled:opacity-50"
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </Button>
+
+                      <div className="flex items-center gap-2">
+                        {getPageNumbers().map((page, index) => (
+                          <div key={index}>
+                            {page === "..." ? (
+                              <span className="text-gray-500 px-2 flex items-center">
+                                <p className="-mt-2">...</p>
+                              </span>
+                            ) : (
+                              <Button
+                                variant={
+                                  currentPage === page ? "default" : "ghost"
+                                }
+                                size="sm"
+                                onClick={() => handlePageChange(page as number)}
+                                className={cn(
+                                  "min-w-8 md:min-w-10",
+                                  currentPage === page &&
+                                    "bg-orange-500 hover:bg-orange-600 text-white"
+                                )}
+                              >
+                                {page}
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handlePageChange(
+                            Math.min(totalPages, currentPage + 1)
+                          )
+                        }
+                        disabled={currentPage === totalPages}
+                        className="hover:bg-gray-100 disabled:opacity-50"
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </Button>
+
+                      <Select
+                        value={`${itemsPerPage}`}
+                        onValueChange={handleItemsPerPageChange}
+                      >
+                        <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:flex">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10 / page</SelectItem>
+                          <SelectItem value="20">20 / page</SelectItem>
+                          <SelectItem value="50">50 / page</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex justify-center mt-3 text-center">
+                  <div className="max-w-xl">
+                    <Image src={"/images/Cash on Delivery.png"} width={300} height={300} alt="cash on delivery" className="mx-auto" />
+                  <h3 className="font-rubik font-semibold text-munchprimary text-2xl">
+                    You haven’t set up your settlement account yet.
+                  </h3>
+                  <p className="text-sm max-w-lg mt-2">
+                    Set up your settlement account to receive payouts from
+                    orders, track your earnings, and view money movements for
+                    your store.
+                  </p>
+                  <Button
+                    className="bg-munchprimary mt-5 text-white"
+                    onClick={() => setActiveTab("payout")}
+                  >
+                    Setup settlement account
+                  </Button>
+                </div>
               </div>
             )}
-          </div>
+          </>
         )}
 
         {/* Payout Accounts Tab remains unchanged */}
@@ -802,7 +852,7 @@ export default function EarningsPage() {
                     {isLoading ? (
                       <LoaderCircle className="animate-spin" />
                     ) : (
-                      "Add"
+                      "Submit"
                     )}
                   </Button>
                 </div>

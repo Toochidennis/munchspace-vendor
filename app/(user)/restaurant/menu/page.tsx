@@ -1,16 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
-
-import { Input } from "@/components/ui/input";
+import { Search, ChevronLeft, ChevronRight, Settings2, X } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -25,8 +35,36 @@ import { Switch } from "@/components/ui/switch";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-// Mock data for different periods
+// Helper function for formatting prices in display
+const formatPrice = (rawValue: string): string => {
+  if (!rawValue) return "N0.00";
+  const num = parseFloat(rawValue);
+  if (isNaN(num)) return "N0.00";
+  return `N${num.toLocaleString("en-NG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+// Schema for menu item form (prices as string numbers, e.g., "1200.00")
+const menuItemSchema = z.object({
+  name: z.string().min(1, "Menu name is required"),
+  description: z.string().min(1, "Description is required"),
+  costPrice: z.string().min(1, "Cost price is required"),
+  sellingPrice: z.string().min(1, "Selling price is required"),
+});
+
+type MenuItemFormValues = z.infer<typeof menuItemSchema>;
+
+// Mock data (prices stored as raw numeric strings without formatting)
 const mockData = {
   last30: {
     items: Array.from({ length: 85 }, (_, i) => ({
@@ -35,8 +73,8 @@ const mockData = {
       image: "/images/foods/egusi.png",
       description:
         "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      costPrice: "N800.00",
-      sellingPrice: "N1,200.00",
+      costPrice: "800.00",
+      sellingPrice: "1200.00",
       available: Math.random() > 0.3,
     })),
   },
@@ -47,8 +85,8 @@ const mockData = {
       image: "/images/foods/egusi.png",
       description:
         "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      costPrice: "N750.00",
-      sellingPrice: "N1,100.00",
+      costPrice: "750.00",
+      sellingPrice: "1100.00",
       available: Math.random() > 0.4,
     })),
   },
@@ -59,8 +97,8 @@ const mockData = {
       image: "/images/foods/egusi.png",
       description:
         "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      costPrice: "N700.00",
-      sellingPrice: "N1,000.00",
+      costPrice: "700.00",
+      sellingPrice: "1000.00",
       available: Math.random() > 0.5,
     })),
   },
@@ -73,6 +111,18 @@ export default function MenuPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [items, setItems] = useState(mockData.last30.items);
   const [showSearchMobile, setShowSearchMobile] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+
+  const form = useForm<MenuItemFormValues>({
+    resolver: zodResolver(menuItemSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      costPrice: "",
+      sellingPrice: "",
+    },
+  });
 
   // Update items when period changes
   useEffect(() => {
@@ -103,6 +153,38 @@ export default function MenuPage() {
     );
   };
 
+  const handleEditItem = (item: any) => {
+    setEditingItem(item);
+    form.reset({
+      name: item.name,
+      description: item.description,
+      costPrice: item.costPrice,
+      sellingPrice: item.sellingPrice,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const onEditSubmit = (data: MenuItemFormValues) => {
+    if (editingItem) {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === editingItem.id
+            ? {
+                ...item,
+                name: data.name,
+                description: data.description,
+                costPrice: data.costPrice,
+                sellingPrice: data.sellingPrice,
+              }
+            : item
+        )
+      );
+    }
+    setEditDialogOpen(false);
+    setEditingItem(null);
+    form.reset();
+  };
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
@@ -112,7 +194,7 @@ export default function MenuPage() {
     setCurrentPage(1);
   };
 
-  // Pagination numbers logic (as per your exact specification)
+  // Pagination numbers logic
   const getPageNumbers = () => {
     if (totalPages <= 5) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -128,18 +210,18 @@ export default function MenuPage() {
         pages.push("...");
         pages.push(totalPages);
       }
-    } else if (currentPage > 5 && currentPage < totalPages) {
+    } else if (currentPage > 5 && currentPage < totalPages - 4) {
       pages.push(1);
       pages.push("...");
       pages.push(currentPage - 1, currentPage, currentPage + 1);
       pages.push("...");
       pages.push(totalPages);
     } else {
-      for (let i = 1; i <= 5; i++) {
+      pages.push(1);
+      pages.push("...");
+      for (let i = totalPages - 4; i <= totalPages; i++) {
         pages.push(i);
       }
-      pages.push("...");
-      pages.push(totalPages);
     }
 
     return pages;
@@ -151,8 +233,7 @@ export default function MenuPage() {
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="flex justify-between items-center mb-8 md:mb-15">
             <h1 className="text-3xl font-bold text-gray-900">Menu</h1>
-            {/* Search and Period Filter */}
-            <div className="md:flex items-center hidden  gap-6">
+            <div className="md:flex items-center hidden gap-6">
               <div className="relative flex-1 max-w-lg">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <Input
@@ -268,10 +349,10 @@ export default function MenuPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center text-gray-900">
-                      {item.costPrice}
+                      {formatPrice(item.costPrice)}
                     </TableCell>
                     <TableCell className="text-center text-gray-900 font-medium">
-                      {item.sellingPrice}
+                      {formatPrice(item.sellingPrice)}
                     </TableCell>
                     <TableCell className="text-center">
                       <Switch
@@ -289,6 +370,7 @@ export default function MenuPage() {
                         variant="ghost"
                         size="icon"
                         className="hover:bg-gray-100"
+                        onClick={() => handleEditItem(item)}
                       >
                         <Image
                           src="/images/Edit.svg"
@@ -313,10 +395,12 @@ export default function MenuPage() {
                     key={item.id}
                     className={cn(
                       "mb-4 pb-4 border-b flex gap-2 justify-between border-gray-200",
-                      index === paginatedItems.length - 1 && "mb-0 pb-0 border-0")}
+                      index === paginatedItems.length - 1 &&
+                        "mb-0 pb-0 border-0"
+                    )}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-29 h-16 bg-gray-100 rounded-lg overflow-hidden">
+                    <div className="flex items-center gap-2 mb-2 flex-1">
+                      <div className="w-29 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                         <Image
                           src={item.image}
                           alt={item.name}
@@ -325,8 +409,8 @@ export default function MenuPage() {
                           className="object-cover w-full h-full"
                         />
                       </div>
-                      <div>
-                        <span className="font-medium text-gray-900 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium text-gray-900 text-sm block">
                           {item.name}
                         </span>
                         <span className="text-gray-500 text-xs block">
@@ -334,9 +418,9 @@ export default function MenuPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-3 items-end">
-                      <span className="text-center text-gray-900 font-medium">
-                        {item.sellingPrice}
+                    <div className="flex flex-col gap-3 items-end flex-shrink-0">
+                      <span className="text-center text-gray-900 font-medium text-sm">
+                        {formatPrice(item.sellingPrice)}
                       </span>
                       <Switch
                         checked={item.available}
@@ -347,11 +431,154 @@ export default function MenuPage() {
                           item.available && "data-[state=checked]:bg-orange-500"
                         )}
                       />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="hover:bg-gray-100 h-8 w-8 p-0"
+                        onClick={() => handleEditItem(item)}
+                      >
+                        <Image
+                          src="/images/Edit.svg"
+                          alt="Edit"
+                          width={20}
+                          height={20}
+                        />
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             </Card>
+          </div>
+
+          {/* Edit Menu Item Dialog */}
+          <div
+            className={cn(
+              "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
+              editDialogOpen ? "absolute" : "hidden"
+            )}
+          >
+            <div className="w-85  md:w-lg bg-white font-rubik rounded-lg py-5 relative max-h-120 overflow-y-auto">
+              <div className="flex justify-between px-3 md:px-6">
+                <h1 className="text-xl font-semibold">Edit Menu Item</h1>
+                <X
+                  className="text-gray-600"
+                  onClick={() => setEditDialogOpen(false)}
+                />
+              </div>
+              <hr className="mt-3 mb-5" />
+
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onEditSubmit)}
+                  className="space-y-6 px-3 md:px-6"
+                >
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-normal text-slate-500">
+                          Menu Name <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter menu name"
+                            className="h-12"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-normal text-slate-500">
+                          Description <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter description"
+                            className="h-12"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="costPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="font-normal text-slate-500">
+                            Cost Price <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              className="h-12"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="sellingPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="font-normal text-slate-500">
+                            Selling Price{" "}
+                            <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              className="h-12"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <DialogFooter className="gap-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setEditDialogOpen(false)}
+                      className="px-6 bg-gray-100 h-10 text-black"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="bg-orange-500 hover:bg-orange-600 h-10 px-6 text-white"
+                    >
+                      Update Menu
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </div>
           </div>
 
           {/* Pagination */}
@@ -431,7 +658,6 @@ export default function MenuPage() {
           <h2 className="font-bold text-2xl">Menu</h2>
           <div className="flex items-center justify-center px-6">
             <div className="max-w-xl flex flex-col items-center">
-              {/* Illustration */}
               <div className="relative mb-12 mt-10">
                 <Image
                   src="/images/empty-menu-illustration.png"
@@ -443,7 +669,6 @@ export default function MenuPage() {
                 />
               </div>
 
-              {/* Message */}
               <h2 className="text-2xl font-medium text-orange-500 mb-4">
                 You don't have any menu added yet.
               </h2>
@@ -452,7 +677,6 @@ export default function MenuPage() {
                 store. Start by adding different menus for your products.
               </p>
 
-              {/* Call to Action */}
               <Button className="bg-orange-500 mt-8 hover:bg-orange-600 text-white px-8 py-6 text-lg flex items-center gap-3">
                 <span className="text-2xl">+</span>
                 Add a Menu
