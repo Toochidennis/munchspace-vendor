@@ -13,7 +13,7 @@ const restaurant = () => {
           This page doesn't exist or was removed, we suggest you return back to
           dashboard
         </p>
-        <Link href={"/"}>
+        <Link href={"/restaurant/dashboard"}>
           <Button className="bg-munchprimary hover:bg-munchprimaryDark mt-5 cursor-pointer">
             <ArrowLeft />
             <p>Go to Dashboard</p>
