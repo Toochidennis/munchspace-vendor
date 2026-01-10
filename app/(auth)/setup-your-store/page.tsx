@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { date, z } from "zod";
+import { z } from "zod";
 import { format } from "date-fns";
 import Image from "next/image";
 import {
@@ -17,11 +17,9 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Toggle } from "@/components/ui/toggle";
 import {
   Command,
   CommandEmpty,
@@ -46,24 +44,29 @@ import {
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
+import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
+import { getAccessToken } from "@/app/lib/auth";
 
 const setupSchema = z.object({
-  storeImage: z.url().optional(),
-  storeName: z.string().min(1, "Store name is required."),
-  storeEmail: z.email("Invalid email address."),
+  storeImage: z.string().url().optional(),
+  legalName: z.string().min(1, "Legal name is required."),
+  displayName: z.string().min(1, "Display name is required."),
+  storeEmail: z.string().email("Invalid email address."),
   phoneNumber: z.string().min(10, "Valid phone number required."),
   establishedDate: z.date("Established date is required."),
   description: z
     .string()
     .min(10, "Description must be at least 10 characters."),
+  socialLink: z.string().url({ message: "Invalid URL" }).optional(),
 
-  storeTypes: z.array(z.string()).min(1, "Select at least one store type."),
+  businessType: z.string().min(1, "Select a business type."),
+  brandType: z.string().optional(),
   serviceOperations: z
     .array(z.string())
     .min(1, "Select at least one service operation."),
 
   workingHours: z.record(
-    z.string(), // Key type (day name: "Monday", etc.)
+    z.string(),
     z.object({
       enabled: z.boolean(),
       start: z.string(),
@@ -76,9 +79,14 @@ const setupSchema = z.object({
   lga: z.string().min(1, "LGA is required."),
   streetName: z.string().min(1, "Street name is required."),
   fullAddress: z.string().min(1, "Full address is required."),
+  postalCode: z.string().optional(),
+  latitude: z.number(),
+  longitude: z.number(),
 });
 
 type SetupValues = z.infer<typeof setupSchema>;
+
+type Option = { value: string; label: string };
 
 const daysOfWeek = [
   "Monday",
@@ -90,40 +98,49 @@ const daysOfWeek = [
   "Sunday",
 ];
 
-const storeTypeOptions = [
-  { value: "restaurant", label: "Restaurant" },
-  { value: "cafe", label: "Cafe" },
-  { value: "fast-food", label: "Fast Food" },
-  { value: "bakery", label: "Bakery" },
-  { value: "bar", label: "Bar" },
-  // Add more as needed
-];
+const API_BASE = "https://api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
-const serviceOperationOptions = [
-  { value: "dine-in", label: "Dine In" },
-  { value: "takeaway", label: "Takeaway" },
-  { value: "delivery", label: "Delivery" },
-  { value: "pre-order", label: "Pre-Order" },
-  { value: "catering", label: "Catering" },
-  // Add more as needed
-];
+const GOOGLE_API_KEY = "AIzaSyDjoKEpZBTaQuO4dPjbN4W1tHEdxuacPFI";
 
 export default function SetupStorePage() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [storeTypeOpen, setStoreTypeOpen] = useState(false);
+  const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
+  const [brandTypeOpen, setBrandTypeOpen] = useState(false);
   const [serviceOperationOpen, setServiceOperationOpen] = useState(false);
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+
+  const [businessTypes, setBusinessTypes] = useState<Option[]>([]);
+  const [brandTypes, setBrandTypes] = useState<Option[]>([]);
+  const [serviceOperations, setServiceOperations] = useState<Option[]>([]);
+  const [metaLoading, setMetaLoading] = useState(true);
+  const [metaError, setMetaError] = useState("");
+
+  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const [marker, setMarker] = useState<google.maps.Marker | null>(null);
+
+  function getCookie(name: string): string | null {
+    return (
+      document.cookie
+        .split("; ")
+        .find((row) => row.startsWith(`${name}=`))
+        ?.split("=")[1] ?? null
+    );
+  }
 
   const form = useForm<SetupValues>({
     resolver: zodResolver(setupSchema),
     mode: "onChange",
     defaultValues: {
-      storeTypes: [],
+      businessType: "",
+      brandType: "",
       serviceOperations: [],
-      storeName: "",
+      legalName: "",
+      displayName: "",
       storeEmail: "",
       phoneNumber: "",
       description: "",
@@ -132,6 +149,9 @@ export default function SetupStorePage() {
       lga: "",
       streetName: "",
       fullAddress: "",
+      postalCode: "",
+      latitude: 0,
+      longitude: 0,
       workingHours: {
         Monday: { enabled: true, start: "08:00", end: "20:00" },
         Tuesday: { enabled: true, start: "08:00", end: "20:00" },
@@ -144,6 +164,143 @@ export default function SetupStorePage() {
     },
   });
 
+  useEffect(() => {
+    async function fetchMeta() {
+      setMetaLoading(true);
+      setMetaError("");
+      try {
+        const [btRes, brRes, soRes] = await Promise.all([
+          fetch(`${API_BASE}/meta/business-types`, {
+            headers: { "x-api-key": API_KEY },
+          }),
+          fetch(`${API_BASE}/meta/brand-types`, {
+            headers: { "x-api-key": API_KEY },
+          }),
+          fetch(`${API_BASE}/meta/service-operations`, {
+            headers: { "x-api-key": API_KEY },
+          }),
+        ]);
+
+        let btData: any = [];
+        let brData: any = [];
+        let soData: any = [];
+
+        if (btRes.ok) {
+          const json = await btRes.json();
+          btData = Array.isArray(json) ? json : json.data || json.items || [];
+        } else {
+          throw new Error(`Business types: ${btRes.status}`);
+        }
+
+        if (brRes.ok) {
+          const json = await brRes.json();
+          brData = Array.isArray(json) ? json : json.data || json.items || [];
+        } else {
+          throw new Error(`Brand types: ${brRes.status}`);
+        }
+
+        if (soRes.ok) {
+          const json = await soRes.json();
+          soData = Array.isArray(json) ? json : json.data || json.items || [];
+        } else {
+          throw new Error(`Service operations: ${soRes.status}`);
+        }
+
+        const normalize = (arr: any[]) =>
+          arr.map((item) => ({
+            value: String(item.id),
+            label: item.label || item.name || String(item),
+          }));
+
+        setBusinessTypes(normalize(btData));
+        setBrandTypes(normalize(brData));
+        setServiceOperations(normalize(soData));
+      } catch (err: any) {
+        console.error("Meta fetch error:", err);
+        setMetaError(
+          "Failed to load business types, brand types or service operations."
+        );
+      } finally {
+        setMetaLoading(false);
+      }
+    }
+
+    fetchMeta();
+  }, []);
+
+  useEffect(() => {
+    if (step !== 4) return;
+
+    async function initMap() {
+      try {
+        setOptions({
+          key: GOOGLE_API_KEY,
+          libraries: ["places"],
+        });
+
+        const [{ Map }, placesLib] = await Promise.all([
+          importLibrary("maps"),
+          importLibrary("places"),
+        ]);
+
+        const mapDiv = document.getElementById("map");
+        if (!mapDiv) return;
+
+        const initialCenter = { lat: 6.5244, lng: 3.3792 };
+
+        const newMap = new Map(mapDiv, {
+          center: initialCenter,
+          zoom: 12,
+        });
+        setMap(newMap);
+
+        const newMarker = new google.maps.Marker({
+          position: initialCenter,
+          map: newMap,
+          draggable: true,
+        });
+        setMarker(newMarker);
+
+        newMarker.addListener("dragend", (e: google.maps.MapMouseEvent) => {
+          if (e.latLng) {
+            form.setValue("latitude", e.latLng.lat());
+            form.setValue("longitude", e.latLng.lng());
+          }
+        });
+
+        newMap.addListener("click", (e: google.maps.MapMouseEvent) => {
+          if (e.latLng) {
+            newMarker.setPosition(e.latLng);
+            form.setValue("latitude", e.latLng.lat());
+            form.setValue("longitude", e.latLng.lng());
+          }
+        });
+
+        const searchInput = document.getElementById(
+          "location-search"
+        ) as HTMLInputElement;
+        if (searchInput) {
+          const autocomplete = new placesLib.Autocomplete(searchInput);
+
+          autocomplete.addListener("place_changed", () => {
+            const place = autocomplete.getPlace();
+            if (place.geometry?.location) {
+              newMap.setCenter(place.geometry.location);
+              newMap.setZoom(15);
+              newMarker.setPosition(place.geometry.location);
+              form.setValue("latitude", place.geometry.location.lat());
+              form.setValue("longitude", place.geometry.location.lng());
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load Google Maps:", error);
+      }
+    }
+
+    initMap();
+  }, [step, form]);
+
   const progress = (step / 4) * 100;
 
   const validateCurrentStep = async () => {
@@ -151,15 +308,24 @@ export default function SetupStorePage() {
 
     if (step === 1)
       fields = [
-        "storeName",
+        "legalName",
+        "displayName",
         "storeEmail",
         "phoneNumber",
         "establishedDate",
         "description",
       ];
-    if (step === 2) fields = ["storeTypes", "serviceOperations"];
+    if (step === 2) fields = ["businessType", "serviceOperations"];
     if (step === 4)
-      fields = ["country", "state", "lga", "streetName", "fullAddress"];
+      fields = [
+        "country",
+        "state",
+        "lga",
+        "streetName",
+        "fullAddress",
+        "latitude",
+        "longitude",
+      ];
 
     return await form.trigger(fields);
   };
@@ -168,13 +334,107 @@ export default function SetupStorePage() {
     const isValid = await validateCurrentStep();
     if (!isValid) return;
 
-    setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setIsLoading(false);
+    if (step === 4) {
+      setIsLoading(true);
 
-    if (step < 4) setStep(step + 1);
-    else {
-      console.log("Store setup completed:", form.getValues());
+      try {
+        const values = form.getValues();
+
+        const transformedWorkingHours = daysOfWeek
+          .map((day) => ({
+            day: day.toUpperCase(),
+            openTime: values.workingHours[day].start,
+            closeTime: values.workingHours[day].end,
+          }))
+          .filter((_, index) => values.workingHours[daysOfWeek[index]].enabled);
+
+        // Prepare FormData for multipart/form-data
+        const formData = new FormData();
+
+        formData.append("legalName", values.legalName);
+        formData.append("displayName", values.displayName);
+        formData.append("email", values.storeEmail);
+        formData.append("phone", values.phoneNumber);
+        formData.append("description", values.description);
+
+        if (values.socialLink) {
+          formData.append("website", values.socialLink);
+        }
+
+        formData.append(
+          "establishedAt",
+          format(values.establishedDate, "yyyy-MM-dd")
+        );
+
+        if (values.businessType) {
+          formData.append("businessTypeId", values.businessType);
+        }
+        if (values.brandType) {
+          formData.append("brandTypeId", values.brandType);
+        }
+
+        // Send each service operation ID separately
+        values.serviceOperations.forEach((id) => {
+          formData.append("serviceOperationIds[]", id);
+        });
+
+        // Complex objects as JSON strings
+        formData.append(
+          "workingHours",
+          JSON.stringify(transformedWorkingHours)
+        );
+
+        const addressObj = {
+          country: values.country,
+          state: values.state,
+          lga: values.lga,
+          streetName: values.streetName,
+          fullAddress: values.fullAddress,
+          postalCode: values.postalCode || null,
+          latitude: Number(values.latitude),
+          longitude: Number(values.longitude),
+        };
+        formData.append("address", JSON.stringify(addressObj));
+        console.log(addressObj.latitude, addressObj.longitude)
+
+        if (values.storeImage) {
+          formData.append("imageUrl", values.storeImage);
+        }
+
+        const accessToken = getAccessToken();
+
+
+        const response = await fetch(`${API_BASE}/vendors/me/businesses`, {
+          method: "POST",
+          headers: {
+            // Do NOT set Content-Type → browser will handle multipart boundary
+            "x-api-key": API_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: formData,
+        });
+
+        console.log("formData", [...formData.entries()]);
+
+        const feedback = await response.json();
+        // console.log("Server response:", feedback);
+
+        if (response.ok) {
+          console.log("Store created successfully!");
+          // window.location.href = "/restaurant/dashboard";
+        } else {
+          console.error("Failed to create store:", feedback);
+        }
+      } catch (error) {
+        console.error("Error submitting store:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      setIsLoading(true);
+      await new Promise((r) => setTimeout(r, 800));
+      setIsLoading(false);
+      setStep(step + 1);
     }
   };
 
@@ -188,15 +448,6 @@ export default function SetupStorePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // if (file.size > 2000000) {
-    //   alert("File exceeds 2MB limit. Please select a smaller image.");
-    //   return;
-    // }
-    // if (!["image/png", "image/jpeg", "image/jpg"].includes(file.type)) {
-    //   alert("Only PNG or JPEG images are allowed.");
-    //   return;
-    // }
-
     setUploading(true);
 
     const localPreview = URL.createObjectURL(file);
@@ -205,7 +456,7 @@ export default function SetupStorePage() {
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("upload_preset", "property-maestro-unsigned"); // Replace with your exact unsigned preset name
+    formData.append("upload_preset", "property-maestro-unsigned");
 
     try {
       const response = await fetch(
@@ -217,19 +468,15 @@ export default function SetupStorePage() {
       );
 
       const data = await response.json();
-      console.log("Cloudinary response:", data); // Debug the full response
 
       if (data.secure_url) {
         form.setValue("storeImage", data.secure_url);
         setPreviewUrl(data.secure_url);
       } else {
-        throw new Error(
-          data.error?.message || "Upload failed – check console for details"
-        );
+        throw new Error(data.error?.message || "Upload failed");
       }
     } catch (error: any) {
       console.error("Cloudinary upload error:", error);
-      // alert(`Upload failed: ${error.message || "Please try again."}`);
     } finally {
       setUploading(false);
     }
@@ -239,6 +486,11 @@ export default function SetupStorePage() {
 
   const toggleOpen = (day: string) => {
     setOpenDays((prev) => ({ ...prev, [day]: !prev[day] }));
+  };
+
+  const formatBadgeLabel = (value: string, options: Option[]) => {
+    const found = options.find((o) => o.value === value);
+    return found ? found.label : value.replace(/_/g, " ");
   };
 
   return (
@@ -266,7 +518,7 @@ export default function SetupStorePage() {
       </div>
 
       {/* Right Form */}
-      <div className="flex items-center justify-center p-4 md:p-8  mt-10">
+      <div className="flex items-center justify-center p-4 md:p-8 mt-10">
         <div className="w-full max-w-lg space-y-8">
           <Link href="/">
             <Image
@@ -287,7 +539,7 @@ export default function SetupStorePage() {
               <Progress value={progress} className="h-2" />
               <p className="text-sm text-right text-blue-600 whitespace-nowrap">
                 {step === 1 && "Store Details (1/4)"}
-                {step === 2 && "Store Type (2/4)"}
+                {step === 2 && "Business Type (2/4)"}
                 {step === 3 && "Working Hours (3/4)"}
                 {step === 4 && "Store Address (4/4)"}
               </p>
@@ -305,7 +557,6 @@ export default function SetupStorePage() {
               {/* Step 1: Store Details */}
               {step === 1 && (
                 <>
-                  {/* Direct Cloudinary Upload with Preview */}
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 gap-8 items-start">
                       <div className="space-y-4">
@@ -355,22 +606,6 @@ export default function SetupStorePage() {
                                 <p className="text-xs text-center text-muted-foreground mt-2">
                                   PNG or JPEG (Max. File Size: 2MB)
                                 </p>
-
-                                {/* {uploading ? (
-                                  <>
-                                    <LoaderCircle className="h-8 w-8 animate-spin mx-auto" />
-                                    <span>Uploading...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Upload className="h-8 w-8 mx-auto" />
-                                    <span>
-                                      {previewUrl
-                                        ? "Change Image"
-                                        : "Click to Upload"}
-                                    </span>
-                                  </>
-                                )} */}
                               </span>
                             </div>
                           </Button>
@@ -381,15 +616,35 @@ export default function SetupStorePage() {
 
                   <FormField
                     control={form.control}
-                    name="storeName"
+                    name="legalName"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="font-normal text-slate-500">
-                          Store Name <span className="text-munchred">*</span>
+                          Legal Name <span className="text-munchred">*</span>
                         </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Store name"
+                            placeholder="Legal name"
+                            className="h-12 placeholder:text-slate-400"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="displayName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-normal text-slate-500">
+                          Display Name <span className="text-munchred">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Display name"
                             className="h-12 placeholder:text-slate-400"
                             {...field}
                           />
@@ -505,24 +760,50 @@ export default function SetupStorePage() {
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name="socialLink"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-normal text-slate-500">
+                          Website or Social Link (optional)
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="https://example.com"
+                            className="h-12 placeholder:text-slate-400"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </>
               )}
 
-              {/* Step 2: Store Types & Service Operations */}
+              {/* Step 2: Business Type & Service Operations */}
               {step === 2 && (
                 <div className="space-y-8">
-                  {/* Store Type Multi-Select */}
+                  {metaLoading && (
+                    <p className="text-center">Loading options...</p>
+                  )}
+                  {metaError && (
+                    <p className="text-center text-red-500">{metaError}</p>
+                  )}
+
                   <FormField
                     control={form.control}
-                    name="storeTypes"
+                    name="businessType"
                     render={() => (
                       <FormItem className="mb-5">
                         <FormLabel className="font-normal text-slate-500">
-                          Store Type <span className="text-munchred">*</span>
+                          Business Type <span className="text-munchred">*</span>
                         </FormLabel>
                         <Popover
-                          open={storeTypeOpen}
-                          onOpenChange={setStoreTypeOpen}
+                          open={businessTypeOpen}
+                          onOpenChange={setBusinessTypeOpen}
                         >
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -530,13 +811,17 @@ export default function SetupStorePage() {
                                 variant="outline"
                                 role="combobox"
                                 className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                                disabled={
+                                  metaLoading || businessTypes.length === 0
+                                }
                               >
                                 <span className="truncate">
-                                  {form.watch("storeTypes").length > 0
-                                    ? `${
-                                        form.watch("storeTypes").length
-                                      } selected`
-                                    : "Select store types"}
+                                  {form.watch("businessType")
+                                    ? formatBadgeLabel(
+                                        form.watch("businessType"),
+                                        businessTypes
+                                      )
+                                    : "Select business type"}
                                 </span>
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -544,44 +829,29 @@ export default function SetupStorePage() {
                           </PopoverTrigger>
                           <PopoverContent
                             className="w-full p-0"
-                            onOpenAutoFocus={(e) => e.preventDefault()}
+                            align="start"
+                            side="bottom"
                           >
-                            <Command>
-                              <CommandInput
-                                autoFocus={false}
-                                placeholder="Search store type..."
-                              />
+                            <Command className="max-h-72 overflow-y-auto">
+                              <CommandInput placeholder="Search business type..." />
                               <CommandEmpty>No type found.</CommandEmpty>
                               <CommandGroup>
-                                {storeTypeOptions.map((option) => (
+                                {businessTypes.map((option) => (
                                   <CommandItem
                                     key={option.value}
-                                    onSelect={async () => {
-                                      const current =
-                                        form.getValues("storeTypes");
-                                      if (current.includes(option.value)) {
-                                        form.setValue(
-                                          "storeTypes",
-                                          current.filter(
-                                            (v) => v !== option.value
-                                          )
-                                        );
-                                      } else {
-                                        form.setValue("storeTypes", [
-                                          ...current,
-                                          option.value,
-                                        ]);
-                                      }
-                                      await form.trigger("storeTypes");
-                                      setStoreTypeOpen(false);
+                                    onSelect={() => {
+                                      form.setValue(
+                                        "businessType",
+                                        option.value
+                                      );
+                                      setBusinessTypeOpen(false);
                                     }}
                                   >
                                     <Check
                                       className={cn(
                                         "mr-2 h-4 w-4",
-                                        form
-                                          .watch("storeTypes")
-                                          .includes(option.value)
+                                        form.watch("businessType") ===
+                                          option.value
                                           ? "opacity-100"
                                           : "opacity-0"
                                       )}
@@ -593,41 +863,91 @@ export default function SetupStorePage() {
                             </Command>
                           </PopoverContent>
                         </Popover>
-                        <div className="flex flex-wrap gap-2">
-                          {form.watch("storeTypes").map((value) => {
-                            const label =
-                              storeTypeOptions.find((o) => o.value === value)
-                                ?.label || value;
-                            return (
-                              <Badge
-                                key={value}
-                                variant="secondary"
-                                className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
-                              >
-                                {label}
-                                <span
-                                  className="ml-2 cursor-pointer text-2x"
-                                  onClick={() =>
-                                    form.setValue(
-                                      "storeTypes",
-                                      form
-                                        .getValues("storeTypes")
-                                        .filter((v) => v !== value)
-                                    )
-                                  }
-                                >
-                                  <X className="w-4 font-black" />
-                                </span>
-                              </Badge>
-                            );
-                          })}
-                        </div>
-                        <FormMessage className="" />
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  {/* Service Operation Multi-Select */}
+                  <FormField
+                    control={form.control}
+                    name="brandType"
+                    render={() => {
+                      const watchedBrandType = form.watch("brandType");
+
+                      return (
+                        <FormItem className="mb-5">
+                          <FormLabel className="font-normal text-slate-500">
+                            Brand Type (optional)
+                          </FormLabel>
+                          <Popover
+                            open={brandTypeOpen}
+                            onOpenChange={setBrandTypeOpen}
+                          >
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                                  disabled={
+                                    metaLoading || brandTypes.length === 0
+                                  }
+                                >
+                                  <span className="truncate">
+                                    {watchedBrandType
+                                      ? formatBadgeLabel(
+                                          watchedBrandType,
+                                          brandTypes
+                                        )
+                                      : "Select brand type"}
+                                  </span>
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="w-full p-0"
+                              align="start"
+                              side="bottom"
+                            >
+                              <Command className="max-h-72 overflow-y-auto">
+                                <CommandInput placeholder="Search brand type..." />
+                                <CommandEmpty>No type found.</CommandEmpty>
+                                <CommandGroup>
+                                  {brandTypes.map((option) => (
+                                    <CommandItem
+                                      key={option.value}
+                                      onSelect={() => {
+                                        form.setValue(
+                                          "brandType",
+                                          watchedBrandType === option.value
+                                            ? ""
+                                            : option.value
+                                        );
+                                        setBrandTypeOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          watchedBrandType === option.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      {option.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+
                   <FormField
                     control={form.control}
                     name="serviceOperations"
@@ -647,6 +967,9 @@ export default function SetupStorePage() {
                                 variant="outline"
                                 role="combobox"
                                 className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                                disabled={
+                                  metaLoading || serviceOperations.length === 0
+                                }
                               >
                                 <span className="truncate">
                                   {form.watch("serviceOperations").length > 0
@@ -660,20 +983,18 @@ export default function SetupStorePage() {
                             </FormControl>
                           </PopoverTrigger>
                           <PopoverContent
-                            onOpenAutoFocus={(e) => e.preventDefault()}
                             className="w-full p-0"
+                            align="start"
+                            side="bottom"
                           >
-                            <Command>
-                              <CommandInput
-                                autoFocus={false}
-                                placeholder="Search operation..."
-                              />
+                            <Command className="max-h-72 overflow-y-auto">
+                              <CommandInput placeholder="Search operation..." />
                               <CommandEmpty>No operation found.</CommandEmpty>
                               <CommandGroup>
-                                {serviceOperationOptions.map((option) => (
+                                {serviceOperations.map((option) => (
                                   <CommandItem
                                     key={option.value}
-                                    onSelect={async () => {
+                                    onSelect={() => {
                                       const current =
                                         form.getValues("serviceOperations");
                                       if (current.includes(option.value)) {
@@ -689,7 +1010,6 @@ export default function SetupStorePage() {
                                           option.value,
                                         ]);
                                       }
-                                      await form.trigger("serviceOperations");
                                       setServiceOperationOpen(false);
                                     }}
                                   >
@@ -710,35 +1030,29 @@ export default function SetupStorePage() {
                             </Command>
                           </PopoverContent>
                         </Popover>
-                        <div className="flex flex-wrap gap-2">
-                          {form.watch("serviceOperations").map((value) => {
-                            const label =
-                              serviceOperationOptions.find(
-                                (o) => o.value === value
-                              )?.label || value;
-                            return (
-                              <Badge
-                                key={value}
-                                variant="secondary"
-                                className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {form.watch("serviceOperations").map((value) => (
+                            <Badge
+                              key={value}
+                              variant="secondary"
+                              className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
+                            >
+                              {formatBadgeLabel(value, serviceOperations)}
+                              <span
+                                className="ml-2 cursor-pointer"
+                                onClick={() =>
+                                  form.setValue(
+                                    "serviceOperations",
+                                    form
+                                      .getValues("serviceOperations")
+                                      .filter((v) => v !== value)
+                                  )
+                                }
                               >
-                                {label}
-                                <span
-                                  className="ml-2  cursor-pointer"
-                                  onClick={() =>
-                                    form.setValue(
-                                      "storeTypes",
-                                      form
-                                        .getValues("storeTypes")
-                                        .filter((v) => v !== value)
-                                    )
-                                  }
-                                >
-                                  <X className="w-4 font-black" />
-                                </span>
-                              </Badge>
-                            );
-                          })}
+                                <X className="w-4 font-black" />
+                              </span>
+                            </Badge>
+                          ))}
                         </div>
                         <FormMessage />
                       </FormItem>
@@ -755,13 +1069,6 @@ export default function SetupStorePage() {
                     const start = form.watch(`workingHours.${day}.start`);
                     const end = form.watch(`workingHours.${day}.end`);
                     const isOpen = openDays[day] || false;
-
-                    // const openKey = `open_${day}`;
-                    // const isOpen = form.watch(openKey) || false;
-
-                    // const toggleOpen = () => {
-                    //   form.setValue(openKey, !isOpen);
-                    // };
 
                     const formatTime = (time: string) => {
                       const [hours, minutes] = time.split(":");
@@ -846,7 +1153,7 @@ export default function SetupStorePage() {
                                 <Input
                                   type="time"
                                   value={end}
-                                  className="h-10"
+                                  className="h-10 w-full"
                                   onChange={(e) =>
                                     form.setValue(
                                       `workingHours.${day}.end`,
@@ -857,9 +1164,9 @@ export default function SetupStorePage() {
                               </div>
                             </div>
                             <div>
-                              <p className="mb-2 text-transparent">a</p>
+                              <p className="mb-2 text-transparent">Reset</p>
                               <div
-                                className="rounded-lg bg-accent px-2"
+                                className="rounded-lg bg-accent px-2 cursor-pointer"
                                 onClick={resetDay}
                               >
                                 <BrushCleaning className="text-munchprimary w-10 h-10 p-2" />
@@ -876,6 +1183,19 @@ export default function SetupStorePage() {
               {/* Step 4: Store Address */}
               {step === 4 && (
                 <div className="space-y-6">
+                  <FormItem>
+                    <FormLabel className="font-normal text-slate-500">
+                      Search Location
+                    </FormLabel>
+                    <Input
+                      id="location-search"
+                      placeholder="Search for a location..."
+                      className="h-12"
+                    />
+                  </FormItem>
+
+                  <div id="map" className="h-64 w-full rounded-lg border"></div>
+
                   <div className="grid md:grid-cols-2 gap-6">
                     <FormField
                       control={form.control}
@@ -918,25 +1238,47 @@ export default function SetupStorePage() {
                     />
                   </div>
 
-                  <FormField
-                    control={form.control}
-                    name="lga"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-normal text-slate-500">
-                          LGA <span className="text-munchred">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Select local government area"
-                            className="h-12 placeholder:text-slate-400"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="lga"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="font-normal text-slate-500">
+                            LGA <span className="text-munchred">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Select local government area"
+                              className="h-12 placeholder:text-slate-400"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="postalCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="font-normal text-slate-500">
+                            Postal Code (optional)
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="e.g. 100001"
+                              className="h-12 placeholder:text-slate-400"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
                   <FormField
                     control={form.control}
@@ -996,7 +1338,13 @@ export default function SetupStorePage() {
                 <div className="basis-5/6 ps-5">
                   <Button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={
+                      isLoading ||
+                      (step === 2 &&
+                        (metaLoading ||
+                          businessTypes.length === 0 ||
+                          serviceOperations.length === 0))
+                    }
                     className="bg-munchprimary hover:bg-munchprimaryDark rounded-full px-12 py-6 w-full"
                   >
                     {isLoading ? (
