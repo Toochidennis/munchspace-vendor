@@ -226,22 +226,6 @@ export default function CreateMenuPage() {
     };
 
     console.log(payload)
-    // try {
-    //   const response = await fetch("/api/menu", {
-    //     method: "POST",
-    //     headers: { "Content-Type": "application/json" },
-    //     body: JSON.stringify(payload),
-    //   });
-
-    //   if (response.ok) {
-    //     alert("Menu created successfully!");
-    //   } else {
-    //     alert("Failed to create menu");
-    //   }
-    // } catch (error) {
-    //   console.error(error);
-    //   alert("An error occurred");
-    // }
   };
 
   const isFirstTab = activeTab === "details";

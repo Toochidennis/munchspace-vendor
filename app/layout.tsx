@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Rubik, Inter } from "next/font/google";
 import "./globals.css";
+import ClientWrapper from "@/components/layout/ClientWrapper";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -22,6 +23,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  
   return (
     <html lang="en">
       <head>
@@ -31,7 +33,7 @@ export default function RootLayout({
       <body
         className={`${rubik.variable} ${inter.variable} antialiased overflow-x-hidden max-w-500 mx-auto w-screen`}
       >
-        {children}
+        <ClientWrapper>{children}</ClientWrapper>
       </body>
     </html>
   );

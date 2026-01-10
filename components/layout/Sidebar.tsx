@@ -20,6 +20,7 @@ import Image from "next/image";
 import { Card } from "../ui/card";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { logout } from "@/app/lib/auth";
 
 export default function RestaurantSidebar() {
   const [collapsed, setCollapsed] = useState(false);
@@ -236,6 +237,7 @@ export default function RestaurantSidebar() {
                       collapsed && "justify-center px-0",
                       "hover:bg-munchprimaryDark"
                     )}
+                    onClick={logout}
                   >
                     <Image
                       src={"/images/Logout.svg"}
@@ -415,6 +417,7 @@ export default function RestaurantSidebar() {
                           "flex items-center bg-munchprimary text-white gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
                           "hover:bg-munchprimaryDark"
                         )}
+                        onClick={logout}
                       >
                         <Image
                           src={"/images/Logout.svg"}
@@ -435,7 +438,10 @@ export default function RestaurantSidebar() {
                   <p className="text-sm font-medium truncate">Idris Adegoke</p>
                   <p className="text-xs">Admin</p>
                 </div>
-                <button className={cn("p-2 rounded-lg  transition-colors")} onClick={() => setShowMore(!showMore)}>
+                <button
+                  className={cn("p-2 rounded-lg  transition-colors")}
+                  onClick={() => setShowMore(!showMore)}
+                >
                   <Ellipsis className="h-4 w-4" />
                 </button>
               </div>
