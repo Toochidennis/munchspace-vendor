@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { setAccessToken } from "@/app/lib/auth";
+import { setAccessToken, setBusinessId } from "@/app/lib/auth";
 
 const API_BASE = "https://api.munchspace.io/api/v1";
 const API_KEY =
@@ -190,7 +190,11 @@ export default function LoginPage() {
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
+        // const businessId = res.data.vendor.businessIds[0]
+        console.log("businessId", res.data.vendor.businessId);
 
+        // Save business id in memory
+        setBusinessId(res.data.vendor.businessId)
         // Save tokens only after successful OTP verification
         setAccessToken(accessToken);
         // localStorage.setItem("accessToken", accessToken);

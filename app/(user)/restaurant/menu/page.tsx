@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, ChevronLeft, ChevronRight, Settings2, X } from "lucide-react";
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Settings2,
+  X,
+  Trash2,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -42,19 +49,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { refreshAccessToken } from "@/app/lib/api";
+import { toast } from "sonner";
+
+const API_BASE = "https://api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
 // Helper function for formatting prices in display
 const formatPrice = (rawValue: string): string => {
-  if (!rawValue) return "N0.00";
+  if (!rawValue) return "₦0.00";
   const num = parseFloat(rawValue);
-  if (isNaN(num)) return "N0.00";
-  return `N${num.toLocaleString("en-NG", {
+  if (isNaN(num)) return "₦0.00";
+  return `₦${num.toLocaleString("en-NG", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 };
 
-// Schema for menu item form (prices as string numbers, e.g., "1200.00")
+// ──────────────────────────────────────────────────────────────
+// Schema & types
+// ──────────────────────────────────────────────────────────────
+
 const menuItemSchema = z.object({
   name: z.string().min(1, "Menu name is required"),
   description: z.string().min(1, "Description is required"),
@@ -64,55 +81,90 @@ const menuItemSchema = z.object({
 
 type MenuItemFormValues = z.infer<typeof menuItemSchema>;
 
-// Mock data (prices stored as raw numeric strings without formatting)
-const mockData = {
-  last30: {
-    items: Array.from({ length: 85 }, (_, i) => ({
-      id: i + 1,
-      name: "Pounded Yam With Egusi",
-      image: "/images/foods/egusi.png",
-      description:
-        "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      costPrice: "800.00",
-      sellingPrice: "1200.00",
-      available: Math.random() > 0.3,
-    })),
-  },
-  last7: {
-    items: Array.from({ length: 35 }, (_, i) => ({
-      id: i + 1,
-      name: "Pounded Yam With Egusi",
-      image: "/images/foods/egusi.png",
-      description:
-        "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      costPrice: "750.00",
-      sellingPrice: "1100.00",
-      available: Math.random() > 0.4,
-    })),
-  },
-  today: {
-    items: Array.from({ length: 12 }, (_, i) => ({
-      id: i + 1,
-      name: "Pounded Yam With Egusi",
-      image: "/images/foods/egusi.png",
-      description:
-        "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      costPrice: "700.00",
-      sellingPrice: "1000.00",
-      available: Math.random() > 0.5,
-    })),
-  },
-};
+interface MenuItem {
+  id: number;
+  name: string;
+  image: string;
+  description: string;
+  costPrice: string;
+  sellingPrice: string;
+  available: boolean;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Authenticated fetch helper with refresh support
+// ──────────────────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) {
+      throw new Error("Session expired - refresh failed");
+    }
+    token = getAccessToken();
+    if (!token) {
+      throw new Error("Refresh succeeded but no token available");
+    }
+  }
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "x-api-key": API_KEY,
+    ...init.headers,
+  };
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) {
+      throw new Error("Session expired during request (refresh failed)");
+    }
+
+    token = getAccessToken();
+    if (!token) {
+      throw new Error("Refresh succeeded but no token available");
+    }
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Main component
+// ──────────────────────────────────────────────────────────────
 
 export default function MenuPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [period, setPeriod] = useState<"last30" | "last7" | "today">("last30");
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [items, setItems] = useState(mockData.last30.items);
+  const [items, setItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showSearchMobile, setShowSearchMobile] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
+
+  // Delete states
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<MenuItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Availability toggle loading states (per item)
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
   const form = useForm<MenuItemFormValues>({
     resolver: zodResolver(menuItemSchema),
@@ -124,65 +176,182 @@ export default function MenuPage() {
     },
   });
 
-  // Update items when period changes
+  // Fetch menu items
   useEffect(() => {
-    setItems(mockData[period].items);
-    setCurrentPage(1);
+    const fetchMenuItems = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const businessId = getBusinessId();
+        if (!businessId) throw new Error("Business ID not found");
+
+        const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items?page=1&limit=20`;
+
+        const res = await authenticatedFetch(url, {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error(`API error: ${res.status} ${res.statusText}`);
+        }
+
+        const { data } = await res.json();
+
+        const mappedItems: MenuItem[] = (data.items || data.data || []).map(
+          (apiItem: any) => ({
+            id: apiItem.id || apiItem.menu_item_id,
+            name: apiItem.name || apiItem.item_name || "Unnamed",
+            image:
+              apiItem.image || apiItem.image_url || "/images/placeholder.png",
+            description: apiItem.description || "No description",
+            sellingPrice: String(
+              apiItem.sellingPrice || apiItem.selling_price || "0.00",
+            ),
+            available: apiItem.available ?? apiItem.is_available ?? true,
+          }),
+        );
+
+        setItems(mappedItems);
+      } catch (err: any) {
+        console.error("Menu fetch failed:", err);
+        const msg =
+          err.message?.includes("expired") || err.message?.includes("refresh")
+            ? "Your session has expired. Please sign in again."
+            : "Failed to load menu items. Please try again later.";
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMenuItems();
   }, [period]);
 
-  // Filter items based on search
+  // ──────────────────────────────────────────────────────────────
+  // Toggle availability with optimistic update & API call
+  // ──────────────────────────────────────────────────────────────
+
+  const handleToggleAvailability = async (id: number) => {
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+
+    const newAvailable = !item.available;
+
+    // Mark as toggling
+    setTogglingIds((prev) => new Set([...prev, id]));
+
+    // Optimistic update
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, available: newAvailable } : i)),
+    );
+
+    try {
+      const businessId = getBusinessId();
+      if (!businessId) throw new Error("Business ID not found");
+
+      const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}/availability`;
+
+      const res = await authenticatedFetch(url, {
+        method: "PATCH", // Change to "PUT" if your API requires it
+        body: JSON.stringify({
+          isAvailable: newAvailable,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to update availability: ${res.status}`);
+      }
+
+      toast.success(
+        `Item ${newAvailable ? "enabled" : "disabled"} successfully`,
+      );
+    } catch (err: any) {
+      console.error("Availability toggle failed:", err);
+
+      // Rollback on error
+      setItems((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, available: !newAvailable } : i)),
+      );
+
+      const msg =
+        err.message?.includes("expired") || err.message?.includes("refresh")
+          ? "Session expired. Please sign in again."
+          : "Failed to update availability. Please try again.";
+
+      toast.error(msg);
+    } finally {
+      // Remove from toggling set
+      setTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  // Delete handler (unchanged)
+  // ──────────────────────────────────────────────────────────────
+
+  const confirmDelete = async () => {
+    if (!deleteCandidate) return;
+
+    const itemId = deleteCandidate.id;
+    const previousItems = [...items];
+
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+    setIsDeleting(true);
+
+    try {
+      const businessId = getBusinessId();
+      if (!businessId) throw new Error("Business ID not found");
+
+      const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${itemId}`;
+
+      const res = await authenticatedFetch(url, { method: "DELETE" });
+
+      if (!res.ok) {
+        throw new Error(`Delete failed: ${res.status}`);
+      }
+
+      toast.success("Menu item deleted successfully");
+      setIsDeleteDialogOpen(false);
+      setDeleteCandidate(null);
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      setItems(previousItems); // rollback
+      const msg =
+        err.message?.includes("expired") || err.message?.includes("refresh")
+          ? "Session expired. Please sign in again."
+          : "Failed to delete menu item.";
+      toast.error(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  // Filtering & Pagination (unchanged)
+  // ──────────────────────────────────────────────────────────────
+
   const filteredItems = items.filter(
     (item) =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchTerm.toLowerCase())
+      item.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  // Pagination
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedItems = filteredItems.slice(
     startIndex,
-    startIndex + itemsPerPage
+    startIndex + itemsPerPage,
   );
 
-  const handleToggleAvailability = (id: number) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, available: !item.available } : item
-      )
-    );
-  };
-
-  const handleEditItem = (item: any) => {
-    setEditingItem(item);
-    form.reset({
-      name: item.name,
-      description: item.description,
-      costPrice: item.costPrice,
-      sellingPrice: item.sellingPrice,
-    });
-    setEditDialogOpen(true);
-  };
-
-  const onEditSubmit = (data: MenuItemFormValues) => {
-    if (editingItem) {
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === editingItem.id
-            ? {
-                ...item,
-                name: data.name,
-                description: data.description,
-                costPrice: data.costPrice,
-                sellingPrice: data.sellingPrice,
-              }
-            : item
-        )
-      );
-    }
-    setEditDialogOpen(false);
-    setEditingItem(null);
-    form.reset();
+  const handleDeleteClick = (item: MenuItem) => {
+    setDeleteCandidate(item);
+    setIsDeleteDialogOpen(true);
   };
 
   const handlePageChange = (page: number) => {
@@ -194,7 +363,6 @@ export default function MenuPage() {
     setCurrentPage(1);
   };
 
-  // Pagination numbers logic
   const getPageNumbers = () => {
     if (totalPages <= 5) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -203,9 +371,7 @@ export default function MenuPage() {
     const pages: (number | string)[] = [];
 
     if (currentPage <= 5) {
-      for (let i = 1; i <= 5; i++) {
-        pages.push(i);
-      }
+      for (let i = 1; i <= 5; i++) pages.push(i);
       if (totalPages > 5) {
         pages.push("...");
         pages.push(totalPages);
@@ -219,18 +385,33 @@ export default function MenuPage() {
     } else {
       pages.push(1);
       pages.push("...");
-      for (let i = totalPages - 4; i <= totalPages; i++) {
-        pages.push(i);
-      }
+      for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
     }
 
     return pages;
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen p-6 md:p-8 flex items-center justify-center">
+        Loading menu items...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen p-6 md:p-8 text-red-600 flex items-center justify-center">
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
-      {mockData.last30.items.length > 0 ? (
+      {items.length > 0 ? (
         <div className="max-w-7xl mx-auto space-y-8">
+          {/* Header, search, mobile toggle */}
           <div className="flex justify-between items-center mb-8 md:mb-15">
             <h1 className="text-3xl font-bold text-gray-900">Menu</h1>
             <div className="md:flex items-center hidden gap-6">
@@ -256,12 +437,13 @@ export default function MenuPage() {
               onClick={() => setShowSearchMobile(!showSearchMobile)}
               className={cn(
                 "border border-gray-300 items-center md:hidden rounded-lg p-2 w-15 h-12 text-slate-800 flex justify-center",
-                showSearchMobile && "bg-munchprimary text-white"
+                showSearchMobile && "bg-munchprimary text-white",
               )}
             >
               <Settings2 className="" />
             </div>
           </div>
+
           {showSearchMobile && (
             <div className="flex flex-col items-center gap-3">
               <div className="relative flex-1 w-full">
@@ -284,7 +466,7 @@ export default function MenuPage() {
             </div>
           )}
 
-          {/* Table - Desktop Version */}
+          {/* Desktop Table */}
           <Card className="border hidden md:block border-gray-200 py-0">
             <Table>
               <TableHeader>
@@ -294,12 +476,6 @@ export default function MenuPage() {
                     style={{ paddingTop: "15px", paddingBottom: "15px" }}
                   >
                     Item
-                  </TableHead>
-                  <TableHead
-                    className="text-gray-700 text-center"
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                  >
-                    Cost Price
                   </TableHead>
                   <TableHead
                     className="text-gray-700 text-center"
@@ -338,7 +514,7 @@ export default function MenuPage() {
                             className="object-cover w-full h-full"
                           />
                         </div>
-                        <div className="flex flex-col max-w-40">
+                        <div className="flex flex-col">
                           <span className="font-medium text-gray-900">
                             {item.name}
                           </span>
@@ -347,9 +523,6 @@ export default function MenuPage() {
                           </span>
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-center text-gray-900">
-                      {formatPrice(item.costPrice)}
                     </TableCell>
                     <TableCell className="text-center text-gray-900 font-medium">
                       {formatPrice(item.sellingPrice)}
@@ -360,25 +533,39 @@ export default function MenuPage() {
                         onCheckedChange={() =>
                           handleToggleAvailability(item.id)
                         }
+                        disabled={togglingIds.has(item.id)}
                         className={cn(
-                          item.available && "data-[state=checked]:bg-orange-500"
+                          item.available &&
+                            "data-[state=checked]:bg-orange-500",
+                          togglingIds.has(item.id) && "opacity-60 cursor-wait",
                         )}
                       />
                     </TableCell>
-                    <TableCell className="text-right pe-4">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="hover:bg-gray-100"
-                        onClick={() => handleEditItem(item)}
-                      >
-                        <Image
-                          src="/images/Edit.svg"
-                          alt="Edit"
-                          width={33}
-                          height={33}
-                        />
-                      </Button>
+                    <TableCell className="text-right pe-2 gap-2">
+                      <div className="flex items-center justify-end">
+                        <Link href={`/restaurant/menu/${item.id}`}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="hover:bg-gray-100"
+                          >
+                            <Image
+                              src="/images/Edit.svg"
+                              alt="Edit"
+                              width={33}
+                              height={33}
+                            />
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="hover:bg-red-50 text-red-600 hover:text-red-700"
+                          onClick={() => handleDeleteClick(item)}
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -386,7 +573,7 @@ export default function MenuPage() {
             </Table>
           </Card>
 
-          {/* Table - Mobile Version */}
+          {/* Mobile version */}
           <div className="md:hidden">
             <Card className="border border-gray-200 rounded-lg shadow-sm py-1">
               <div className="p-4">
@@ -396,7 +583,7 @@ export default function MenuPage() {
                     className={cn(
                       "mb-4 pb-4 border-b flex gap-2 justify-between border-gray-200",
                       index === paginatedItems.length - 1 &&
-                        "mb-0 pb-0 border-0"
+                        "mb-0 pb-0 border-0",
                     )}
                   >
                     <div className="flex items-center gap-2 mb-2 flex-1">
@@ -427,23 +614,35 @@ export default function MenuPage() {
                         onCheckedChange={() =>
                           handleToggleAvailability(item.id)
                         }
+                        disabled={togglingIds.has(item.id)}
                         className={cn(
-                          item.available && "data-[state=checked]:bg-orange-500"
+                          item.available &&
+                            "data-[state=checked]:bg-orange-500",
+                          togglingIds.has(item.id) && "opacity-60 cursor-wait",
                         )}
                       />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="hover:bg-gray-100 h-8 w-8 p-0"
-                        onClick={() => handleEditItem(item)}
-                      >
-                        <Image
-                          src="/images/Edit.svg"
-                          alt="Edit"
-                          width={20}
-                          height={20}
-                        />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="hover:bg-gray-100 h-8 w-8 p-0"
+                        >
+                          <Image
+                            src="/images/Edit.svg"
+                            alt="Edit"
+                            width={20}
+                            height={20}
+                          />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="hover:bg-red-50 h-8 w-8 p-0 text-red-600"
+                          onClick={() => handleDeleteClick(item)}
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -451,135 +650,39 @@ export default function MenuPage() {
             </Card>
           </div>
 
-          {/* Edit Menu Item Dialog */}
-          <div
-            className={cn(
-              "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
-              editDialogOpen ? "absolute" : "hidden"
-            )}
-          >
-            <div className="w-85  md:w-lg bg-white font-rubik rounded-lg py-5 relative max-h-120 overflow-y-auto">
-              <div className="flex justify-between px-3 md:px-6">
-                <h1 className="text-xl font-semibold">Edit Menu Item</h1>
-                <X
-                  className="text-gray-600"
-                  onClick={() => setEditDialogOpen(false)}
-                />
+          {/* Delete Confirmation Dialog */}
+          {isDeleteDialogOpen && deleteCandidate && (
+            <div className="fixed inset-0 bg-black/50 flex h-screen items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg w-full max-w-md">
+                <div className="p-6 border-b">
+                  <h2 className="text-xl font-semibold">Confirm Deletion</h2>
+                </div>
+                <div className="p-6">
+                  <p className="text-gray-700">
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteCandidate.name}</strong>? This action cannot
+                    be undone.
+                  </p>
+                </div>
+                <div className="flex justify-end gap-4 p-6 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDeleteDialogOpen(false)}
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={confirmDelete}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete"}
+                  </Button>
+                </div>
               </div>
-              <hr className="mt-3 mb-5" />
-
-              <Form {...form}>
-                <form
-                  onSubmit={form.handleSubmit(onEditSubmit)}
-                  className="space-y-6 px-3 md:px-6"
-                >
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-normal text-slate-500">
-                          Menu Name <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter menu name"
-                            className="h-12"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-normal text-slate-500">
-                          Description <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter description"
-                            className="h-12"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="costPrice"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-normal text-slate-500">
-                            Cost Price <span className="text-red-500">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="0.00"
-                              className="h-12"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="sellingPrice"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-normal text-slate-500">
-                            Selling Price{" "}
-                            <span className="text-red-500">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="0.00"
-                              className="h-12"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <DialogFooter className="gap-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setEditDialogOpen(false)}
-                      className="px-6 bg-gray-100 h-10 text-black"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      className="bg-orange-500 hover:bg-orange-600 h-10 px-6 text-white"
-                    >
-                      Update Menu
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
             </div>
-          </div>
+          )}
 
           {/* Pagination */}
           {paginatedItems.length > 0 && (
@@ -614,7 +717,7 @@ export default function MenuPage() {
                           className={cn(
                             "min-w-8 md:min-w-10",
                             currentPage === page &&
-                              "bg-orange-500 hover:bg-orange-600 text-white"
+                              "bg-orange-500 hover:bg-orange-600 text-white",
                           )}
                         >
                           {page}

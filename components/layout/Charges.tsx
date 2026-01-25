@@ -1,5 +1,7 @@
+"use client";
+
 import { LoaderCircle, Pencil, Search, Trash2, X } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import {
@@ -12,15 +14,6 @@ import {
 } from "../ui/table";
 import Image from "next/image";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Label } from "../ui/label";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
-import {
   Form,
   FormControl,
   FormField,
@@ -32,103 +25,245 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { refreshAccessToken } from "@/app/lib/api";
 
-interface Charge {
-  id: number;
-  name: string;
-  type: "amount" | "percentage";
-  value: string;
-  lastUpdated: string;
+interface ChargeType {
+  id: string;
+  key: string;
+  label: string;
+  description: string;
+  isPercentage: boolean;
+  isComputed: boolean;
+  maxAmount: number | null;
+  isRequired: boolean;
+  isActive: boolean;
 }
 
-const initialCharges: Charge[] = [
-  {
-    id: 1,
-    name: "Packaging Fee",
-    type: "amount",
-    value: "₦200.00",
-    lastUpdated: "Dec 15, 2025",
-  },
-  {
-    id: 2,
-    name: "Service Charge",
-    type: "percentage",
-    value: "5%",
-    lastUpdated: "Dec 10, 2025",
-  },
-  {
-    id: 3,
-    name: "Delivery Fee",
-    type: "amount",
-    value: "₦500.00",
-    lastUpdated: "Dec 8, 2025",
-  },
-  {
-    id: 4,
-    name: "VAT",
-    type: "percentage",
-    value: "7.5%",
-    lastUpdated: "Nov 30, 2025",
-  },
-  {
-    id: 5,
-    name: "Convenience Fee",
-    type: "amount",
-    value: "₦100.00",
-    lastUpdated: "Nov 25, 2025",
-  },
-];
+interface ChargeResponseItem {
+  id: string;
+  businessId: string;
+  chargeTypeId: string;
+  amount: number;
+  isEnabled: boolean;
+  createdAt: string;
+}
+
+interface Charge extends ChargeResponseItem {
+  name?: string;
+  type?: "amount" | "percentage";
+  formattedValue?: string;
+  lastUpdated?: string;
+}
+
+interface ChargeTypeResponse {
+  success: boolean;
+  statusCode: number;
+  data: ChargeType[];
+}
 
 const chargesFormSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  type: z.enum(["amount", "percentage"], { message: "Type is required" }),
-  amount: z.string().min(1, "Amount is required"),
+  chargeTypeId: z.string().min(1, "Please select a charge type"),
+  amount: z
+    .string()
+    .min(1, "Amount is required")
+    .regex(/^\d+(\.\d{1,2})?$/, "Invalid amount format (e.g. 500 or 12.50)"),
 });
 
 type ChargesFormType = z.infer<typeof chargesFormSchema>;
 
+const API_BASE = "https://api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+
+// ──────────────────────────────────────────────────────────────
+// Authenticated fetch helper with refresh support
+// ──────────────────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) {
+      throw new Error("Session expired - refresh failed");
+    }
+    token = getAccessToken();
+    if (!token) {
+      throw new Error("Refresh succeeded but no token available");
+    }
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) {
+      throw new Error("Session expired during request (refresh failed)");
+    }
+
+    token = getAccessToken();
+    if (!token) {
+      throw new Error("Refresh succeeded but no token available");
+    }
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
+
 const Charges = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [charges, setCharges] = useState<Charge[]>([]);
+  const [chargeTypes, setChargeTypes] = useState<ChargeType[]>([]);
   const [editingCharge, setEditingCharge] = useState<Charge | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [charges, setCharges] = useState<Charge[]>(initialCharges);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const [deleteCandidate, setDeleteCandidate] = useState<Charge | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const chargesForm = useForm<ChargesFormType>({
+  const businessId = getBusinessId();
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!businessId) {
+        setError("Business ID is missing. Please sign in again.");
+        setIsDataLoading(false);
+        return;
+      }
+
+      setIsDataLoading(true);
+      setError(null);
+
+      try {
+        const typesRes = await authenticatedFetch(
+          `${API_BASE}/meta/charge-types`,
+          { method: "GET" },
+        );
+
+        if (!typesRes.ok) {
+          throw new Error(
+            `Charge types failed: ${typesRes.status} ${typesRes.statusText}`,
+          );
+        }
+
+        const typesJson: ChargeTypeResponse = await typesRes.json();
+        let activeTypes: ChargeType[] = [];
+        if (typesJson.success && Array.isArray(typesJson.data)) {
+          activeTypes = typesJson.data.filter((t) => t.isActive);
+          setChargeTypes(activeTypes);
+        }
+
+        const chargesRes = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/charges`,
+          { method: "GET" },
+        );
+
+        if (!chargesRes.ok) {
+          throw new Error(
+            `Charges fetch failed: ${chargesRes.status} ${chargesRes.statusText}`,
+          );
+        }
+
+        const chargesData = await chargesRes.json();
+        const rawCharges: ChargeResponseItem[] = chargesData?.data ?? [];
+
+        const enrichedCharges = rawCharges
+          .filter((c) => c.isEnabled)
+          .map((c) => {
+            const type = activeTypes.find((t) => t.id === c.chargeTypeId);
+            return {
+              ...c,
+              name: type?.label || "Unknown Charge",
+              type: type?.isPercentage ? "percentage" : "amount",
+              formattedValue: type?.isPercentage
+                ? `${c.amount}%`
+                : `₦${Number(c.amount).toFixed(2)}`,
+              lastUpdated: new Date(c.createdAt).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              }),
+            } as Charge;
+          });
+
+        setCharges(enrichedCharges);
+      } catch (err: any) {
+        console.error("Data loading error:", err);
+        const msg =
+          err.message?.includes("expired") || err.message?.includes("refresh")
+            ? "Your session has expired. Please sign in again."
+            : err.message ||
+              "Failed to load data. Please check your connection and try again.";
+        setError(msg);
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [businessId]);
+
+  const form = useForm<ChargesFormType>({
     resolver: zodResolver(chargesFormSchema),
     defaultValues: {
-      name: "",
-      type: "amount",
+      chargeTypeId: "",
       amount: "",
     },
   });
 
+  const selectedChargeTypeId = form.watch("chargeTypeId");
+  const selectedType = chargeTypes.find((t) => t.id === selectedChargeTypeId);
+  const isPercentage = selectedType?.isPercentage ?? false;
+
   const filteredCharges = charges.filter((charge) =>
-    charge.name.toLowerCase().includes(searchTerm.toLowerCase())
+    charge.name?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const resetForm = () => {
-    chargesForm.reset({
-      name: "",
-      type: "amount",
-      amount: "",
-    });
+    form.reset({ chargeTypeId: "", amount: "" });
     setEditingCharge(null);
   };
 
-  const openAddDialog = () => {
+  const handleAddNew = () => {
     resetForm();
     setIsDialogOpen(true);
   };
 
-  const openEditDialog = (charge: Charge) => {
+  const handleEdit = (charge: Charge) => {
     setEditingCharge(charge);
-    chargesForm.reset({
-      name: charge.name,
-      type: charge.type,
-      amount: charge.value.replace(/₦|%/g, "").trim(),
+    form.reset({
+      chargeTypeId: charge.chargeTypeId,
+      amount: charge.amount.toString(),
     });
     setIsDialogOpen(true);
   };
@@ -138,282 +273,286 @@ const Charges = () => {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (deleteCandidate) {
-      setCharges(charges.filter((c) => c.id !== deleteCandidate.id));
+  const confirmDelete = async () => {
+    if (!deleteCandidate || !businessId) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/charges/${deleteCandidate.id}`,
+        { method: "DELETE" },
+      );
+
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+
+      setCharges((prev) => prev.filter((c) => c.id !== deleteCandidate.id));
       setDeleteCandidate(null);
       setIsDeleteDialogOpen(false);
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      const msg =
+        err.message?.includes("expired") || err.message?.includes("refresh")
+          ? "Your session has expired. Please sign in again."
+          : err.message || "Failed to delete charge";
+      setError(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const onSubmit = (data: ChargesFormType) => {
-    const formattedValue =
-      data.type === "percentage" ? `${data.amount}%` : `₦${data.amount}`;
+  const onSubmit = async (values: ChargesFormType) => {
+    if (!businessId) {
+      setError("Business ID is missing");
+      return;
+    }
 
-    const updatedCharge = {
-      name: data.name,
-      type: data.type,
-      value: formattedValue,
-      lastUpdated: new Date().toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
-    };
+    setIsLoading(true);
+    setError(null);
 
-    if (editingCharge) {
-      setCharges(
-        charges.map((c) =>
-          c.id === editingCharge.id ? { ...c, ...updatedCharge, id: c.id } : c
-        )
+    try {
+      let payload: Record<string, any>;
+
+      if (editingCharge) {
+        payload = {
+          amount: parseFloat(values.amount),
+        };
+      } else {
+        payload = {
+          chargeTypeId: values.chargeTypeId,
+          amount: parseFloat(values.amount),
+          isEnabled: true,
+        };
+      }
+
+      const isEdit = !!editingCharge;
+      const endpoint = isEdit
+        ? `${API_BASE}/vendors/me/businesses/${businessId}/charges/${editingCharge!.id}`
+        : `${API_BASE}/vendors/me/businesses/${businessId}/charges`;
+
+      const res = await authenticatedFetch(endpoint, {
+        method: isEdit ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          `${isEdit ? "Update" : "Create"} failed: ${res.status} ${res.statusText}`,
+        );
+      }
+
+      const result = await res.json();
+
+      const newCharge = {
+        ...result.data,
+        name: selectedType?.label || "Unknown Charge",
+        type: isPercentage ? "percentage" : "amount",
+        formattedValue: isPercentage
+          ? `${parseFloat(values.amount)}%`
+          : `₦${parseFloat(values.amount).toFixed(2)}`,
+        lastUpdated: new Date().toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }),
+      } as Charge;
+
+      setCharges((prev) =>
+        isEdit
+          ? prev.map((c) => (c.id === editingCharge!.id ? newCharge : c))
+          : [...prev, newCharge],
       );
-    } else {
-      const newCharge: Charge = {
-        id: Math.max(...charges.map((c) => c.id), 0) + 1,
-        ...updatedCharge,
-      };
-      setCharges([...charges, newCharge]);
-    }
 
-    resetForm();
-    setIsDialogOpen(false);
-  };
-
-  const watchedType = chargesForm.watch("type");
-
-  const handleDialogClose = (open: boolean) => {
-    if (!open) {
+      setIsDialogOpen(false);
       resetForm();
+    } catch (err: any) {
+      console.error("Submit error:", err);
+      const msg =
+        err.message?.includes("expired") || err.message?.includes("refresh")
+          ? "Your session has expired. Please sign in again."
+          : err.message || "Failed to save charge. Please try again.";
+      setError(msg);
+    } finally {
+      setIsLoading(false);
     }
-    setIsDialogOpen(open);
   };
+
+  if (isDataLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoaderCircle className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-600">
+        {error}
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="md:flex justify-between items-center">
-          <h1 className="text-xl font-bold">Charges & Fees</h1>
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mt-4 md:mt-0">
-            <div className="relative w-full md:w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                placeholder="Search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 border-gray-200 shadow-none text-gray-900 placeholder-gray-500 h-10"
-              />
-            </div>
-
+    <div className="min-h-screen bg-white">
+      <div className="max-w-5xl mx-auto">
+        <div className="space-y-8">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold text-gray-900">Charges</h1>
             <Button
-              onClick={openAddDialog}
-              className="bg-orange-500 hover:bg-orange-600 text-white rounded-lg w-full md:w-fit h-10 px-6 font-normal"
+              onClick={handleAddNew}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
             >
-              + Add New Charge
+              Add New Charge
             </Button>
           </div>
-        </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-lg border border-gray-150 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-b border-gray-200 bg-gray-100">
-                <TableHead
-                  className="text-gray-700 font-medium ps-4"
-                  style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                >
-                  Name
-                </TableHead>
-                <TableHead className="text-gray-700 font-medium">
-                  Percentage/Amount
-                </TableHead>
-                <TableHead className="text-gray-700 font-medium">
-                  Last Updated
-                </TableHead>
-                <TableHead className="text-gray-700 font-medium text-right pe-4">
-                  Action
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredCharges.length > 0 ? (
-                filteredCharges.map((charge) => (
-                  <TableRow
-                    key={charge.id}
-                    className="border-b border-gray-100 hover:bg-gray-50"
-                  >
-                    <TableCell className="text-gray-900 font-medium ps-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <Input
+              placeholder="Search charges..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 h-12 max-w-md"
+            />
+          </div>
+
+          {filteredCharges.length === 0 ? (
+            <div className="text-center py-16 text-gray-500">
+              <Image
+                src="/images/empty.png"
+                width={160}
+                height={160}
+                className="mx-auto mb-6 opacity-70"
+                alt="No charges"
+              />
+              <p className="text-lg">No charges configured yet</p>
+              <p className="text-sm mt-2">
+                Click "Add New Charge" to get started.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead className="ps-6 py-4">Name</TableHead>
+                  <TableHead className="py-4">Value</TableHead>
+                  <TableHead className="py-4">Last Updated</TableHead>
+                  <TableHead className="text-right pe-6 py-4">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredCharges.map((charge) => (
+                  <TableRow key={charge.id} className="hover:bg-gray-50">
+                    <TableCell className="ps-6 font-medium">
                       {charge.name}
                     </TableCell>
-                    <TableCell className="text-gray-900">
-                      {charge.value}
-                    </TableCell>
+                    <TableCell>{charge.formattedValue}</TableCell>
                     <TableCell className="text-gray-600">
                       {charge.lastUpdated}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <TableCell className="text-right pe-6">
+                      <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDeleteClick(charge)}
-                          className="hover:bg-red-100"
+                          disabled={isLoading}
                         >
-                          <Trash2
-                            className="h-5 w-5 text-red-600"
-                            strokeWidth={1.3}
-                          />
+                          <Trash2 className="h-4 w-4 text-red-600" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => openEditDialog(charge)}
-                          className="hover:bg-gray-200 bg-gray-100"
+                          onClick={() => handleEdit(charge)}
+                          disabled={isLoading}
                         >
-                          <Pencil className="h-5 w-5 text-gray-600" />
+                          <Pencil className="h-4 w-4 text-gray-600" />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="text-center text-gray-500 py-12"
-                  >
-                    <div className="flex flex-col items-center">
-                      <Image
-                        src="/images/empty.png"
-                        width={500}
-                        height={500}
-                        className="w-40 mb-5"
-                        alt="empty"
-                      />
-                      <span>No charges found</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </div>
       </div>
 
-      {/* Add/Edit Dialog */}
-      <div
-        className={cn(
-          "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
-          isDialogOpen ? "absolute" : "hidden"
-        )}
-      >
-        <div className="w-85  md:w-lg bg-white font-rubik rounded-lg py-5 relative">
-          <div className="flex justify-between px-3 md:px-6">
-            <h1 className="text-xl font-semibold">
-              {editingCharge ? "Edit Charge" : "Add New Charge"}
-            </h1>
-            <X
-              className="text-gray-600"
-              onClick={() => setIsDialogOpen(false)}
-            />
-          </div>
-          <hr className="mt-3 mb-5" />
+      {/* Add / Edit Dialog */}
+      {isDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-lg">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h2 className="text-xl font-semibold">
+                {editingCharge ? "Edit Charge" : "Add New Charge"}
+              </h2>
+              <X
+                className="cursor-pointer text-gray-500 hover:text-gray-800"
+                onClick={() => {
+                  setIsDialogOpen(false);
+                  resetForm();
+                }}
+              />
+            </div>
 
-          <Form {...chargesForm}>
-            <form
-              onSubmit={chargesForm.handleSubmit(onSubmit)}
-              className="space-y-6 px-3 md:px-6"
-            >
-              <div className="grid gap-4">
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="p-6 space-y-6"
+              >
                 <FormField
-                  control={chargesForm.control}
-                  name="name"
+                  control={form.control}
+                  name="chargeTypeId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Name
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
+                      <FormLabel>
+                        Charge Type <span className="text-red-600">*</span>
                       </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Enter charge/fee name"
-                          className="h-12"
-                          {...field}
-                        />
-                      </FormControl>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={!!editingCharge}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select charge type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {chargeTypes.map((type) => (
+                            <SelectItem key={type.id} value={type.id}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
                 <FormField
-                  control={chargesForm.control}
-                  name="type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Type
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          className="flex gap-8"
-                        >
-                          <div className="flex items-center gap-3">
-                            <RadioGroupItem value="amount" id="amount" />
-                            <Label
-                              htmlFor="amount"
-                              className="text-sm text-gray-600 font-normal cursor-pointer"
-                            >
-                              Amount
-                            </Label>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <RadioGroupItem
-                              value="percentage"
-                              id="percentage"
-                            />
-                            <Label
-                              htmlFor="percentage"
-                              className="text-sm text-gray-600 font-normal cursor-pointer"
-                            >
-                              Percentage
-                            </Label>
-                          </div>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={chargesForm.control}
+                  control={form.control}
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Amount
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
+                      <FormLabel>
+                        Amount <span className="text-red-600">*</span>
                       </FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
-                            {watchedType === "percentage" ? "%" : "₦"}
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                            {isPercentage ? "%" : "₦"}
                           </span>
                           <Input
                             type="number"
-                            placeholder="0.00"
-                            className="pl-10 h-12"
+                            step="0.01"
+                            min="0"
+                            className="pl-10"
                             {...field}
                           />
                         </div>
@@ -422,72 +561,67 @@ const Charges = () => {
                     </FormItem>
                   )}
                 />
-              </div>
-              <div className="flex justify-end">
-                <div className="flex gap-4 items-center">
+
+                <div className="flex justify-end gap-4 pt-4">
                   <Button
-                    onClick={() => setIsDialogOpen(false)}
-                    className="px-6 bg-gray-100 h-10 text-black hover:bg-gray-200"
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsDialogOpen(false);
+                      resetForm();
+                    }}
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     disabled={isLoading}
-                    className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
                   >
-                    {isLoading ? (
-                      <LoaderCircle className="animate-spin" />
-                    ) : (
-                      <span>{editingCharge ? "Update" : "Add"}</span>
+                    {isLoading && (
+                      <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
                     )}
+                    {editingCharge ? "Update" : "Add"}
                   </Button>
                 </div>
-              </div>
-            </form>
-          </Form>
+              </form>
+            </Form>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Delete Confirmation Dialog */}
-      <div
-        className={cn(
-          "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
-          isDeleteDialogOpen ? "absolute" : "hidden"
-        )}
-      >
-        <div className="w-85  md:w-lg bg-white font-rubik rounded-lg py-5 relative">
-          <div className="flex justify-between px-3 md:px-6">
-            <h1 className="text-xl font-semibold">Confirm Deletion</h1>
-            <X
-              className="text-gray-600"
-              onClick={() => setIsDeleteDialogOpen(false)}
-            />
-          </div>
-          <hr className="mt-3 mb-5" />
-
-          <div className="py-4 px-3 md:px-6">
-            <p className="text-gray-700">
-              Are you sure you want to delete the charge{" "}
-              <span className="font-medium">{deleteCandidate?.name}</span>? This
-              action cannot be undone.
-            </p>
-          </div>
-          <div className="flex justify-end px-3 md:px-6">
-            <div className="flex gap-4 items-center">
+      {/* Delete Confirmation */}
+      {isDeleteDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-semibold">Confirm Deletion</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700">
+                Are you sure you want to delete{" "}
+                <strong>{deleteCandidate?.name}</strong>? This action cannot be
+                undone.
+              </p>
+            </div>
+            <div className="flex justify-end gap-4 p-6 border-t">
               <Button
-                className="bg-gray-100 text-black hover:bg-gray-200"
+                variant="outline"
                 onClick={() => setIsDeleteDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={confirmDelete}>
-                Delete
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={isLoading}
+              >
+                {isLoading ? "Deleting..." : "Delete"}
               </Button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

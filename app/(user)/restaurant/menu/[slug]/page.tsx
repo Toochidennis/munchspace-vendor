@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import {
   Camera,
@@ -9,8 +9,6 @@ import {
   Trash2,
   Calendar,
   ArrowLeft,
-  Check,
-  ChevronsUpDown,
   Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -78,7 +76,7 @@ const formSchema = z.object({
   discount: z
     .object({
       type: z.enum(["PERCENTAGE", "FLAT", "FIXED"]).optional(),
-      value: z.string().min(1, "Value is required when discount is applied"),
+      value: z.string(),
       startsAt: z.date().optional(),
       endsAt: z.date().optional(),
     })
@@ -150,13 +148,18 @@ async function authenticatedFetch(
   return response;
 }
 
-export default function CreateMenuPage() {
-  const [activeTab, setActiveTab] = useState("details");
+export default function EditMenuPage() {
+  const [activeTab, setActiveTab] = useState<
+    "details" | "sizes" | "extras" | "discounts"
+  >("details");
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const router = useRouter();
+  const params = useParams();
+  const id = params.slug as string;
 
   const {
     register,
@@ -166,6 +169,7 @@ export default function CreateMenuPage() {
     watch,
     setValue,
     trigger,
+    reset,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     mode: "onChange",
@@ -184,42 +188,27 @@ export default function CreateMenuPage() {
     fields: variantFields,
     append: appendVariant,
     remove: removeVariant,
-  } = useFieldArray({
-    control,
-    name: "variants",
-  });
+  } = useFieldArray({ control, name: "variants" });
 
   const {
     fields: addonFields,
     append: appendAddon,
     remove: removeAddon,
-  } = useFieldArray({
-    control,
-    name: "addons",
-  });
+  } = useFieldArray({ control, name: "addons" });
 
+  // Fetch categories
   useEffect(() => {
     const fetchCategories = async () => {
       setLoadingCategories(true);
-
       try {
         const res = await authenticatedFetch(
           `${API_BASE}/meta/menu-categories`,
           { method: "GET" },
         );
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const response = await res.json();
-
-        if (response.success && Array.isArray(response.data)) {
-          setCategories(response.data);
-        } else {
-          console.warn("Unexpected category response format:", response);
-          setCategories([]);
-        }
+        if (!res.ok)
+          throw new Error(`Failed to fetch categories: ${res.status}`);
+        const { data } = await res.json();
+        if (Array.isArray(data)) setCategories(data);
       } catch (err: any) {
         console.error("Failed to load categories:", err);
         const msg =
@@ -227,14 +216,72 @@ export default function CreateMenuPage() {
             ? "Your session has expired. Please sign in again."
             : "Failed to load categories. Please try again later.";
         toast.error(msg);
-        setCategories([]);
       } finally {
         setLoadingCategories(false);
       }
     };
-
     fetchCategories();
   }, []);
+
+  // Fetch menu item data
+  useEffect(() => {
+    if (!id) return;
+
+    const fetchMenuItem = async () => {
+      setIsLoading(true);
+      try {
+        const businessId = getBusinessId();
+        if (!businessId) throw new Error("Business ID not found");
+
+        const res = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}`,
+          { method: "GET" },
+        );
+
+        if (!res.ok)
+          throw new Error(`Failed to fetch menu item: ${res.status}`);
+
+        const { data } = await res.json();
+
+        reset({
+          name: data.name || "",
+          description: data.description || "",
+          image: data.image || "",
+          categoryTypeId: data.categoryTypeId?.toString() || "",
+          sellingPrice: Number(data.sellingPrice) || 0,
+          quantityInStock: Number(data.quantityInStock) || 0,
+          isAvailable: data.isAvailable ? "available" : "unavailable",
+          variants: data.variants?.length
+            ? data.variants.map((v: any) => ({
+                name: v.name || "",
+                description: v.description || "",
+                price: v.price?.toString() || "",
+              }))
+            : [{ name: "", description: "", price: "" }],
+          addons: data.addons?.length
+            ? data.addons.map((a: any) => ({
+                name: a.name || "",
+                description: a.description || "",
+                price: a.price?.toString() || "",
+              }))
+            : [{ name: "", description: "", price: "" }],
+          discount: data.discount || undefined,
+        });
+      } catch (err: any) {
+        console.error("Failed to load menu item:", err);
+        const msg =
+          err.message?.includes("expired") || err.message?.includes("refresh")
+            ? "Your session has expired. Please sign in again."
+            : "Failed to load menu item data. Please try again.";
+        toast.error(msg);
+        router.push("/restaurant/menu");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchMenuItem();
+  }, [id, reset, router]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -248,32 +295,30 @@ export default function CreateMenuPage() {
   };
 
   const validateDetails = async () => {
-    const result = await trigger([
+    const fields = [
       "name",
       "description",
       "image",
       "categoryTypeId",
       "sellingPrice",
       "quantityInStock",
-    ]);
-    return result;
+    ] as const;
+    return await trigger(fields);
   };
 
   const handleNext = async () => {
-    if (activeTab === "details") {
-      if (!(await validateDetails())) return;
-    }
+    if (activeTab === "details" && !(await validateDetails())) return;
 
-    const currentIndex = tabOrder.indexOf(activeTab as any);
+    const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex < tabOrder.length - 1) {
       setActiveTab(tabOrder[currentIndex + 1]);
     } else {
-      await handleSubmit(onSubmit)();
+      handleSubmit(onSubmit)();
     }
   };
 
   const handleBack = () => {
-    const currentIndex = tabOrder.indexOf(activeTab as any);
+    const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex > 0) {
       setActiveTab(tabOrder[currentIndex - 1]);
     }
@@ -284,44 +329,45 @@ export default function CreateMenuPage() {
 
     const formData = new FormData();
 
-    formData.append("menuItem[name]", data.name);
-    formData.append("menuItem[description]", data.description);
-    formData.append("menuItem[sellingPrice]", data.sellingPrice.toString());
+    formData.append("name", data.name.trim());
+    formData.append("description", data.description.trim());
+    formData.append("categoryTypeId", data.categoryTypeId);
+    formData.append("sellingPrice", data.sellingPrice.toString());
+    formData.append("quantityInStock", data.quantityInStock.toString());
+
     formData.append(
-      "menuItem[quantityInStock]",
-      data.quantityInStock.toString(),
-    );
-    formData.append("menuItem[categoryTypeId]", data.categoryTypeId);
-    formData.append(
-      "menuItem[isAvailable]",
+      "isAvailable",
       data.isAvailable === "available" ? "true" : "false",
     );
 
     data.variants.forEach((variant, index) => {
       if (variant.name.trim()) {
-        formData.append(`variants[${index}][name]`, variant.name);
+        formData.append(`variants[${index}][name]`, variant.name.trim());
         formData.append(
           `variants[${index}][description]`,
-          variant.description || "",
+          variant.description.trim() || "",
         );
-        formData.append(`variants[${index}][price]`, variant.price);
+        formData.append(
+          `variants[${index}][price]`,
+          variant.price.trim() || "0",
+        );
       }
     });
 
     data.addons.forEach((addon, index) => {
       if (addon.name.trim()) {
-        formData.append(`addons[${index}][name]`, addon.name);
+        formData.append(`addons[${index}][name]`, addon.name.trim());
         formData.append(
           `addons[${index}][description]`,
-          addon.description || "",
+          addon.description.trim() || "",
         );
-        formData.append(`addons[${index}][price]`, addon.price);
+        formData.append(`addons[${index}][price]`, addon.price.trim() || "0");
       }
     });
 
-    if (data.discount) {
-      formData.append("discount[type]", data.discount.type!);
-      formData.append("discount[value]", data.discount.value);
+    if (data.discount?.type && data.discount?.value?.trim()) {
+      formData.append("discount[type]", data.discount.type);
+      formData.append("discount[value]", data.discount.value.trim());
       if (data.discount.startsAt) {
         formData.append(
           "discount[startsAt]",
@@ -341,40 +387,50 @@ export default function CreateMenuPage() {
       formData.append("file", blob, "menu-image.jpg");
     }
 
+    const formDataObj = Object.fromEntries(formData.entries());
+    console.log(formDataObj);
+
     const businessId = getBusinessId();
 
     try {
       const res = await authenticatedFetch(
-        `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/compose`,
+        `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}/compose`,
         {
-          method: "POST",
+          method: "PATCH",
           body: formData,
         },
       );
 
-      const responseData = await res.json();
-
-      if (res.ok) {
-        toast.success("Menu item created successfully");
-        router.push("/restaurant/menu");
-      } else {
-        const errorMessage =
-          responseData?.error ||
-          responseData?.message ||
-          "Failed to create menu item. Please try again.";
-        toast.error(errorMessage);
+      if (!res.ok) {
+        let errorMsg = "Update failed";
+        try {
+          const errData = await res.json();
+          errorMsg = errData.message || errData.error || errorMsg;
+        } catch {}
+        throw new Error(errorMsg);
       }
+
+      toast.success("Menu item updated successfully");
+      router.push("/restaurant/menu");
     } catch (err: any) {
-      console.error("Error submitting form", err);
+      console.error("Update error:", err);
       const msg =
         err.message?.includes("expired") || err.message?.includes("refresh")
           ? "Your session has expired. Please sign in again."
-          : "An unexpected error occurred while creating the menu item.";
+          : err.message || "Failed to update menu item. Please try again.";
       toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    );
+  }
 
   const isFirstTab = activeTab === "details";
   const isLastTab = activeTab === "discounts";
@@ -384,8 +440,11 @@ export default function CreateMenuPage() {
       <div className="max-w-3xl mx-auto p-8">
         <div className="mb-8 mt-10 md:mt-0">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-4">
-            <ArrowLeft className="h-6 w-6 text-gray-600 hover:text-gray-900" />
-            Create Menu
+            <ArrowLeft
+              className="h-6 w-6 text-gray-600 hover:text-gray-900 cursor-pointer"
+              onClick={() => router.back()}
+            />
+            Edit Menu
           </h1>
         </div>
 
@@ -647,7 +706,6 @@ export default function CreateMenuPage() {
             <p className="text-gray-600">
               Specify the sizes/variants for this menu item.
             </p>
-
             <div className="space-y-4">
               {variantFields.map((field, index) => (
                 <div key={field.id} className="space-y-3 border-b pb-4">
@@ -680,7 +738,6 @@ export default function CreateMenuPage() {
                 </div>
               ))}
             </div>
-
             <Button
               variant="outline"
               onClick={() =>
@@ -697,7 +754,6 @@ export default function CreateMenuPage() {
             <p className="text-gray-600">
               Add any additional items customers can choose with this menu item.
             </p>
-
             <div className="space-y-4">
               {addonFields.map((field, index) => (
                 <div key={field.id} className="space-y-3 border-b pb-4">
@@ -730,7 +786,6 @@ export default function CreateMenuPage() {
                 </div>
               ))}
             </div>
-
             <Button
               variant="outline"
               onClick={() =>
@@ -756,11 +811,8 @@ export default function CreateMenuPage() {
                   control={control}
                   name="discount.type"
                   render={({ field }) => (
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <SelectTrigger className="h-12!">
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger className="h-12">
                         <SelectValue placeholder="Select discount type" />
                       </SelectTrigger>
                       <SelectContent>
@@ -768,7 +820,7 @@ export default function CreateMenuPage() {
                           Percentage off
                         </SelectItem>
                         <SelectItem value="FLAT">Flat amount off</SelectItem>
-                        <SelectItem value="FIXED_PRICE">Fixed price</SelectItem>
+                        <SelectItem value="FIXED">Fixed price</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -824,6 +876,7 @@ export default function CreateMenuPage() {
                     )}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label>End Date</Label>
                   <Controller
@@ -859,30 +912,36 @@ export default function CreateMenuPage() {
           </TabsContent>
         </Tabs>
 
-        <div className="flex justify-end gap-2 items-center mt-12 pt-8 border-t border-gray-200">
-          <div>
-            {!isFirstTab && (
-              <Button
-                onClick={handleBack}
-                className="gap-2 px-8 bg-gray-100 hover:bg-gray-200 text-munchprimary"
-                disabled={isSubmitting}
-              >
-                Back
-              </Button>
-            )}
-          </div>
+        <div className="flex justify-end gap-4 items-center mt-12 pt-8 border-t border-gray-200">
+          <Button
+            variant="outline"
+            onClick={() => router.back()}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          {!isFirstTab && (
+            <Button
+              variant="outline"
+              onClick={handleBack}
+              className="px-8 bg-gray-100 hover:bg-gray-200 text-munchprimary"
+              disabled={isSubmitting}
+            >
+              Back
+            </Button>
+          )}
           <Button
             onClick={handleNext}
-            className="bg-orange-500 hover:bg-munchprimary text-white px-8 flex items-center gap-2"
+            className="bg-orange-500 hover:bg-orange-600 text-white px-8 flex items-center gap-2"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Saving...
+                {isLastTab ? "Updating..." : "Saving..."}
               </>
             ) : isLastTab ? (
-              "Add Menu"
+              "Update Menu"
             ) : (
               "Next"
             )}

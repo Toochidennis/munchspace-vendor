@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Rubik, Inter } from "next/font/google";
 import "./globals.css";
 import ClientWrapper from "@/components/layout/ClientWrapper";
+import { Toaster } from "sonner";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -33,6 +34,7 @@ export default function RootLayout({
       <body
         className={`${rubik.variable} ${inter.variable} antialiased overflow-x-hidden max-w-500 mx-auto w-screen`}
       >
+        <Toaster richColors position="top-right" />
         <ClientWrapper>{children}</ClientWrapper>
       </body>
     </html>

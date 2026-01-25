@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { format } from "date-fns";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   LoaderCircle,
   ArrowLeft,
@@ -48,7 +50,7 @@ import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { getAccessToken } from "@/app/lib/auth";
 
 const setupSchema = z.object({
-  storeImage: z.string().url().optional(),
+  storeImage: z.any().optional(), // not used in form, just for type safety
   legalName: z.string().min(1, "Legal name is required."),
   displayName: z.string().min(1, "Display name is required."),
   storeEmail: z.string().email("Invalid email address."),
@@ -57,7 +59,7 @@ const setupSchema = z.object({
   description: z
     .string()
     .min(10, "Description must be at least 10 characters."),
-  socialLink: z.string().url({ message: "Invalid URL" }).optional(),
+  socialLink: z.string().optional(),
 
   businessType: z.string().min(1, "Select a business type."),
   brandType: z.string().optional(),
@@ -78,7 +80,7 @@ const setupSchema = z.object({
   state: z.string().min(1, "State is required."),
   lga: z.string().min(1, "LGA is required."),
   streetName: z.string().min(1, "Street name is required."),
-  fullAddress: z.string().min(1, "Full address is required."),
+  city: z.string().min(1, "City is required."),
   postalCode: z.string().optional(),
   latitude: z.number(),
   longitude: z.number(),
@@ -105,10 +107,12 @@ const API_KEY =
 const GOOGLE_API_KEY = "AIzaSyDjoKEpZBTaQuO4dPjbN4W1tHEdxuacPFI";
 
 export default function SetupStorePage() {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
   const [brandTypeOpen, setBrandTypeOpen] = useState(false);
   const [serviceOperationOpen, setServiceOperationOpen] = useState(false);
@@ -136,22 +140,23 @@ export default function SetupStorePage() {
     resolver: zodResolver(setupSchema),
     mode: "onChange",
     defaultValues: {
-      businessType: "",
-      brandType: "",
-      serviceOperations: [],
       legalName: "",
       displayName: "",
       storeEmail: "",
       phoneNumber: "",
       description: "",
+      socialLink: "", // ← Critical fix: always string, never undefined
       country: "",
       state: "",
       lga: "",
       streetName: "",
-      fullAddress: "",
-      postalCode: "",
+      city: "",
+      postalCode: "", // ← Critical fix: always string, never undefined
       latitude: 0,
       longitude: 0,
+      businessType: "",
+      brandType: "",
+      serviceOperations: [],
       workingHours: {
         Monday: { enabled: true, start: "08:00", end: "20:00" },
         Tuesday: { enabled: true, start: "08:00", end: "20:00" },
@@ -188,22 +193,16 @@ export default function SetupStorePage() {
         if (btRes.ok) {
           const json = await btRes.json();
           btData = Array.isArray(json) ? json : json.data || json.items || [];
-        } else {
-          throw new Error(`Business types: ${btRes.status}`);
         }
 
         if (brRes.ok) {
           const json = await brRes.json();
           brData = Array.isArray(json) ? json : json.data || json.items || [];
-        } else {
-          throw new Error(`Brand types: ${brRes.status}`);
         }
 
         if (soRes.ok) {
           const json = await soRes.json();
           soData = Array.isArray(json) ? json : json.data || json.items || [];
-        } else {
-          throw new Error(`Service operations: ${soRes.status}`);
         }
 
         const normalize = (arr: any[]) =>
@@ -322,7 +321,7 @@ export default function SetupStorePage() {
         "state",
         "lga",
         "streetName",
-        "fullAddress",
+        "city",
         "latitude",
         "longitude",
       ];
@@ -340,15 +339,6 @@ export default function SetupStorePage() {
       try {
         const values = form.getValues();
 
-        const transformedWorkingHours = daysOfWeek
-          .map((day) => ({
-            day: day.toUpperCase(),
-            openTime: values.workingHours[day].start,
-            closeTime: values.workingHours[day].end,
-          }))
-          .filter((_, index) => values.workingHours[daysOfWeek[index]].enabled);
-
-        // Prepare FormData for multipart/form-data
         const formData = new FormData();
 
         formData.append("legalName", values.legalName);
@@ -357,9 +347,9 @@ export default function SetupStorePage() {
         formData.append("phone", values.phoneNumber);
         formData.append("description", values.description);
 
-        if (values.socialLink) {
-          formData.append("website", values.socialLink);
-        }
+        // if (values.socialLink?.trim()) {
+        //   formData.append("website", values.socialLink);
+        // }
 
         formData.append(
           "establishedAt",
@@ -373,59 +363,75 @@ export default function SetupStorePage() {
           formData.append("brandTypeId", values.brandType);
         }
 
-        // Send each service operation ID separately
         values.serviceOperations.forEach((id) => {
           formData.append("serviceOperationIds[]", id);
         });
 
-        // Complex objects as JSON strings
-        formData.append(
-          "workingHours",
-          JSON.stringify(transformedWorkingHours)
+        const enabledDays = daysOfWeek.filter(
+          (day) => values.workingHours[day]?.enabled
         );
+
+        enabledDays.forEach((day, index) => {
+          formData.append(`workingHours[${index}][day]`, day.toUpperCase());
+          formData.append(
+            `workingHours[${index}][openTime]`,
+            values.workingHours[day].start
+          );
+          formData.append(
+            `workingHours[${index}][closeTime]`,
+            values.workingHours[day].end
+          );
+        });
 
         const addressObj = {
           country: values.country,
           state: values.state,
           lga: values.lga,
           streetName: values.streetName,
-          fullAddress: values.fullAddress,
+          city: values.city,
           postalCode: values.postalCode || null,
           latitude: Number(values.latitude),
           longitude: Number(values.longitude),
         };
         formData.append("address", JSON.stringify(addressObj));
-        console.log(addressObj.latitude, addressObj.longitude)
 
-        if (values.storeImage) {
-          formData.append("imageUrl", values.storeImage);
+        if (selectedImageFile) {
+          formData.append("image", selectedImageFile);
         }
 
         const accessToken = getAccessToken();
 
-
         const response = await fetch(`${API_BASE}/vendors/me/businesses`, {
           method: "POST",
           headers: {
-            // Do NOT set Content-Type → browser will handle multipart boundary
             "x-api-key": API_KEY,
             Authorization: `Bearer ${accessToken}`,
           },
           body: formData,
         });
 
-        console.log("formData", [...formData.entries()]);
-
         const feedback = await response.json();
-        // console.log("Server response:", feedback);
 
         if (response.ok) {
-          console.log("Store created successfully!");
-          // window.location.href = "/restaurant/dashboard";
+          toast.success("Store created successfully!", {
+            description: "Redirecting to dashboard...",
+            duration: 3000,
+          });
+
+          setTimeout(() => {
+            router.push("/restaurant/dashboard");
+          }, 1500);
         } else {
+          toast.error("Failed to create store", {
+            description:
+              feedback.message || "Please check your input and try again.",
+          });
           console.error("Failed to create store:", feedback);
         }
       } catch (error) {
+        toast.error("An error occurred", {
+          description: "Something went wrong while creating the store.",
+        });
         console.error("Error submitting store:", error);
       } finally {
         setIsLoading(false);
@@ -442,44 +448,18 @@ export default function SetupStorePage() {
     if (step > 1) setStep(step - 1);
   };
 
-  const handleCloudinaryUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploading(true);
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
 
+    setSelectedImageFile(file);
     const localPreview = URL.createObjectURL(file);
     setPreviewUrl(localPreview);
-    form.setValue("storeImage", localPreview);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", "property-maestro-unsigned");
-
-    try {
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/property-meastro/image/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.secure_url) {
-        form.setValue("storeImage", data.secure_url);
-        setPreviewUrl(data.secure_url);
-      } else {
-        throw new Error(data.error?.message || "Upload failed");
-      }
-    } catch (error: any) {
-      console.error("Cloudinary upload error:", error);
-    } finally {
-      setUploading(false);
-    }
   };
 
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
@@ -554,7 +534,6 @@ export default function SetupStorePage() {
               }}
               className="space-y-8"
             >
-              {/* Step 1: Store Details */}
               {step === 1 && (
                 <>
                   <div className="space-y-6">
@@ -563,17 +542,15 @@ export default function SetupStorePage() {
                         <input
                           type="file"
                           accept="image/png,image/jpeg,image/jpg"
-                          onChange={handleCloudinaryUpload}
+                          onChange={handleImageChange}
                           className="hidden"
                           id="cloudinary-direct-upload"
-                          disabled={uploading}
                         />
                         <label htmlFor="cloudinary-direct-upload">
                           <Button
                             asChild
                             variant={"outline"}
                             className="w-full rounded-lg cursor-pointer border-0 justify-start py-10"
-                            disabled={uploading}
                           >
                             <div className="flex gap-4">
                               {previewUrl ? (
@@ -774,6 +751,7 @@ export default function SetupStorePage() {
                             placeholder="https://example.com"
                             className="h-12 placeholder:text-slate-400"
                             {...field}
+                            value={field.value ?? ""}
                           />
                         </FormControl>
                         <FormMessage />
@@ -783,7 +761,6 @@ export default function SetupStorePage() {
                 </>
               )}
 
-              {/* Step 2: Business Type & Service Operations */}
               {step === 2 && (
                 <div className="space-y-8">
                   {metaLoading && (
@@ -1061,7 +1038,6 @@ export default function SetupStorePage() {
                 </div>
               )}
 
-              {/* Step 3: Working Hours */}
               {step === 3 && (
                 <div className="space-y-4">
                   {daysOfWeek.map((day) => {
@@ -1180,7 +1156,6 @@ export default function SetupStorePage() {
                 </div>
               )}
 
-              {/* Step 4: Store Address */}
               {step === 4 && (
                 <div className="space-y-6">
                   <FormItem>
@@ -1272,6 +1247,7 @@ export default function SetupStorePage() {
                               placeholder="e.g. 100001"
                               className="h-12 placeholder:text-slate-400"
                               {...field}
+                              value={field.value ?? ""}
                             />
                           </FormControl>
                           <FormMessage />
@@ -1302,15 +1278,15 @@ export default function SetupStorePage() {
 
                   <FormField
                     control={form.control}
-                    name="fullAddress"
+                    name="city"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="font-normal text-slate-500">
-                          Full Address <span className="text-munchred">*</span>
+                          City <span className="text-munchred">*</span>
                         </FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Enter full address"
+                            placeholder="Enter city name"
                             className="h-25 placeholder:text-slate-400"
                             rows={3}
                             {...field}
@@ -1323,7 +1299,6 @@ export default function SetupStorePage() {
                 </div>
               )}
 
-              {/* Navigation */}
               <div className="flex justify-between">
                 {step > 1 && (
                   <Button

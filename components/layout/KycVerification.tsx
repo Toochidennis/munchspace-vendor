@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useId } from "react";
-import Image from "next/image";
-import { Upload, X, FileText, LoaderCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Upload, LoaderCircle, Link as LinkIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -19,358 +19,488 @@ import {
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { refreshAccessToken } from "@/app/lib/api";
 
-interface DocumentSection {
-  id: string;
-  title: string;
+interface DocumentState {
+  fileUrl?: string | null;
+  status?: "NOT_UPLOADED" | "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason?: string | null;
+  createdAt?: string | null;
+  value?: string;
+  exists?: boolean;
+}
+
+interface Document {
+  id?: string;
+  key: string;
+  label: string;
   description: string;
-  status: "required" | "in-review" | "verified";
-  uploadedFiles: { name: string; url: string }[];
-  tinNumber?: string;
+  scope: "VENDOR" | "BUSINESS";
+  upload?: {
+    method: "POST" | "PATCH";
+    endpoint: string;
+    field?: string;
+  };
+  state: DocumentState;
 }
 
 const tinSchema = z.object({
-  tin: z
-    .string()
-    .min(1, "TIN is required")
-    .regex(/^\d{10,11}$/, "TIN must be 10 or 11 digits"),
+  tin: z.string().min(1, "TIN is required"),
+  // .regex(/^\d{12,13}$/, "TIN must be 12 or 13 digits"), // ← uncomment when ready
 });
 
 type TinFormValues = z.infer<typeof tinSchema>;
 
-const initialDocuments: DocumentSection[] = [
-  {
-    id: "cac",
-    title: "CAC Documents",
-    description:
-      "Upload your CAC registration papers so we can confirm your business is officially registered. This helps unlock payouts and keeps the platform compliant.",
-    status: "required",
-    uploadedFiles: [],
-  },
-  {
-    id: "id",
-    title: "Owner/Signatory ID",
-    description:
-      "Provide a valid government-issued ID (NIN, Voter's Card, Passport, Driver's License). This verifies the real person behind the business.",
-    status: "in-review",
-    uploadedFiles: [
-      { name: "nin_front.png", url: "/placeholder/nin-front.jpg" },
-      { name: "nin_back.png", url: "/placeholder/nin-back.jpg" },
-    ],
-  },
-  {
-    id: "health",
-    title: "Food/Health Safety Certificate",
-    description:
-      "Upload your food handling or health certification. This assures customers that your meals meet safety standards.",
-    status: "verified",
-    uploadedFiles: [
-      { name: "health_cert_001.pdf", url: "/placeholder/health-cert.jpg" },
-      { name: "health_cert_002.pdf", url: "/placeholder/health-cert-2.jpg" },
-    ],
-  },
-  {
-    id: "tin",
-    title: "Tax Identification Number (TIN)",
-    description:
-      "Submit your TIN so we can complete basic business verification requirements.",
-    status: "required",
-    uploadedFiles: [],
-    tinNumber: "",
-  },
-];
+const API_BASE = "https://api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+
+// ──────────────────────────────────────────────────────────────
+// Reusable authenticated fetch with refresh + single retry
+// ──────────────────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+
+  // No token → try refresh first
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) {
+      throw new Error("Session expired - refresh failed");
+    }
+    token = getAccessToken();
+    if (!token) {
+      throw new Error("Refresh succeeded but no token available");
+    }
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  // Do not set Content-Type when sending FormData
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  // Handle 401 → refresh + retry once
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) {
+      throw new Error("Session expired during request (refresh failed)");
+    }
+
+    token = getAccessToken();
+    if (!token) {
+      throw new Error("Refresh succeeded but no token available");
+    }
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
 
 export default function KycVerification() {
-  const [documents, setDocuments] =
-    useState<DocumentSection[]>(initialDocuments);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isTinSubmitting, setIsTinSubmitting] = useState(false);
 
   const tinForm = useForm<TinFormValues>({
     resolver: zodResolver(tinSchema),
-    defaultValues: {
-      tin: documents.find((d) => d.id === "tin")?.tinNumber || "",
-    },
+    defaultValues: { tin: "" },
   });
 
-  // Clean up object URLs on unmount
+  const businessId = getBusinessId();
+
+  // Fetch all document requirements and current states
   useEffect(() => {
-    return () => {
-      documents.forEach((doc) => {
-        doc.uploadedFiles.forEach((file) => {
-          if (file.url.startsWith("blob:")) {
-            URL.revokeObjectURL(file.url);
-          }
-        });
-      });
-    };
-  }, [documents]);
+    const fetchDocuments = async () => {
+      if (!businessId) {
+        toast.error("Business identifier not found. Please sign in again.");
+        setLoading(false);
+        return;
+      }
 
-  const handleFileUpload = (
-    id: string,
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+      setLoading(true);
 
-    const newFiles = Array.from(files).map((file) => ({
-      name: file.name,
-      url: URL.createObjectURL(file),
-    }));
+      try {
+        const res = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/documents`,
+          { method: "GET" },
+        );
 
-    setDocuments((prev) =>
-      prev.map((doc) =>
-        doc.id === id
-          ? {
-              ...doc,
-              uploadedFiles: [...doc.uploadedFiles, ...newFiles],
-              status:
-                doc.uploadedFiles.length === 0 && doc.status === "required"
-                  ? "in-review"
-                  : doc.status,
-            }
-          : doc
-      )
-    );
-
-    e.target.value = "";
-  };
-
-  const removeFile = (docId: string, fileIndex: number) => {
-    let revokedUrl = "";
-
-    setDocuments((prev) =>
-      prev.map((doc) => {
-        if (doc.id === docId) {
-          const fileToRemove = doc.uploadedFiles[fileIndex];
-          if (fileToRemove && fileToRemove.url.startsWith("blob:")) {
-            revokedUrl = fileToRemove.url;
-          }
-
-          const remainingFiles = doc.uploadedFiles.filter(
-            (_, i) => i !== fileIndex
-          );
-
-          return {
-            ...doc,
-            uploadedFiles: remainingFiles,
-            status:
-              remainingFiles.length === 0 && doc.status !== "verified"
-                ? "required"
-                : doc.status,
-          };
+        if (!res.ok) {
+          throw new Error(`Failed to load documents: ${res.status}`);
         }
-        return doc;
-      })
-    );
 
-    if (revokedUrl) {
-      URL.revokeObjectURL(revokedUrl);
+        const json = await res.json();
+        if (!json.success || !json.data?.documents) {
+          throw new Error("Invalid response format");
+        }
+
+        const fetchedDocs = json.data.documents;
+        console.log("fetchedDocs", fetchedDocs);
+        setDocuments(fetchedDocs);
+
+        // Pre-fill TIN if it already exists
+        const taxDoc = fetchedDocs.find((d: Document) => d.key === "tax_id");
+        if (taxDoc?.state?.exists && taxDoc.state.value) {
+          tinForm.reset({ tin: taxDoc.state.value });
+        }
+      } catch (err: any) {
+        console.error("Documents fetch error:", err);
+        const msg =
+          err.message?.includes("expired") || err.message?.includes("refresh")
+            ? "Your session has expired. Please sign in again."
+            : "Could not load verification requirements. Please try again later.";
+        toast.error(msg);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDocuments();
+  }, [businessId, tinForm]);
+
+  // Unified file upload handler
+  const handleFileUpload = async (doc: Document, file: File) => {
+    if (!businessId || !doc.id) {
+      toast.error("Cannot upload: missing required information");
+      return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Only PDF, JPG, and PNG files are allowed");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("documentTypeId", doc.id);
+    formData.append("file", file);
+
+    const endpoint =
+      doc.scope === "BUSINESS"
+        ? `${API_BASE}/vendors/me/businesses/${businessId}/documents`
+        : `${API_BASE}/vendors/me/documents`;
+
+    try {
+      const res = await authenticatedFetch(endpoint, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await res.json();
+
+      console.log("=== UPLOAD RESPONSE DEBUG ===");
+      console.log("Status:", res.status);
+      console.log("Full response body:", JSON.stringify(result, null, 2));
+      console.log("============================");
+
+      if (!res.ok) {
+        const errorMessage = result.message || result.error || "Upload failed";
+        throw new Error(errorMessage);
+      }
+
+      const fileUrl =
+        result.fileUrl ||
+        result.url ||
+        result.documentUrl ||
+        result.signedUrl ||
+        result.path ||
+        result.data?.fileUrl ||
+        result.data?.url ||
+        result.document?.fileUrl ||
+        result.document?.url ||
+        null;
+
+      const rawStatus =
+        result.status ||
+        result.state ||
+        result.documentStatus ||
+        result.data?.status ||
+        result.document?.status ||
+        "";
+
+      const normalizedStatus = String(rawStatus).toUpperCase().trim();
+
+      if (!fileUrl) {
+        console.warn("No file URL found in response");
+        throw new Error("Server did not return a valid document URL");
+      }
+
+      const finalStatus = normalizedStatus.includes("PEND")
+        ? "PENDING"
+        : normalizedStatus.includes("APPROV")
+          ? "APPROVED"
+          : normalizedStatus.includes("REJECT")
+            ? "REJECTED"
+            : "PENDING";
+
+      toast.success("Document uploaded successfully");
+
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.key === doc.key
+            ? {
+                ...d,
+                state: {
+                  ...d.state,
+                  fileUrl: fileUrl,
+                  status: finalStatus,
+                  createdAt:
+                    result.createdAt ||
+                    result.uploadedAt ||
+                    new Date().toISOString(),
+                },
+              }
+            : d,
+        ),
+      );
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      const msg =
+        err.message?.includes("expired") || err.message?.includes("refresh")
+          ? "Your session has expired. Please sign in again."
+          : err.message || "Failed to upload document";
+      toast.error(msg);
     }
   };
 
-  const onTinSubmit = (data: TinFormValues) => {
+  // Handle TIN submission/update
+  const onTinSubmit = async (data: TinFormValues) => {
     setIsTinSubmitting(true);
 
-    // Simulate submission delay
-    setTimeout(() => {
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.id === "tin"
-            ? { ...doc, tinNumber: data.tin, status: "in-review" }
-            : doc
-        )
-      );
-      tinForm.reset({ tin: data.tin });
-      setIsTinSubmitting(false);
-    }, 800);
-  };
+    try {
+      const taxDoc = documents.find((d) => d.key === "tax_id");
+      if (!taxDoc?.upload?.endpoint) {
+        throw new Error("Tax ID endpoint configuration missing");
+      }
 
-  const getStatusBadge = (status: DocumentSection["status"]) => {
-    switch (status) {
-      case "required":
-        return <Badge className="bg-pink-100 text-pink-700">Required</Badge>;
-      case "in-review":
-        return <Badge className="bg-blue-100 text-blue-700">In Review</Badge>;
-      case "verified":
-        return <Badge className="bg-green-100 text-green-700">Verified</Badge>;
+      const endpoint = taxDoc.upload.endpoint.replace(
+        "{businessId}",
+        businessId || "",
+      );
+
+      const res = await authenticatedFetch(`${API_BASE}${endpoint}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ taxId: data.tin.trim() }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update TIN");
+      }
+
+      toast.success("Tax Identification Number updated successfully");
+
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.key === "tax_id"
+            ? {
+                ...d,
+                state: {
+                  ...d.state,
+                  value: data.tin,
+                  exists: true,
+                },
+              }
+            : d,
+        ),
+      );
+
+      tinForm.reset({ tin: data.tin });
+    } catch (err: any) {
+      console.error("TIN update error:", err);
+      const msg =
+        err.message?.includes("expired") || err.message?.includes("refresh")
+          ? "Your session has expired. Please sign in again."
+          : err.message || "Failed to update TIN";
+      toast.error(msg);
+    } finally {
+      setIsTinSubmitting(false);
     }
   };
 
-  const isImageFile = (fileName: string) => {
-    const ext = fileName.toLowerCase().split(".").pop();
-    return ["jpg", "jpeg", "png", "gif", "webp"].includes(ext || "");
+  const getStatusBadge = (doc: Document) => {
+    if (doc.key === "tax_id") {
+      return doc.state.exists ? (
+        <Badge className="bg-blue-100 text-blue-700">In Review</Badge>
+      ) : (
+        <Badge className="bg-pink-100 text-pink-700">Required</Badge>
+      );
+    }
+
+    switch (doc.state.status) {
+      case "NOT_UPLOADED":
+        return <Badge className="bg-pink-100 text-pink-700">Required</Badge>;
+      case "PENDING":
+        return <Badge className="bg-blue-100 text-blue-700">In Review</Badge>;
+      case "APPROVED":
+        return <Badge className="bg-green-100 text-green-700">Verified</Badge>;
+      case "REJECTED":
+        return <Badge className="bg-red-100 text-red-700">Rejected</Badge>;
+      default:
+        return <Badge variant="outline">Unknown</Badge>;
+    }
   };
 
-  const currentTinValue =
-    documents.find((d) => d.id === "tin")?.tinNumber || "";
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 flex items-center justify-center">
+        <LoaderCircle className="h-10 w-10 animate-spin text-gray-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="mx-auto max-w-5xl space-y-12">
         <div className="space-y-8">
-          {documents.map((doc) => {
-            const inputId = useId();
-
-            return (
-              <div
-                key={doc.id}
-                className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-4"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      {doc.title}
-                    </h2>
-                    <div className="flex items-center gap-3 mt-2">
-                      {getStatusBadge(doc.status)}
-                    </div>
+          {documents.map((doc) => (
+            <div
+              key={doc.key}
+              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-5"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {doc.label}
+                  </h2>
+                  <div className="flex items-center gap-3 mt-2">
+                    {getStatusBadge(doc)}
                   </div>
                 </div>
+              </div>
 
-                <p className="text-gray-600 text-sm leading-relaxed">
-                  {doc.description}
-                </p>
+              <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+                {doc.description}
+              </p>
 
-                {/* TIN Form Section */}
-                {doc.id === "tin" &&
-                  (doc.status === "required" || doc.status === "in-review") && (
-                    <Form {...tinForm}>
-                      <form
-                        onSubmit={tinForm.handleSubmit(onTinSubmit)}
-                        className="space-y-6"
-                      >
-                        <FormField
-                          control={tinForm.control}
-                          name="tin"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="font-normal text-slate-500">
-                                Tax Identification Number (TIN)
-                                <span className="-ms-1 pt-1 text-xl text-munchred">
-                                  *
-                                </span>
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="Enter your TIN"
-                                  className="h-12 max-w-md"
-                                  {...field}
-                                  disabled={doc.status === "in-review"}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+              {/* Tax ID (TIN) Section */}
+              {doc.key === "tax_id" && (
+                <Form {...tinForm}>
+                  <form
+                    onSubmit={tinForm.handleSubmit(onTinSubmit)}
+                    className="space-y-6"
+                  >
+                    <FormField
+                      control={tinForm.control}
+                      name="tin"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="font-normal text-slate-500">
+                            Tax Identification Number (TIN)
+                            <span className="text-xl text-red-600 ms-1">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Enter your TIN"
+                              className="h-12 max-w-md"
+                              {...field}
+                              disabled={isTinSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                        {doc.status !== "in-review" && (
-                            <div className="flex gap-4 items-center">
-                              <Button
-                                type="submit"
-                                disabled={isTinSubmitting}
-                                className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
-                              >
-                                {isTinSubmitting ? (
-                                  <LoaderCircle className="animate-spin" />
-                                ) : (
-                                  "Submit"
-                                )}
-                              </Button>
-                            </div>
-                        )}
+                    <Button
+                      type="submit"
+                      disabled={isTinSubmitting}
+                      className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg min-w-[140px]"
+                    >
+                      {isTinSubmitting ? (
+                        <LoaderCircle className="animate-spin mr-2" />
+                      ) : doc.state.exists ? (
+                        "Update TIN"
+                      ) : (
+                        "Submit TIN"
+                      )}
+                    </Button>
 
-                        {doc.status === "in-review" && currentTinValue && (
-                          <p className="text-sm text-gray-600">
-                            Submitted TIN:{" "}
-                            <span className="font-medium">
-                              {currentTinValue}
-                            </span>
-                          </p>
-                        )}
-                      </form>
-                    </Form>
+                    {doc.state.exists && doc.state.value && (
+                      <p className="text-sm text-gray-600">
+                        Current submitted TIN:{" "}
+                        <span className="font-medium">{doc.state.value}</span>
+                      </p>
+                    )}
+                  </form>
+                </Form>
+              )}
+
+              {/* File-based document section */}
+              {doc.key !== "tax_id" && doc.upload && (
+                <div className="space-y-4">
+                  {doc.state.fileUrl && (
+                    <a
+                      href={doc.state.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                    >
+                      <LinkIcon className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate max-w-[420px]">
+                        View document
+                      </span>
+                    </a>
                   )}
 
-                {/* Uploaded Files Preview (non-TIN sections) */}
-                {doc.id !== "tin" && doc.uploadedFiles.length > 0 && (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-gray-700">
-                      Submitted documents:
-                    </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                      {doc.uploadedFiles.map((file, index) => (
-                        <div key={index} className="relative group">
-                          <div className="rounded-lg overflow-hidden border border-gray-200 hover:border-gray-400 transition-shadow hover:shadow-md">
-                            {isImageFile(file.name) ? (
-                              <Image
-                                src={file.url}
-                                alt={file.name}
-                                width={200}
-                                height={200}
-                                className="w-full h-48 object-cover"
-                              />
-                            ) : (
-                              <div className="h-48 bg-gray-100 flex flex-col items-center justify-center p-4">
-                                <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 flex items-center justify-center mb-3">
-                                  <FileText className="h-8 w-8 text-gray-500" />
-                                </div>
-                                <p className="text-xs text-gray-600 text-center truncate w-full">
-                                  {file.name}
-                                </p>
-                              </div>
-                            )}
-                            <div className="p-2 bg-gray-50 border-t">
-                              <p className="text-xs text-gray-700 truncate">
-                                {file.name}
-                              </p>
-                            </div>
-                          </div>
-
-                          {(doc.status === "required" ||
-                            doc.status === "in-review") && (
-                            <button
-                              onClick={() => removeFile(doc.id, index)}
-                              className="absolute top-2 right-2 bg-white rounded-full p-1.5 shadow-md opacity-0 group-hover:opacity-100 transition"
-                              aria-label="Remove file"
-                            >
-                              <X className="h-4 w-4 text-red-600" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Upload Section (non-TIN sections) */}
-                {doc.id !== "tin" &&
-                  (doc.status === "required" || doc.status === "in-review") && (
-                    <>
-                      <label htmlFor={inputId} className="block cursor-pointer">
+                  {(doc.state.status === "NOT_UPLOADED" ||
+                    doc.state.status === "PENDING" ||
+                    doc.state.status === "REJECTED") && (
+                    <div className="space-y-2">
+                      <label className="block cursor-pointer">
                         <input
-                          id={inputId}
                           type="file"
-                          multiple
-                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                          onChange={(e) => handleFileUpload(doc.id, e)}
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(doc, file);
+                          }}
                           className="hidden"
                         />
-                        <div className="inline-flex items-center justify-center gap-2 rounded-md border border-orange-500 px-4 py-2 text-sm font-medium text-orange-600 hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition">
+                        <div className="inline-flex items-center justify-center gap-2 rounded-md border border-orange-500 px-5 py-2.5 text-sm font-medium text-orange-600 hover:bg-orange-50 transition">
                           <Upload className="h-4 w-4" />
-                          Upload Files
+                          {doc.state.fileUrl
+                            ? "Replace Document"
+                            : "Upload Document"}
                         </div>
                       </label>
-
-                      <p className="text-xs text-gray-500 mt-2">
-                        Max file size: 7MB
-                        <br />
-                        Accepted formats: PDF, PNG, JPG, JPEG, DOC, DOCX
+                      <p className="text-xs text-gray-500">
+                        Accepted formats: PDF, JPG, JPEG, PNG • One file only
                       </p>
-                    </>
+                      {doc.state.status === "REJECTED" &&
+                        doc.state.rejectionReason && (
+                          <p className="text-sm text-red-600 mt-2">
+                            Rejection reason: {doc.state.rejectionReason}
+                          </p>
+                        )}
+                    </div>
                   )}
-              </div>
-            );
-          })}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
