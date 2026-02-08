@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { setAccessToken } from "@/app/lib/auth";
+import { setAccessToken, setBusinessId } from "@/app/lib/auth";
 
 const API_BASE = "https://api.munchspace.io/api/v1";
 const API_KEY =
@@ -128,7 +128,7 @@ export default function RegisterPage() {
 
   const handleOtpKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>
+    e: React.KeyboardEvent<HTMLInputElement>,
   ) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
@@ -137,6 +137,20 @@ export default function RegisterPage() {
 
   async function onRegisterSubmit(values: RegisterValues) {
     setIsLoading(true);
+
+    // Normalize phone number
+    let normalizedPhone = values.phone.trim();
+
+    // Remove leading zero if present
+    if (normalizedPhone.startsWith("0")) {
+      normalizedPhone = normalizedPhone.substring(1);
+    }
+
+    // Add +234 if it doesn't already start with +
+    if (!normalizedPhone.startsWith("+")) {
+      normalizedPhone = "+234" + normalizedPhone;
+    }
+
     try {
       const response = await fetch(`${API_BASE}/auth/signup`, {
         method: "POST",
@@ -148,7 +162,7 @@ export default function RegisterPage() {
           firstName: values.firstName,
           lastName: values.lastName,
           email: values.email,
-          phone: values.phone,
+          phone: normalizedPhone,
           password: values.password,
         }),
       });
@@ -209,7 +223,7 @@ export default function RegisterPage() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         setOtpError(
-          errorData.message || "Failed to resend OTP. Please try again."
+          errorData.message || "Failed to resend OTP. Please try again.",
         );
       }
     } catch (error) {
@@ -240,8 +254,11 @@ export default function RegisterPage() {
       });
 
       if (response.status === 200) {
-        const otpResponse = await response.json();
-        const { accessToken, refreshToken } = otpResponse.data;
+        const res = await response.json();
+        const { accessToken, refreshToken } = res.data;
+
+        // Save business ID in memory
+        setBusinessId(res.data.vendor.businessId);
 
         // Store tokens
         setAccessToken(accessToken);
@@ -249,6 +266,7 @@ export default function RegisterPage() {
           60 * 60 * 24 * 30
         }`;
 
+        // Go to success step (setup store prompt) instead of redirecting
         setStep(3);
       } else if (response.status === 401) {
         setOtpError("Invalid or expired OTP.");

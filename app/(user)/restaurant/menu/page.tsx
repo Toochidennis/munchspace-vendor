@@ -8,6 +8,7 @@ import {
   Settings2,
   X,
   Trash2,
+  Plus,
 } from "lucide-react";
 import {
   Dialog,
@@ -59,7 +60,7 @@ const API_KEY =
 
 // Helper function for formatting prices in display
 const formatPrice = (rawValue: string): string => {
-  if (!rawValue) return "₦0.00";
+  if (!rawValue) return "₦0.00  ";
   const num = parseFloat(rawValue);
   if (isNaN(num)) return "₦0.00";
   return `₦${num.toLocaleString("en-NG", {
@@ -186,7 +187,7 @@ export default function MenuPage() {
         const businessId = getBusinessId();
         if (!businessId) throw new Error("Business ID not found");
 
-        const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items?page=1&limit=20`;
+        const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items`;
 
         const res = await authenticatedFetch(url, {
           method: "GET",
@@ -197,14 +198,14 @@ export default function MenuPage() {
           throw new Error(`API error: ${res.status} ${res.statusText}`);
         }
 
-        const { data } = await res.json();
+        const data = await res.json();
+        console.log("menu items data", data);
 
         const mappedItems: MenuItem[] = (data.items || data.data || []).map(
           (apiItem: any) => ({
             id: apiItem.id || apiItem.menu_item_id,
             name: apiItem.name || apiItem.item_name || "Unnamed",
-            image:
-              apiItem.image || apiItem.image_url || "/images/placeholder.png",
+            image: apiItem.imageUrl || "/images/placeholder.png",
             description: apiItem.description || "No description",
             sellingPrice: String(
               apiItem.sellingPrice || apiItem.selling_price || "0.00",
@@ -467,111 +468,115 @@ export default function MenuPage() {
           )}
 
           {/* Desktop Table */}
-          <Card className="border hidden md:block border-gray-200 py-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50">
-                  <TableHead
-                    className="text-gray-700 ps-4"
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                  >
-                    Item
-                  </TableHead>
-                  <TableHead
-                    className="text-gray-700 text-center"
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                  >
-                    Selling Price
-                  </TableHead>
-                  <TableHead
-                    className="text-gray-700 text-center"
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                  >
-                    Availability
-                  </TableHead>
-                  <TableHead
-                    className="text-gray-700 text-right pe-4"
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                  >
-                    Action
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedItems.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    className="border-b border-gray-200 hover:bg-gray-50"
-                  >
-                    <TableCell className="py-4 ps-4">
-                      <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden">
-                          <Image
-                            src={item.image}
-                            alt={item.name}
-                            width={64}
-                            height={64}
-                            className="object-cover w-full h-full"
-                          />
+          <div className="min-h-[60vh]">
+            <Card className="border hidden md:block border-gray-200 py-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead
+                      className="text-gray-700 ps-4"
+                      style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                    >
+                      Item
+                    </TableHead>
+                    <TableHead
+                      className="text-gray-700 text-center"
+                      style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                    >
+                      Selling Price
+                    </TableHead>
+                    <TableHead
+                      className="text-gray-700 text-center"
+                      style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                    >
+                      Availability
+                    </TableHead>
+                    <TableHead
+                      className="text-gray-700 text-right pe-4"
+                      style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                    >
+                      Action
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedItems.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      className="border-b border-gray-200 hover:bg-gray-50"
+                    >
+                      <TableCell className="py-4 ps-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden">
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              width={100}
+                              height={100}
+                              className="object-cover w-full h-full"
+                              crossOrigin="anonymous"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-gray-900">
+                              {item.name}
+                            </span>
+                            <span className="text-gray-500 text-xs">
+                              {item.description}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-gray-900">
-                            {item.name}
-                          </span>
-                          <span className="text-gray-500 text-xs">
-                            {item.description}
-                          </span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center text-gray-900 font-medium">
-                      {formatPrice(item.sellingPrice)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch
-                        checked={item.available}
-                        onCheckedChange={() =>
-                          handleToggleAvailability(item.id)
-                        }
-                        disabled={togglingIds.has(item.id)}
-                        className={cn(
-                          item.available &&
-                            "data-[state=checked]:bg-orange-500",
-                          togglingIds.has(item.id) && "opacity-60 cursor-wait",
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right pe-2 gap-2">
-                      <div className="flex items-center justify-end">
-                        <Link href={`/restaurant/menu/${item.id}`}>
+                      </TableCell>
+                      <TableCell className="text-center text-gray-900 font-medium">
+                        {formatPrice(item.sellingPrice)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={item.available}
+                          onCheckedChange={() =>
+                            handleToggleAvailability(item.id)
+                          }
+                          disabled={togglingIds.has(item.id)}
+                          className={cn(
+                            item.available &&
+                              "data-[state=checked]:bg-orange-500",
+                            togglingIds.has(item.id) &&
+                              "opacity-60 cursor-wait",
+                          )}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right pe-2 gap-2">
+                        <div className="flex items-center justify-end">
+                          <Link href={`/restaurant/menu/${item.id}`}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="hover:bg-gray-100"
+                            >
+                              <Image
+                                src="/images/Edit.svg"
+                                alt="Edit"
+                                width={33}
+                                height={33}
+                              />
+                            </Button>
+                          </Link>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="hover:bg-gray-100"
+                            className="hover:bg-red-50 text-red-600 hover:text-red-700"
+                            onClick={() => handleDeleteClick(item)}
                           >
-                            <Image
-                              src="/images/Edit.svg"
-                              alt="Edit"
-                              width={33}
-                              height={33}
-                            />
+                            <Trash2 className="h-5 w-5" />
                           </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="hover:bg-red-50 text-red-600 hover:text-red-700"
-                          onClick={() => handleDeleteClick(item)}
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          </div>
 
           {/* Mobile version */}
           <div className="md:hidden">
@@ -780,10 +785,12 @@ export default function MenuPage() {
                 store. Start by adding different menus for your products.
               </p>
 
-              <Button className="bg-orange-500 mt-8 hover:bg-orange-600 text-white px-8 py-6 text-lg flex items-center gap-3">
-                <span className="text-2xl">+</span>
-                Add a Menu
-              </Button>
+              <Link href={"/restaurant/menu/new"}>
+                <Button className="bg-munchprimary mt-8 hover:bg-munchprimaryDark cursor-pointer text-white px-8 py-6 flex items-center justify-center gap-1">
+                  <Plus strokeWidth={3} />
+                  <span>Add a menu</span>
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 
 // Mock data for different periods
 const mockData = {
@@ -213,6 +214,9 @@ export default function DashboardPage() {
 
   const top5Items = data.bestSelling.slice(0, 5);
   const totalSales = top5Items.reduce((sum, item) => sum + item.sales, 0);
+
+  const at = getBusinessId()
+  console.log(at);
 
   return (
     <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">

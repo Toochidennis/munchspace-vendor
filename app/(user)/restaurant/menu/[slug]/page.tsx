@@ -246,7 +246,7 @@ export default function EditMenuPage() {
         reset({
           name: data.name || "",
           description: data.description || "",
-          image: data.image || "",
+          image: data.imageUrl || "",
           categoryTypeId: data.categoryTypeId?.toString() || "",
           sellingPrice: Number(data.sellingPrice) || 0,
           quantityInStock: Number(data.quantityInStock) || 0,
@@ -542,12 +542,13 @@ export default function EditMenuPage() {
                     )}
                   >
                     {image ? (
-                      <Image
+                      <img
                         src={image}
                         alt="Menu item"
                         width={300}
                         height={200}
                         className="rounded-lg object-cover max-h-64"
+                        crossOrigin="anonymous"
                       />
                     ) : (
                       <>

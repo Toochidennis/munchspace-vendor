@@ -1,19 +1,16 @@
 "use client";
 
-import { act, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 import {
   LayoutDashboard,
   ShoppingBag,
   Menu as MenuIcon,
-  Users,
   DollarSign,
   Settings,
   Globe,
   BellRing,
-  ChevronLeft,
-  ChevronRight,
   Ellipsis,
 } from "lucide-react";
 import Image from "next/image";
@@ -58,12 +55,6 @@ export default function RestaurantSidebar() {
   ];
 
   const accountItems = [
-    // {
-    //   icon: Users,
-    //   label: "Team",
-    //   href: "/restaurant/team",
-    //   active: pathname.startsWith("/restaurant/team"),
-    // },
     {
       icon: DollarSign,
       label: "Settlement",
@@ -82,7 +73,7 @@ export default function RestaurantSidebar() {
     <div>
       <div
         className={cn(
-          "relative md:flex flex-col h-screen hidden bg-munchprimary border-r p-4 border-gray-200 transition-all duration-300",
+          "relative md:flex flex-col h-screen hidden bg-munchprimary p-4 transition-all duration-300",
           collapsed ? "w-fit" : "w-70"
         )}
       >

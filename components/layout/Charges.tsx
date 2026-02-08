@@ -1,5 +1,3 @@
-"use client";
-
 import { LoaderCircle, Pencil, Search, Trash2, X } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { Input } from "../ui/input";
@@ -33,7 +31,6 @@ import {
   SelectValue,
 } from "../ui/select";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
-import { refreshAccessToken } from "@/app/lib/api";
 
 interface ChargeType {
   id: string;
@@ -83,62 +80,6 @@ const API_BASE = "https://api.munchspace.io/api/v1";
 const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
-// ──────────────────────────────────────────────────────────────
-// Authenticated fetch helper with refresh support
-// ──────────────────────────────────────────────────────────────
-
-async function authenticatedFetch(
-  url: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  let token = getAccessToken();
-
-  if (!token) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired - refresh failed");
-    }
-    token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
-  }
-
-  const headers: HeadersInit = {
-    "x-api-key": API_KEY,
-    Authorization: `Bearer ${token}`,
-    ...init.headers,
-  };
-
-  if (!(init.body instanceof FormData)) {
-    (headers as any)["Content-Type"] = "application/json";
-  }
-
-  let response = await fetch(url, { ...init, headers });
-
-  if (response.status === 401) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired during request (refresh failed)");
-    }
-
-    token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
-
-    response = await fetch(url, {
-      ...init,
-      headers: {
-        ...headers,
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
-
-  return response;
-}
-
 const Charges = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [charges, setCharges] = useState<Charge[]>([]);
@@ -151,24 +92,23 @@ const Charges = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const accessToken = getAccessToken();
   const businessId = getBusinessId();
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!businessId) {
-        setError("Business ID is missing. Please sign in again.");
-        setIsDataLoading(false);
-        return;
-      }
-
       setIsDataLoading(true);
       setError(null);
 
       try {
-        const typesRes = await authenticatedFetch(
-          `${API_BASE}/meta/charge-types`,
-          { method: "GET" },
-        );
+        // Fetch charge types
+        const typesRes = await fetch(`${API_BASE}/meta/charge-types`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "x-api-key": API_KEY,
+          },
+        });
 
         if (!typesRes.ok) {
           throw new Error(
@@ -183,9 +123,18 @@ const Charges = () => {
           setChargeTypes(activeTypes);
         }
 
-        const chargesRes = await authenticatedFetch(
+        // Fetch business charges
+        if (!businessId) throw new Error("Business ID is missing");
+
+        const chargesRes = await fetch(
           `${API_BASE}/vendors/me/businesses/${businessId}/charges`,
-          { method: "GET" },
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "x-api-key": API_KEY,
+            },
+          },
         );
 
         if (!chargesRes.ok) {
@@ -213,25 +162,32 @@ const Charges = () => {
                 month: "short",
                 year: "numeric",
               }),
-            } as Charge;
+            };
           });
 
         setCharges(enrichedCharges);
       } catch (err: any) {
         console.error("Data loading error:", err);
-        const msg =
-          err.message?.includes("expired") || err.message?.includes("refresh")
-            ? "Your session has expired. Please sign in again."
-            : err.message ||
-              "Failed to load data. Please check your connection and try again.";
-        setError(msg);
+        setError(
+          err.message ||
+            "Failed to load data. Please check your connection and try again.",
+        );
       } finally {
         setIsDataLoading(false);
       }
     };
 
-    fetchData();
-  }, [businessId]);
+    if (accessToken && businessId) {
+      fetchData();
+    } else {
+      setError(
+        !accessToken
+          ? "Authentication token is missing"
+          : "Business ID is missing",
+      );
+      setIsDataLoading(false);
+    }
+  }, [accessToken, businessId]);
 
   const form = useForm<ChargesFormType>({
     resolver: zodResolver(chargesFormSchema),
@@ -277,26 +233,26 @@ const Charges = () => {
     if (!deleteCandidate || !businessId) return;
 
     setIsLoading(true);
-    setError(null);
-
     try {
-      const res = await authenticatedFetch(
+      const res = await fetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/charges/${deleteCandidate.id}`,
-        { method: "DELETE" },
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "x-api-key": API_KEY,
+          },
+        },
       );
 
-      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+      if (!res.ok) throw new Error("Delete failed");
 
       setCharges((prev) => prev.filter((c) => c.id !== deleteCandidate.id));
       setDeleteCandidate(null);
       setIsDeleteDialogOpen(false);
-    } catch (err: any) {
-      console.error("Delete error:", err);
-      const msg =
-        err.message?.includes("expired") || err.message?.includes("refresh")
-          ? "Your session has expired. Please sign in again."
-          : err.message || "Failed to delete charge";
-      setError(msg);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to delete charge");
     } finally {
       setIsLoading(false);
     }
@@ -315,10 +271,13 @@ const Charges = () => {
       let payload: Record<string, any>;
 
       if (editingCharge) {
+        // PATCH: only send updatable fields
         payload = {
           amount: parseFloat(values.amount),
+          // isEnabled: true,  // Uncomment only if you want to allow toggling enabled state
         };
       } else {
+        // POST: full creation payload
         payload = {
           chargeTypeId: values.chargeTypeId,
           amount: parseFloat(values.amount),
@@ -326,99 +285,126 @@ const Charges = () => {
         };
       }
 
-      const isEdit = !!editingCharge;
-      const endpoint = isEdit
-        ? `${API_BASE}/vendors/me/businesses/${businessId}/charges/${editingCharge!.id}`
+      const url = editingCharge
+        ? `${API_BASE}/vendors/me/businesses/${businessId}/charges/${editingCharge.id}`
         : `${API_BASE}/vendors/me/businesses/${businessId}/charges`;
 
-      const res = await authenticatedFetch(endpoint, {
-        method: isEdit ? "PATCH" : "POST",
+      const method = editingCharge ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          "x-api-key": API_KEY,
+        },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
+        let errorDetail = "";
+        try {
+          const errorBody = await res.json();
+          errorDetail =
+            errorBody.message || errorBody.error || JSON.stringify(errorBody);
+        } catch {
+          errorDetail = await res.text().catch(() => "");
+        }
         throw new Error(
-          `${isEdit ? "Update" : "Create"} failed: ${res.status} ${res.statusText}`,
+          `${editingCharge ? "Update" : "Create"} failed: ${res.status} – ${errorDetail || res.statusText}`,
         );
       }
 
-      const result = await res.json();
-
-      const newCharge = {
-        ...result.data,
-        name: selectedType?.label || "Unknown Charge",
-        type: isPercentage ? "percentage" : "amount",
-        formattedValue: isPercentage
-          ? `${parseFloat(values.amount)}%`
-          : `₦${parseFloat(values.amount).toFixed(2)}`,
-        lastUpdated: new Date().toLocaleDateString("en-GB", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-      } as Charge;
-
-      setCharges((prev) =>
-        isEdit
-          ? prev.map((c) => (c.id === editingCharge!.id ? newCharge : c))
-          : [...prev, newCharge],
+      // Refresh list
+      const refreshRes = await fetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/charges`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "x-api-key": API_KEY,
+          },
+        },
       );
 
-      setIsDialogOpen(false);
+      if (refreshRes.ok) {
+        const data = await refreshRes.json();
+        const raw = data?.data ?? [];
+        const enriched = raw
+          .filter((c: ChargeResponseItem) => c.isEnabled)
+          .map((c: ChargeResponseItem) => {
+            const type = chargeTypes.find((t) => t.id === c.chargeTypeId);
+            return {
+              ...c,
+              name: type?.label || "Unknown",
+              type: type?.isPercentage ? "percentage" : "amount",
+              formattedValue: type?.isPercentage
+                ? `${c.amount}%`
+                : `₦${Number(c.amount).toFixed(2)}`,
+              lastUpdated: new Date(c.createdAt).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              }),
+            };
+          });
+        setCharges(enriched);
+      }
+
       resetForm();
+      setIsDialogOpen(false);
     } catch (err: any) {
-      console.error("Submit error:", err);
-      const msg =
-        err.message?.includes("expired") || err.message?.includes("refresh")
-          ? "Your session has expired. Please sign in again."
-          : err.message || "Failed to save charge. Please try again.";
-      setError(msg);
+      console.error("Save error:", err);
+      setError(err.message || "Failed to save charge. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (isDataLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoaderCircle className="h-8 w-8 animate-spin text-orange-500" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-red-600">
-        {error}
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-5xl mx-auto">
-        <div className="space-y-8">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-gray-900">Charges</h1>
+    <div className="min-h-screen bg-white text-gray-900">
+      <div className="max-w-7xl mx-auto space-y-8 p-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h1 className="text-2xl font-bold">Charges & Fees</h1>
+
+          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Input
+                placeholder="Search charges..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 h-10 border-gray-300"
+              />
+            </div>
             <Button
               onClick={handleAddNew}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
+              className="bg-orange-500 hover:bg-orange-600 text-white h-10 px-6"
             >
-              Add New Charge
+              + Add New Charge
             </Button>
           </div>
+        </div>
 
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <Input
-              placeholder="Search charges..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 h-12 max-w-md"
-            />
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {error}
           </div>
+        )}
 
-          {filteredCharges.length === 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          {isDataLoading ? (
+            <div className="flex justify-center items-center py-20">
+              <LoaderCircle className="h-10 w-10 animate-spin text-gray-500" />
+              <span className="ml-3 text-gray-600">Loading charges...</span>
+            </div>
+          ) : error ? (
+            <div className="text-center py-16 text-gray-600">
+              <p>Unable to load charges at this time.</p>
+              <p className="text-sm mt-2">
+                Please check your connection and try again.
+              </p>
+            </div>
+          ) : charges.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <Image
                 src="/images/empty.png"
@@ -518,7 +504,7 @@ const Charges = () => {
                         disabled={!!editingCharge}
                       >
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger className="h-11! w-full">
                             <SelectValue placeholder="Select charge type" />
                           </SelectTrigger>
                         </FormControl>
@@ -552,7 +538,7 @@ const Charges = () => {
                             type="number"
                             step="0.01"
                             min="0"
-                            className="pl-10"
+                            className="pl-10 h-11"
                             {...field}
                           />
                         </div>

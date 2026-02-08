@@ -2,7 +2,7 @@ export function setBusinessId(id: string | null) {
   if (id) {
     const item = {
       value: id,
-      expiry: Date.now() + TTL_MS,
+      expiry: Date.now() + 60 * 60 * 10000,
     };
     localStorage.setItem("businessId", JSON.stringify(item));
   } else {
