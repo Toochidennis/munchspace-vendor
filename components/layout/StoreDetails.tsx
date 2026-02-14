@@ -98,9 +98,7 @@ const storeInfoEditSchema = z.object({
   storeName: z.string().min(1, "Store name is required"),
   email: z.string().email("Invalid email format"),
   phone: z.string().min(1, "Phone number is required"),
-  establishedDate: z.date({
-    required_error: "Established date is required.",
-  }),
+  establishedDate: z.date("Established date is required."),
   businessType: z.string().min(1, "Business type is required"),
   brandType: z.string().min(1, "Brand type is required"),
   serviceOperations: z
@@ -155,6 +153,7 @@ type StoreInfoDisplayValues = {
 
 const StoreDetails = () => {
   const [storeImage, setStoreImage] = useState("/images/store-placeholder.png");
+  const [previousLogoUrl, setPreviousLogoUrl] = useState<string | null>(null);
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
@@ -165,7 +164,6 @@ const StoreDetails = () => {
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [updatingHours, setUpdatingHours] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [previousLogoUrl, setPreviousLogoUrl] = useState<string | null>(null);
 
   const [businessTypeOptions, setBusinessTypeOptions] = useState<MetaItem[]>(
     [],
@@ -273,14 +271,14 @@ const StoreDetails = () => {
           draggable: true,
         });
 
-        newMarker.addListener("dragend", (e) => {
+        newMarker.addListener("dragend", (e: any) => {
           if (e.latLng) {
             addressForm.setValue("latitude", e.latLng.lat());
             addressForm.setValue("longitude", e.latLng.lng());
           }
         });
 
-        newMap.addListener("click", (e) => {
+        newMap.addListener("click", (e: any) => {
           if (e.latLng) {
             newMarker.setPosition(e.latLng);
             addressForm.setValue("latitude", e.latLng.lat());
@@ -365,7 +363,6 @@ const StoreDetails = () => {
         }
 
         const { data } = await businessRes.json();
-        console.log("business data", data)
 
         const workingHours: Record<string, any> = {};
         daysOfWeek.forEach((uiDay) => {
@@ -378,7 +375,7 @@ const StoreDetails = () => {
           };
         });
         form.reset({ workingHours });
-// a
+
         setStoreInfo({
           storeName: data.displayName || data.legalName || "",
           email: data.email || "",
@@ -392,8 +389,8 @@ const StoreDetails = () => {
           businessStatus: data.isActive ? "Operational" : "Inactive",
           website: data.website || "N/A",
           address: data.address || {},
-          latitude: data.address.latitude,
-          longitude: data.address.longitude,
+          latitude: data.address?.latitude,
+          longitude: data.address?.longitude,
         });
 
         storeForm.reset({
@@ -435,11 +432,10 @@ const StoreDetails = () => {
   }, [form, storeForm, addressForm]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPreviousLogoUrl(storeImage);
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Optional: client-side size + type validation
+    // Client-side validation
     if (file.size > 2 * 1024 * 1024) {
       toast.error("File size exceeds 2MB limit");
       return;
@@ -450,7 +446,10 @@ const StoreDetails = () => {
       return;
     }
 
-    // Show preview immediately (optimistic UI)
+    // Save current image for rollback
+    setPreviousLogoUrl(storeImage);
+
+    // Optimistic preview
     const reader = new FileReader();
     reader.onloadend = () => {
       setStoreImage(reader.result as string);
@@ -459,19 +458,13 @@ const StoreDetails = () => {
 
     try {
       const token = await getAccessToken();
-      if (!token) {
-        toast.error("Authentication required");
-        return;
-      }
+      if (!token) throw new Error("Authentication required");
 
       const businessId = await getBusinessId();
-      if (!businessId) {
-        toast.error("No business ID found");
-        return;
-      }
+      if (!businessId) throw new Error("No business ID found");
 
       const formData = new FormData();
-      formData.append("logo", file); // ← important: field name expected by backend
+      formData.append("logo", file);
 
       const res = await fetch(
         `https://api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
@@ -480,7 +473,6 @@ const StoreDetails = () => {
           headers: {
             Authorization: `Bearer ${token}`,
             "x-api-key": X_API_KEY,
-            // Do NOT set Content-Type → browser will set multipart/form-data with boundary
           },
           body: formData,
         },
@@ -495,20 +487,16 @@ const StoreDetails = () => {
       const newLogoUrl = responseData?.data?.logoUrl;
 
       if (newLogoUrl) {
-        setStoreImage(newLogoUrl); // Use the real server URL
+        setStoreImage(newLogoUrl);
         toast.success("Store image updated successfully");
-
-        // Optional: refresh full store info to stay in sync
-        // You can call a simplified version of your fetch logic here
       } else {
         toast.warning("Image uploaded, but no new URL returned");
       }
     } catch (err) {
       console.error("Logo upload failed:", err);
       toast.error("Could not update store image");
-
-      // Optional: revert preview on failure
-      setStoreImage(previousLogoUrl); // you'd need to keep previous value
+      // Revert preview
+      setStoreImage(previousLogoUrl ?? "/images/store-placeholder.png");
     }
   };
 
@@ -553,9 +541,6 @@ const StoreDetails = () => {
           body: formData,
         },
       );
-
-      const resData = await res.json();
-      console.log("Store update response:", resData);
 
       if (!res.ok) throw new Error("Update failed");
 
@@ -602,7 +587,6 @@ const StoreDetails = () => {
       if (data.postalCode)
         formData.append("address[postalCode]", data.postalCode);
 
-      // latitude & longitude sent as numbers (via .toString() – FormData only accepts strings)
       formData.append("latitude", data.latitude.toString());
       formData.append("longitude", data.longitude.toString());
 
@@ -617,12 +601,6 @@ const StoreDetails = () => {
           body: formData,
         },
       );
-
-      const data2 = Object.fromEntries(formData.entries());
-      console.log(data2);
-
-      const resData = await res.json();
-      console.log("Address update response:", resData);
 
       if (!res.ok) throw new Error("Address update failed");
 
@@ -722,13 +700,13 @@ const StoreDetails = () => {
   return (
     <div>
       {/* Store Image Upload */}
-      <Card className="p-4 md:p-8 bg-g border-gray-100 shadow-none">
+      <Card className="p-4 md:p-8 bg-white border-gray-100 shadow-none">
         <div className="flex items-center gap-4">
           <div className="flex gap-8">
             <div className="relative group">
               <div className="w-24 h-24 rounded-xl overflow-hidden bg-gray-200">
                 <img
-                  src={storeImage || "/images/store-placeholder.png"}
+                  src={storeImage}
                   alt="Store"
                   width={100}
                   height={100}
@@ -762,7 +740,6 @@ const StoreDetails = () => {
           </label>
         </div>
       </Card>
-      
 
       {/* Store Information Display */}
       <div className="space-y-6">

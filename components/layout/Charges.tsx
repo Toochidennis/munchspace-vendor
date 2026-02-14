@@ -55,7 +55,7 @@ interface ChargeResponseItem {
 
 interface Charge extends ChargeResponseItem {
   name?: string;
-  type?: "amount" | "percentage";
+  type?: "amount" | "percentage"; // ← union type
   formattedValue?: string;
   lastUpdated?: string;
 }
@@ -146,14 +146,21 @@ const Charges = () => {
         const chargesData = await chargesRes.json();
         const rawCharges: ChargeResponseItem[] = chargesData?.data ?? [];
 
-        const enrichedCharges = rawCharges
+        // ────────────────────────────────────────────────
+        // Fixed mapping – explicit type assertion on 'type'
+        // ────────────────────────────────────────────────
+        const enrichedCharges: Charge[] = rawCharges
           .filter((c) => c.isEnabled)
           .map((c) => {
             const type = activeTypes.find((t) => t.id === c.chargeTypeId);
+            const chargeType: "amount" | "percentage" = type?.isPercentage
+              ? "percentage"
+              : "amount";
+
             return {
               ...c,
               name: type?.label || "Unknown Charge",
-              type: type?.isPercentage ? "percentage" : "amount",
+              type: chargeType, // now matches the union
               formattedValue: type?.isPercentage
                 ? `${c.amount}%`
                 : `₦${Number(c.amount).toFixed(2)}`,
@@ -271,13 +278,10 @@ const Charges = () => {
       let payload: Record<string, any>;
 
       if (editingCharge) {
-        // PATCH: only send updatable fields
         payload = {
           amount: parseFloat(values.amount),
-          // isEnabled: true,  // Uncomment only if you want to allow toggling enabled state
         };
       } else {
-        // POST: full creation payload
         payload = {
           chargeTypeId: values.chargeTypeId,
           amount: parseFloat(values.amount),
@@ -329,14 +333,20 @@ const Charges = () => {
       if (refreshRes.ok) {
         const data = await refreshRes.json();
         const raw = data?.data ?? [];
+
+        // Same fixed mapping logic here
         const enriched = raw
           .filter((c: ChargeResponseItem) => c.isEnabled)
           .map((c: ChargeResponseItem) => {
             const type = chargeTypes.find((t) => t.id === c.chargeTypeId);
+            const chargeType: "amount" | "percentage" = type?.isPercentage
+              ? "percentage"
+              : "amount";
+
             return {
               ...c,
               name: type?.label || "Unknown",
-              type: type?.isPercentage ? "percentage" : "amount",
+              type: chargeType,
               formattedValue: type?.isPercentage
                 ? `${c.amount}%`
                 : `₦${Number(c.amount).toFixed(2)}`,
@@ -347,6 +357,7 @@ const Charges = () => {
               }),
             };
           });
+
         setCharges(enriched);
       }
 

@@ -215,9 +215,6 @@ export default function DashboardPage() {
   const top5Items = data.bestSelling.slice(0, 5);
   const totalSales = top5Items.reduce((sum, item) => sum + item.sales, 0);
 
-  const at = getBusinessId()
-  console.log(at);
-
   return (
     <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto space-y-8">

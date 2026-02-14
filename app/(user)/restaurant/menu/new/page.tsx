@@ -354,6 +354,8 @@ export default function CreateMenuPage() {
 
       const responseData = await res.json();
 
+      console.log("Create menu item response:", responseData);
+
       if (res.ok) {
         toast.success("Menu item created successfully");
         router.push("/restaurant/menu");
