@@ -335,17 +335,17 @@ const StoreDetails = () => {
         };
 
         const [btRes, brRes, soRes, businessRes] = await Promise.all([
-          fetch("https://api.munchspace.io/api/v1/meta/business-types", {
+          fetch("https://dev.api.munchspace.io/api/v1/meta/business-types", {
             headers,
           }),
-          fetch("https://api.munchspace.io/api/v1/meta/brand-types", {
+          fetch("https://dev.api.munchspace.io/api/v1/meta/brand-types", {
             headers,
           }),
-          fetch("https://api.munchspace.io/api/v1/meta/service-operations", {
+          fetch("https://dev.api.munchspace.io/api/v1/meta/service-operations", {
             headers,
           }),
           fetch(
-            `https://api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+            `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
             { headers },
           ),
         ]);
@@ -467,7 +467,7 @@ const StoreDetails = () => {
       formData.append("logo", file);
 
       const res = await fetch(
-        `https://api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
           headers: {
@@ -531,7 +531,7 @@ const StoreDetails = () => {
       });
 
       const res = await fetch(
-        `https://api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
           headers: {
@@ -591,7 +591,7 @@ const StoreDetails = () => {
       formData.append("longitude", data.longitude.toString());
 
       const res = await fetch(
-        `https://api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
           headers: {
@@ -657,7 +657,7 @@ const StoreDetails = () => {
       });
 
       const res = await fetch(
-        `https://api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
           headers: {

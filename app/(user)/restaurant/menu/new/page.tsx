@@ -61,28 +61,42 @@ const formSchema = z.object({
     .int("Quantity must be a whole number")
     .gte(0, "Quantity cannot be less than 0"),
   isAvailable: z.enum(["available", "unavailable"]),
-  variants: z.array(
-    z.object({
-      name: z.string(),
-      description: z.string(),
-      price: z.string(),
-    }),
-  ),
-  addons: z.array(
-    z.object({
-      name: z.string(),
-      description: z.string(),
-      price: z.string(),
-    }),
-  ),
+  variants: z
+    .array(
+      z.object({
+        name: z.string(),
+        description: z.string(),
+        price: z.string(),
+      }),
+    )
+    .optional(),
+  addons: z
+    .array(
+      z.object({
+        name: z.string(),
+        description: z.string(),
+        price: z.string(),
+      }),
+    )
+    .optional(),
   discount: z
     .object({
-      type: z.enum(["PERCENTAGE", "FLAT", "FIXED"]).optional(),
-      value: z.string().min(1, "Value is required when discount is applied"),
+      type: z.enum(["PERCENTAGE", "FLAT", "FIXED_PRICE"]).optional(),
+      value: z.string().optional(),
       startsAt: z.date().optional(),
       endsAt: z.date().optional(),
     })
-    .optional(),
+    .optional()
+    .refine(
+      (data) => {
+        if (!data?.type) return true;
+        return !!data?.value && data.value.trim() !== "";
+      },
+      {
+        message: "Discount value is required when type is selected",
+        path: ["value"],
+      },
+    ),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -94,7 +108,7 @@ type MenuCategory = {
   description: string;
 };
 
-const API_BASE = "https://api.munchspace.io/api/v1";
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
@@ -171,10 +185,9 @@ export default function CreateMenuPage() {
     mode: "onChange",
     defaultValues: {
       isAvailable: "available",
-      variants: [{ name: "", description: "", price: "" }],
-      addons: [{ name: "", description: "", price: "" }],
       sellingPrice: 0,
       quantityInStock: 0,
+      // variants, addons, discount left undefined → they are optional
     },
   });
 
@@ -297,30 +310,37 @@ export default function CreateMenuPage() {
       data.isAvailable === "available" ? "true" : "false",
     );
 
-    data.variants.forEach((variant, index) => {
-      if (variant.name.trim()) {
-        formData.append(`variants[${index}][name]`, variant.name);
-        formData.append(
-          `variants[${index}][description]`,
-          variant.description || "",
-        );
-        formData.append(`variants[${index}][price]`, variant.price);
-      }
-    });
+    // Variants - only send if there are meaningful entries
+    if (data.variants && data.variants.length > 0) {
+      data.variants.forEach((variant, index) => {
+        if (variant.name?.trim()) {
+          formData.append(`variants[${index}][name]`, variant.name);
+          formData.append(
+            `variants[${index}][description]`,
+            variant.description || "",
+          );
+          formData.append(`variants[${index}][price]`, variant.price || "0");
+        }
+      });
+    }
 
-    data.addons.forEach((addon, index) => {
-      if (addon.name.trim()) {
-        formData.append(`addons[${index}][name]`, addon.name);
-        formData.append(
-          `addons[${index}][description]`,
-          addon.description || "",
-        );
-        formData.append(`addons[${index}][price]`, addon.price);
-      }
-    });
+    // Addons - only send if there are meaningful entries
+    if (data.addons && data.addons.length > 0) {
+      data.addons.forEach((addon, index) => {
+        if (addon.name?.trim()) {
+          formData.append(`addons[${index}][name]`, addon.name);
+          formData.append(
+            `addons[${index}][description]`,
+            addon.description || "",
+          );
+          formData.append(`addons[${index}][price]`, addon.price || "0");
+        }
+      });
+    }
 
-    if (data.discount) {
-      formData.append("discount[type]", data.discount.type!);
+    // Discount - only send if type and value are present
+    if (data.discount?.type && data.discount?.value?.trim()) {
+      formData.append("discount[type]", data.discount.type);
       formData.append("discount[value]", data.discount.value);
       if (data.discount.startsAt) {
         formData.append(
@@ -386,7 +406,7 @@ export default function CreateMenuPage() {
       <div className="max-w-3xl mx-auto p-8">
         <div className="mb-8 mt-10 md:mt-0">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-4">
-            <ArrowLeft className="h-6 w-6 text-gray-600 hover:text-gray-900" />
+            <ArrowLeft className="h-6 w-6 text-gray-600 hover:text-gray-900 cursor-pointer" />
             Create Menu
           </h1>
         </div>
@@ -521,7 +541,7 @@ export default function CreateMenuPage() {
                     >
                       <SelectTrigger
                         className={cn(
-                          "h-12! w-full",
+                          "h-12 w-full",
                           errors.categoryTypeId &&
                             "border-red-600 focus-visible:ring-red-600",
                         )}
@@ -647,7 +667,7 @@ export default function CreateMenuPage() {
 
           <TabsContent value="sizes" className="space-y-8">
             <p className="text-gray-600">
-              Specify the sizes/variants for this menu item.
+              Specify the sizes/variants for this menu item (optional).
             </p>
 
             <div className="space-y-4">
@@ -669,7 +689,6 @@ export default function CreateMenuPage() {
                       size="icon"
                       onClick={() => removeVariant(index)}
                       className="text-red-600 hover:bg-red-50"
-                      disabled={variantFields.length === 1}
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
@@ -697,7 +716,8 @@ export default function CreateMenuPage() {
 
           <TabsContent value="extras" className="space-y-8">
             <p className="text-gray-600">
-              Add any additional items customers can choose with this menu item.
+              Add any additional items customers can choose with this menu item
+              (optional).
             </p>
 
             <div className="space-y-4">
@@ -719,7 +739,6 @@ export default function CreateMenuPage() {
                       size="icon"
                       onClick={() => removeAddon(index)}
                       className="text-red-600 hover:bg-red-50"
-                      disabled={addonFields.length === 1}
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
@@ -748,7 +767,7 @@ export default function CreateMenuPage() {
           <TabsContent value="discounts" className="space-y-8">
             <p className="text-gray-600">
               Offer a temporary price reduction to attract more orders for this
-              item.
+              item (optional).
             </p>
 
             <div className="space-y-6 border border-gray-200 rounded-lg p-6">
@@ -760,10 +779,10 @@ export default function CreateMenuPage() {
                   render={({ field }) => (
                     <Select
                       onValueChange={field.onChange}
-                      defaultValue={field.value}
+                      value={field.value ?? ""}
                     >
-                      <SelectTrigger className="h-12!">
-                        <SelectValue placeholder="Select discount type" />
+                      <SelectTrigger className="h-12">
+                        <SelectValue placeholder="Select discount type (optional)" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="PERCENTAGE">
@@ -788,11 +807,17 @@ export default function CreateMenuPage() {
                   <span className="text-gray-600">
                     {watch("discount.type") === "PERCENTAGE"
                       ? "%"
-                      : watch("discount.type") === "FLAT"
+                      : watch("discount.type") === "FLAT" ||
+                          watch("discount.type") === "FIXED_PRICE"
                         ? "₦"
                         : ""}
                   </span>
                 </div>
+                {errors.discount?.value && (
+                  <p className="text-red-600 text-sm">
+                    {errors.discount.value.message}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -1,4 +1,12 @@
-import { LoaderCircle, Pencil, Search, Trash2, X } from "lucide-react";
+import {
+  LoaderCircle,
+  Pencil,
+  Search,
+  Trash2,
+  X,
+  Check,
+  ChevronsUpDown,
+} from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
@@ -10,7 +18,6 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import Image from "next/image";
 import {
   Form,
   FormControl,
@@ -22,7 +29,6 @@ import {
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -30,40 +36,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Badge } from "../ui/badge";
+import { cn } from "@/lib/utils";
+import { Switch } from "../ui/switch";
+import { toast } from "sonner";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 
 interface ChargeType {
   id: string;
-  key: string;
   label: string;
-  description: string;
   isPercentage: boolean;
-  isComputed: boolean;
-  maxAmount: number | null;
-  isRequired: boolean;
   isActive: boolean;
 }
 
-interface ChargeResponseItem {
+interface ServiceOperation {
   id: string;
-  businessId: string;
+  key: string;
+  label: string;
+}
+
+interface Charge {
+  id: string;
   chargeTypeId: string;
   amount: number;
   isEnabled: boolean;
-  createdAt: string;
-}
-
-interface Charge extends ChargeResponseItem {
+  serviceOperations?: ServiceOperation[];
   name?: string;
-  type?: "amount" | "percentage"; // ← union type
   formattedValue?: string;
   lastUpdated?: string;
-}
-
-interface ChargeTypeResponse {
-  success: boolean;
-  statusCode: number;
-  data: ChargeType[];
+  createdAt: string;
 }
 
 const chargesFormSchema = z.object({
@@ -71,12 +73,15 @@ const chargesFormSchema = z.object({
   amount: z
     .string()
     .min(1, "Amount is required")
-    .regex(/^\d+(\.\d{1,2})?$/, "Invalid amount format (e.g. 500 or 12.50)"),
+    .regex(/^\d+(\.\d{1,2})?$/, "Invalid amount format"),
+  serviceOperationIds: z
+    .array(z.string())
+    .min(1, "Select at least one service"),
 });
 
 type ChargesFormType = z.infer<typeof chargesFormSchema>;
 
-const API_BASE = "https://api.munchspace.io/api/v1";
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
@@ -84,161 +89,95 @@ const Charges = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [charges, setCharges] = useState<Charge[]>([]);
   const [chargeTypes, setChargeTypes] = useState<ChargeType[]>([]);
+  const [serviceOperations, setServiceOperations] = useState<
+    ServiceOperation[]
+  >([]);
   const [editingCharge, setEditingCharge] = useState<Charge | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
-  const [deleteCandidate, setDeleteCandidate] = useState<Charge | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<Charge | null>(null);
+  const [serviceOperationOpen, setServiceOperationOpen] = useState(false);
 
   const accessToken = getAccessToken();
   const businessId = getBusinessId();
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsDataLoading(true);
-      setError(null);
-
-      try {
-        // Fetch charge types
-        const typesRes = await fetch(`${API_BASE}/meta/charge-types`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "x-api-key": API_KEY,
-          },
-        });
-
-        if (!typesRes.ok) {
-          throw new Error(
-            `Charge types failed: ${typesRes.status} ${typesRes.statusText}`,
-          );
-        }
-
-        const typesJson: ChargeTypeResponse = await typesRes.json();
-        let activeTypes: ChargeType[] = [];
-        if (typesJson.success && Array.isArray(typesJson.data)) {
-          activeTypes = typesJson.data.filter((t) => t.isActive);
-          setChargeTypes(activeTypes);
-        }
-
-        // Fetch business charges
-        if (!businessId) throw new Error("Business ID is missing");
-
-        const chargesRes = await fetch(
-          `${API_BASE}/vendors/me/businesses/${businessId}/charges`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "x-api-key": API_KEY,
-            },
-          },
-        );
-
-        if (!chargesRes.ok) {
-          throw new Error(
-            `Charges fetch failed: ${chargesRes.status} ${chargesRes.statusText}`,
-          );
-        }
-
-        const chargesData = await chargesRes.json();
-        const rawCharges: ChargeResponseItem[] = chargesData?.data ?? [];
-
-        // ────────────────────────────────────────────────
-        // Fixed mapping – explicit type assertion on 'type'
-        // ────────────────────────────────────────────────
-        const enrichedCharges: Charge[] = rawCharges
-          .filter((c) => c.isEnabled)
-          .map((c) => {
-            const type = activeTypes.find((t) => t.id === c.chargeTypeId);
-            const chargeType: "amount" | "percentage" = type?.isPercentage
-              ? "percentage"
-              : "amount";
-
-            return {
-              ...c,
-              name: type?.label || "Unknown Charge",
-              type: chargeType, // now matches the union
-              formattedValue: type?.isPercentage
-                ? `${c.amount}%`
-                : `₦${Number(c.amount).toFixed(2)}`,
-              lastUpdated: new Date(c.createdAt).toLocaleDateString("en-GB", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              }),
-            };
-          });
-
-        setCharges(enrichedCharges);
-      } catch (err: any) {
-        console.error("Data loading error:", err);
-        setError(
-          err.message ||
-            "Failed to load data. Please check your connection and try again.",
-        );
-      } finally {
-        setIsDataLoading(false);
-      }
-    };
-
-    if (accessToken && businessId) {
-      fetchData();
-    } else {
-      setError(
-        !accessToken
-          ? "Authentication token is missing"
-          : "Business ID is missing",
-      );
-      setIsDataLoading(false);
-    }
-  }, [accessToken, businessId]);
 
   const form = useForm<ChargesFormType>({
     resolver: zodResolver(chargesFormSchema),
     defaultValues: {
       chargeTypeId: "",
       amount: "",
+      serviceOperationIds: [],
     },
   });
 
-  const selectedChargeTypeId = form.watch("chargeTypeId");
-  const selectedType = chargeTypes.find((t) => t.id === selectedChargeTypeId);
-  const isPercentage = selectedType?.isPercentage ?? false;
+  const fetchData = async () => {
+    if (!accessToken || !businessId) return;
+    setIsDataLoading(true);
+    try {
+      const headers = {
+        Authorization: `Bearer ${accessToken}`,
+        "x-api-key": API_KEY,
+      };
+      const [typesRes, servicesRes, chargesRes] = await Promise.all([
+        fetch(`${API_BASE}/meta/charge-types`, { headers }),
+        fetch(`${API_BASE}/vendors/me/businesses/${businessId}/services`, {
+          headers,
+        }),
+        fetch(`${API_BASE}/vendors/me/businesses/${businessId}/charges`, {
+          headers,
+        }),
+      ]);
 
-  const filteredCharges = charges.filter((charge) =>
-    charge.name?.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+      const typesData = await typesRes.json();
+      const servicesData = await servicesRes.json();
+      const chargesData = await chargesRes.json();
 
-  const resetForm = () => {
-    form.reset({ chargeTypeId: "", amount: "" });
-    setEditingCharge(null);
+      const activeTypes = (typesData.data || []).filter((t: any) => t.isActive);
+      setChargeTypes(activeTypes);
+      setServiceOperations(servicesData.data || []);
+
+      const enriched = (chargesData.data || []).map((c: any) => {
+        const type = activeTypes.find((t: any) => t.id === c.chargeTypeId);
+        return {
+          ...c,
+          name: type?.label || "Unknown Charge",
+          formattedValue: type?.isPercentage
+            ? `${c.amount}%`
+            : `₦${Number(c.amount).toFixed(2)}`,
+          lastUpdated: new Date(c.createdAt).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }),
+        };
+      });
+      setCharges(enriched);
+    } catch (err) {
+      toast.error("Failed to load data. Please refresh.");
+    } finally {
+      setIsDataLoading(false);
+    }
   };
 
-  const handleAddNew = () => {
-    resetForm();
-    setIsDialogOpen(true);
-  };
+  useEffect(() => {
+    fetchData();
+  }, [accessToken, businessId]);
 
   const handleEdit = (charge: Charge) => {
     setEditingCharge(charge);
+    const operationIds = charge.serviceOperations?.map((op) => op.id) || [];
     form.reset({
       chargeTypeId: charge.chargeTypeId,
       amount: charge.amount.toString(),
+      serviceOperationIds: operationIds,
     });
     setIsDialogOpen(true);
   };
 
-  const handleDeleteClick = (charge: Charge) => {
-    setDeleteCandidate(charge);
-    setIsDeleteDialogOpen(true);
-  };
-
   const confirmDelete = async () => {
-    if (!deleteCandidate || !businessId) return;
-
+    if (!deleteCandidate) return;
     setIsLoading(true);
     try {
       const res = await fetch(
@@ -251,132 +190,66 @@ const Charges = () => {
           },
         },
       );
-
-      if (!res.ok) throw new Error("Delete failed");
-
+      if (!res.ok) throw new Error();
       setCharges((prev) => prev.filter((c) => c.id !== deleteCandidate.id));
-      setDeleteCandidate(null);
       setIsDeleteDialogOpen(false);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to delete charge");
+      toast.success("Charge deleted successfully");
+    } catch {
+      toast.error("Failed to delete charge");
     } finally {
       setIsLoading(false);
     }
   };
 
   const onSubmit = async (values: ChargesFormType) => {
-    if (!businessId) {
-      setError("Business ID is missing");
-      return;
-    }
-
     setIsLoading(true);
-    setError(null);
-
     try {
-      let payload: Record<string, any>;
-
-      if (editingCharge) {
-        payload = {
-          amount: parseFloat(values.amount),
-        };
-      } else {
-        payload = {
-          chargeTypeId: values.chargeTypeId,
-          amount: parseFloat(values.amount),
-          isEnabled: true,
-        };
-      }
-
       const url = editingCharge
         ? `${API_BASE}/vendors/me/businesses/${businessId}/charges/${editingCharge.id}`
         : `${API_BASE}/vendors/me/businesses/${businessId}/charges`;
 
-      const method = editingCharge ? "PATCH" : "POST";
-
       const res = await fetch(url, {
-        method,
+        method: editingCharge ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
           "x-api-key": API_KEY,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...values,
+          amount: parseFloat(values.amount),
+          ...(editingCharge ? {} : { isEnabled: true }),
+        }),
       });
 
-      if (!res.ok) {
-        let errorDetail = "";
-        try {
-          const errorBody = await res.json();
-          errorDetail =
-            errorBody.message || errorBody.error || JSON.stringify(errorBody);
-        } catch {
-          errorDetail = await res.text().catch(() => "");
-        }
-        throw new Error(
-          `${editingCharge ? "Update" : "Create"} failed: ${res.status} – ${errorDetail || res.statusText}`,
-        );
-      }
+      const resData = await res.json();
+      console.log("Charge save response:", resData);
+      if (!res.ok) throw new Error("Failed to save charge");
 
-      // Refresh list
-      const refreshRes = await fetch(
-        `${API_BASE}/vendors/me/businesses/${businessId}/charges`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "x-api-key": API_KEY,
-          },
-        },
+      toast.success(
+        editingCharge
+          ? "Charge updated successfully"
+          : "Charge added successfully",
       );
-
-      if (refreshRes.ok) {
-        const data = await refreshRes.json();
-        const raw = data?.data ?? [];
-
-        // Same fixed mapping logic here
-        const enriched = raw
-          .filter((c: ChargeResponseItem) => c.isEnabled)
-          .map((c: ChargeResponseItem) => {
-            const type = chargeTypes.find((t) => t.id === c.chargeTypeId);
-            const chargeType: "amount" | "percentage" = type?.isPercentage
-              ? "percentage"
-              : "amount";
-
-            return {
-              ...c,
-              name: type?.label || "Unknown",
-              type: chargeType,
-              formattedValue: type?.isPercentage
-                ? `${c.amount}%`
-                : `₦${Number(c.amount).toFixed(2)}`,
-              lastUpdated: new Date(c.createdAt).toLocaleDateString("en-GB", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              }),
-            };
-          });
-
-        setCharges(enriched);
-      }
-
-      resetForm();
       setIsDialogOpen(false);
+      fetchData();
     } catch (err: any) {
-      console.error("Save error:", err);
-      setError(err.message || "Failed to save charge. Please try again.");
+      toast.error(err.message);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const selectedType = chargeTypes.find(
+    (t) => t.id === form.watch("chargeTypeId"),
+  );
+  const isPercentage = selectedType?.isPercentage ?? false;
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <div className="max-w-7xl mx-auto space-y-8 p-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold">Charges & Fees</h1>
-
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
             <div className="relative flex-1 min-w-[240px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -384,115 +257,125 @@ const Charges = () => {
                 placeholder="Search charges..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-10 border-gray-300"
+                className="pl-10 h-10 border-gray-300 rounded-md"
               />
             </div>
             <Button
-              onClick={handleAddNew}
-              className="bg-orange-500 hover:bg-orange-600 text-white h-10 px-6"
+              onClick={() => {
+                setEditingCharge(null);
+                form.reset({
+                  chargeTypeId: "",
+                  amount: "",
+                  serviceOperationIds: [],
+                });
+                setIsDialogOpen(true);
+              }}
+              className="bg-orange-500 hover:bg-orange-600 text-white h-10 px-6 rounded-md"
             >
               + Add New Charge
             </Button>
           </div>
         </div>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
-        )}
-
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
           {isDataLoading ? (
             <div className="flex justify-center items-center py-20">
               <LoaderCircle className="h-10 w-10 animate-spin text-gray-500" />
-              <span className="ml-3 text-gray-600">Loading charges...</span>
-            </div>
-          ) : error ? (
-            <div className="text-center py-16 text-gray-600">
-              <p>Unable to load charges at this time.</p>
-              <p className="text-sm mt-2">
-                Please check your connection and try again.
-              </p>
-            </div>
-          ) : charges.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
-              <Image
-                src="/images/empty.png"
-                width={160}
-                height={160}
-                className="mx-auto mb-6 opacity-70"
-                alt="No charges"
-              />
-              <p className="text-lg">No charges configured yet</p>
-              <p className="text-sm mt-2">
-                Click "Add New Charge" to get started.
-              </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
-                  <TableHead className="ps-6 py-4">Name</TableHead>
-                  <TableHead className="py-4">Value</TableHead>
-                  <TableHead className="py-4">Last Updated</TableHead>
-                  <TableHead className="text-right pe-6 py-4">
-                    Actions
-                  </TableHead>
+                  <TableHead className="ps-6">Name</TableHead>
+                  <TableHead>Value</TableHead>
+                  <TableHead>Enabled</TableHead>
+                  <TableHead className="text-right pe-6">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCharges.map((charge) => (
-                  <TableRow key={charge.id} className="hover:bg-gray-50">
-                    <TableCell className="ps-6 font-medium">
-                      {charge.name}
-                    </TableCell>
-                    <TableCell>{charge.formattedValue}</TableCell>
-                    <TableCell className="text-gray-600">
-                      {charge.lastUpdated}
-                    </TableCell>
-                    <TableCell className="text-right pe-6">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteClick(charge)}
-                          disabled={isLoading}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(charge)}
-                          disabled={isLoading}
-                        >
-                          <Pencil className="h-4 w-4 text-gray-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {charges
+                  .filter((c) =>
+                    c.name?.toLowerCase().includes(searchTerm.toLowerCase()),
+                  )
+                  .map((charge) => (
+                    <TableRow key={charge.id} className="hover:bg-gray-50">
+                      <TableCell className="ps-6 font-medium">
+                        {charge.name}
+                      </TableCell>
+                      <TableCell>{charge.formattedValue}</TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={charge.isEnabled}
+                          onCheckedChange={async (v) => {
+                            try {
+                              await fetch(
+                                `${API_BASE}/vendors/me/businesses/${businessId}/charges/${charge.id}/toggle`,
+                                {
+                                  method: "PATCH",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${accessToken}`,
+                                    "x-api-key": API_KEY,
+                                  },
+                                  body: JSON.stringify({ isEnabled: v }),
+                                },
+                              );
+                              setCharges((prev) =>
+                                prev.map((c) =>
+                                  c.id === charge.id
+                                    ? { ...c, isEnabled: v }
+                                    : c,
+                                ),
+                              );
+                              toast.success("Status updated");
+                            } catch {
+                              toast.error("Failed to update status");
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right pe-6">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(charge)}
+                            className="rounded-md"
+                          >
+                            <Pencil className="h-4 w-4 text-gray-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setDeleteCandidate(charge);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                            className="rounded-md"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           )}
         </div>
       </div>
 
-      {/* Add / Edit Dialog */}
+      {/* Main Modal */}
       {isDialogOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b">
               <h2 className="text-xl font-semibold">
                 {editingCharge ? "Edit Charge" : "Add New Charge"}
               </h2>
               <X
-                className="cursor-pointer text-gray-500 hover:text-gray-800"
-                onClick={() => {
-                  setIsDialogOpen(false);
-                  resetForm();
-                }}
+                className="cursor-pointer text-gray-500"
+                onClick={() => setIsDialogOpen(false)}
               />
             </div>
 
@@ -501,28 +384,27 @@ const Charges = () => {
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="p-6 space-y-6"
               >
+                {/* 1. Charge Type */}
                 <FormField
                   control={form.control}
                   name="chargeTypeId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        Charge Type <span className="text-red-600">*</span>
-                      </FormLabel>
+                      <FormLabel>Charge Type *</FormLabel>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={!!editingCharge}
                       >
                         <FormControl>
-                          <SelectTrigger className="h-11! w-full">
-                            <SelectValue placeholder="Select charge type" />
+                          <SelectTrigger className="h-11 rounded-md">
+                            <SelectValue placeholder="Select type" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
-                          {chargeTypes.map((type) => (
-                            <SelectItem key={type.id} value={type.id}>
-                              {type.label}
+                        <SelectContent className="rounded-md">
+                          {chargeTypes.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -532,24 +414,22 @@ const Charges = () => {
                   )}
                 />
 
+                {/* 2. Amount */}
                 <FormField
                   control={form.control}
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        Amount <span className="text-red-600">*</span>
-                      </FormLabel>
+                      <FormLabel>Amount *</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
                             {isPercentage ? "%" : "₦"}
                           </span>
                           <Input
                             type="number"
                             step="0.01"
-                            min="0"
-                            className="pl-10 h-11"
+                            className="pl-10 h-11 rounded-md"
                             {...field}
                           />
                         </div>
@@ -559,26 +439,127 @@ const Charges = () => {
                   )}
                 />
 
+                {/* 3. Applicable Services (Now Last) */}
+                <FormField
+                  control={form.control}
+                  name="serviceOperationIds"
+                  render={({ field }) => (
+                    <FormItem className="mb-0">
+                      <FormLabel className="font-normal text-slate-500">
+                        Applicable Services{" "}
+                        <span className="text-red-600">*</span>
+                      </FormLabel>
+                      <Popover
+                        open={serviceOperationOpen}
+                        onOpenChange={setServiceOperationOpen}
+                      >
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className="w-full justify-between font-normal h-12 text-slate-400 hover:bg-white rounded-md"
+                            >
+                              {field.value && field.value.length > 0
+                                ? `${field.value.length} selected`
+                                : "Select services"}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          side="top"
+                          className="w-[var(--radix-popover-trigger-width)] p-1 rounded-md"
+                          align="start"
+                        >
+                          <div className="max-h-60 overflow-y-auto">
+                            {serviceOperations.length === 0 && (
+                              <div className="p-2 text-sm text-center text-slate-500">
+                                No services found
+                              </div>
+                            )}
+                            {serviceOperations.map((op) => (
+                              <div
+                                key={op.id}
+                                className="flex items-center gap-2 px-2 py-2 hover:bg-slate-50 cursor-pointer rounded-md text-sm"
+                                onClick={() => {
+                                  const current = field.value || [];
+                                  const updated = current.includes(op.id)
+                                    ? current.filter((id) => id !== op.id)
+                                    : [...current, op.id];
+                                  field.onChange(updated);
+                                }}
+                              >
+                                <div
+                                  className={cn(
+                                    "h-4 w-4 border rounded-sm flex items-center justify-center",
+                                    field.value?.includes(op.id)
+                                      ? "bg-orange-500 border-orange-500"
+                                      : "border-slate-300",
+                                  )}
+                                >
+                                  {field.value?.includes(op.id) && (
+                                    <Check className="h-3 w-3 text-white" />
+                                  )}
+                                </div>
+                                {op.label}
+                              </div>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {field.value?.map((id) => {
+                          const operation = serviceOperations.find(
+                            (op) => op.id === id,
+                          );
+                          return (
+                            <Badge
+                              key={id}
+                              variant="secondary"
+                              className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
+                            >
+                              {operation?.label}
+                              <span
+                                className="ml-2 cursor-pointer"
+                                onClick={() => {
+                                  field.onChange(
+                                    field.value.filter((val) => val !== id),
+                                  );
+                                }}
+                              >
+                                <X className="w-4 font-black" />
+                              </span>
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex justify-end gap-4 pt-4">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
-                      setIsDialogOpen(false);
-                      resetForm();
-                    }}
+                    className="rounded-md"
+                    onClick={() => setIsDialogOpen(false)}
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     disabled={isLoading}
-                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                    className="bg-orange-500 hover:bg-orange-600 text-white rounded-md min-w-[100px]"
                   >
-                    {isLoading && (
-                      <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                    {isLoading ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : editingCharge ? (
+                      "Update"
+                    ) : (
+                      "Add"
                     )}
-                    {editingCharge ? "Update" : "Add"}
                   </Button>
                 </div>
               </form>
@@ -589,27 +570,24 @@ const Charges = () => {
 
       {/* Delete Confirmation */}
       {isDeleteDialogOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-semibold">Confirm Deletion</h2>
-            </div>
-            <div className="p-6">
-              <p className="text-gray-700">
-                Are you sure you want to delete{" "}
-                <strong>{deleteCandidate?.name}</strong>? This action cannot be
-                undone.
-              </p>
-            </div>
-            <div className="flex justify-end gap-4 p-6 border-t">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-6">
+            <h2 className="text-xl font-semibold mb-4">Confirm Deletion</h2>
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to delete this charge? This action cannot be
+              undone.
+            </p>
+            <div className="flex justify-end gap-4">
               <Button
                 variant="outline"
+                className="rounded-md"
                 onClick={() => setIsDeleteDialogOpen(false)}
               >
                 Cancel
               </Button>
               <Button
                 variant="destructive"
+                className="rounded-md"
                 onClick={confirmDelete}
                 disabled={isLoading}
               >

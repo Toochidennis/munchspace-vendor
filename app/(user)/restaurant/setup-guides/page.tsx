@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
 
-const API_BASE = "https://api.munchspace.io/api/v1";
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 
 interface OnboardingStatus {
   availabilityReady: boolean;

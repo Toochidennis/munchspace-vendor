@@ -2,7 +2,7 @@ export function setBusinessId(id: string | null) {
   if (id) {
     const item = {
       value: id,
-      expiry: Date.now() + 60 * 60 * 10000,
+      expiry: Date.now() + 60 * 2000 * 10000,
     };
     localStorage.setItem("businessId", JSON.stringify(item));
   } else {
@@ -29,7 +29,7 @@ export function getBusinessId(): string | null {
 }
 
 // app/lib/auth.ts (Updated for localStorage persistence of access token)
-const TTL_MS = 60 * 60 * 1000;
+const TTL_MS = 60 * 2000 * 1000;
 export function setAccessToken(token: string | null) {
   if (token) {
     const item = {
@@ -76,7 +76,7 @@ export async function logout() {
 
   if (refreshToken) {
     try {
-      await fetch("https://api.munchspace.io/api/v1/auth/token/revoke", {
+      await fetch("https://dev.api.munchspace.io/api/v1/auth/token/revoke", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
