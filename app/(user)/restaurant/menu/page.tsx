@@ -60,7 +60,7 @@ const API_KEY =
 
 // Helper function for formatting prices in display
 const formatPrice = (rawValue: string): string => {
-  if (!rawValue) return "₦0.00  ";
+  if (!rawValue) return "₦0.00";
   const num = parseFloat(rawValue);
   if (isNaN(num)) return "₦0.00";
   return `₦${num.toLocaleString("en-NG", {
@@ -79,7 +79,6 @@ const menuItemSchema = z.object({
   costPrice: z.string().min(1, "Cost price is required"),
   sellingPrice: z.string().min(1, "Selling price is required"),
 });
-
 type MenuItemFormValues = z.infer<typeof menuItemSchema>;
 
 interface MenuItem {
@@ -101,7 +100,6 @@ async function authenticatedFetch(
   init: RequestInit = {},
 ): Promise<Response> {
   let token = getAccessToken();
-
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) {
@@ -113,12 +111,17 @@ async function authenticatedFetch(
     }
   }
 
-  const headers = {
+  // Construct headers
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
     "x-api-key": API_KEY,
-    ...init.headers,
+    ...(init.headers as Record<string, string>),
   };
+
+  // Only include Content-Type: application/json if there is a body
+  if (init.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   let response = await fetch(url, { ...init, headers });
 
@@ -166,7 +169,6 @@ export default function MenuPage() {
 
   // Availability toggle loading states (per item)
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
-
   const form = useForm<MenuItemFormValues>({
     resolver: zodResolver(menuItemSchema),
     defaultValues: {
@@ -199,8 +201,6 @@ export default function MenuPage() {
         }
 
         const data = await res.json();
-        console.log("menu items data", data);
-
         const mappedItems: MenuItem[] = (data.items || data.data || []).map(
           (apiItem: any) => ({
             id: apiItem.id || apiItem.menu_item_id,
@@ -213,7 +213,6 @@ export default function MenuPage() {
             available: apiItem.available ?? apiItem.is_available ?? true,
           }),
         );
-
         setItems(mappedItems);
       } catch (err: any) {
         console.error("Menu fetch failed:", err);
@@ -230,19 +229,13 @@ export default function MenuPage() {
     fetchMenuItems();
   }, [period]);
 
-  // ──────────────────────────────────────────────────────────────
-  // Toggle availability with optimistic update & API call
-  // ──────────────────────────────────────────────────────────────
-
   const handleToggleAvailability = async (id: number) => {
     const item = items.find((i) => i.id === id);
     if (!item) return;
 
     const newAvailable = !item.available;
 
-    // Mark as toggling
     setTogglingIds((prev) => new Set([...prev, id]));
-
     // Optimistic update
     setItems((prev) =>
       prev.map((i) => (i.id === id ? { ...i, available: newAvailable } : i)),
@@ -251,11 +244,10 @@ export default function MenuPage() {
     try {
       const businessId = getBusinessId();
       if (!businessId) throw new Error("Business ID not found");
-
       const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}/availability`;
 
       const res = await authenticatedFetch(url, {
-        method: "PATCH", // Change to "PUT" if your API requires it
+        method: "PATCH",
         body: JSON.stringify({
           isAvailable: newAvailable,
         }),
@@ -270,12 +262,10 @@ export default function MenuPage() {
       );
     } catch (err: any) {
       console.error("Availability toggle failed:", err);
-
       // Rollback on error
       setItems((prev) =>
         prev.map((i) => (i.id === id ? { ...i, available: !newAvailable } : i)),
       );
-
       const msg =
         err.message?.includes("expired") || err.message?.includes("refresh")
           ? "Session expired. Please sign in again."
@@ -283,7 +273,6 @@ export default function MenuPage() {
 
       toast.error(msg);
     } finally {
-      // Remove from toggling set
       setTogglingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -292,25 +281,19 @@ export default function MenuPage() {
     }
   };
 
-  // ──────────────────────────────────────────────────────────────
-  // Delete handler (unchanged)
-  // ──────────────────────────────────────────────────────────────
-
   const confirmDelete = async () => {
     if (!deleteCandidate) return;
-
     const itemId = deleteCandidate.id;
     const previousItems = [...items];
 
     setItems((prev) => prev.filter((i) => i.id !== itemId));
     setIsDeleting(true);
-
     try {
       const businessId = getBusinessId();
       if (!businessId) throw new Error("Business ID not found");
-
       const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${itemId}`;
 
+      // This call now excludes the application/json header because no body is provided
       const res = await authenticatedFetch(url, { method: "DELETE" });
 
       if (!res.ok) {
@@ -322,7 +305,7 @@ export default function MenuPage() {
       setDeleteCandidate(null);
     } catch (err: any) {
       console.error("Delete error:", err);
-      setItems(previousItems); // rollback
+      setItems(previousItems);
       const msg =
         err.message?.includes("expired") || err.message?.includes("refresh")
           ? "Session expired. Please sign in again."
@@ -333,16 +316,11 @@ export default function MenuPage() {
     }
   };
 
-  // ──────────────────────────────────────────────────────────────
-  // Filtering & Pagination (unchanged)
-  // ──────────────────────────────────────────────────────────────
-
   const filteredItems = items.filter(
     (item) =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
-
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedItems = filteredItems.slice(
@@ -370,7 +348,6 @@ export default function MenuPage() {
     }
 
     const pages: (number | string)[] = [];
-
     if (currentPage <= 5) {
       for (let i = 1; i <= 5; i++) pages.push(i);
       if (totalPages > 5) {
@@ -412,7 +389,6 @@ export default function MenuPage() {
     <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
       {items.length > 0 ? (
         <div className="max-w-7xl mx-auto space-y-8">
-          {/* Header, search, mobile toggle */}
           <div className="flex justify-between items-center mb-8 md:mb-15">
             <h1 className="text-3xl font-bold text-gray-900">Menu</h1>
             <div className="md:flex items-center hidden gap-6">
@@ -425,11 +401,11 @@ export default function MenuPage() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="pl-10 w-full h-12 md:min-w-90"
+                  className="pl-10 w-full h-12 md:min-w-90 rounded-md"
                 />
               </div>
               <Link href="/restaurant/menu/new">
-                <Button className="bg-orange-500 h-12 hover:bg-orange-600 text-white">
+                <Button className="bg-orange-500 h-12 hover:bg-orange-600 text-white rounded-md">
                   New Menu
                 </Button>
               </Link>
@@ -437,7 +413,7 @@ export default function MenuPage() {
             <div
               onClick={() => setShowSearchMobile(!showSearchMobile)}
               className={cn(
-                "border border-gray-300 items-center md:hidden rounded-lg p-2 w-15 h-12 text-slate-800 flex justify-center",
+                "border border-gray-300 items-center md:hidden rounded-md p-2 w-15 h-12 text-slate-800 flex justify-center cursor-pointer",
                 showSearchMobile && "bg-munchprimary text-white",
               )}
             >
@@ -456,20 +432,19 @@ export default function MenuPage() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="pl-10 w-full h-12 md:min-w-90"
+                  className="pl-10 w-full h-12 md:min-w-90 rounded-md"
                 />
               </div>
               <Link href="/restaurant/menu/new" className="w-full">
-                <Button className="bg-orange-500 h-12 w-full hover:bg-orange-600 text-white">
+                <Button className="bg-orange-500 h-12 w-full hover:bg-orange-600 text-white rounded-md">
                   New Menu
                 </Button>
               </Link>
             </div>
           )}
 
-          {/* Desktop Table */}
           <div className="min-h-[60vh]">
-            <Card className="border hidden md:block border-gray-200 py-0">
+            <Card className="border hidden md:block border-gray-200 py-0 rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
@@ -507,7 +482,7 @@ export default function MenuPage() {
                     >
                       <TableCell className="py-4 ps-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden">
+                          <div className="w-16 h-16 bg-gray-100 rounded-md overflow-hidden">
                             <img
                               src={item.image}
                               alt={item.name}
@@ -551,7 +526,7 @@ export default function MenuPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="hover:bg-gray-100"
+                              className="hover:bg-gray-100 rounded-md"
                             >
                               <Image
                                 src="/images/Edit.svg"
@@ -564,7 +539,7 @@ export default function MenuPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="hover:bg-red-50 text-red-600 hover:text-red-700"
+                            className="hover:bg-red-50 text-red-600 hover:text-red-700 rounded-md"
                             onClick={() => handleDeleteClick(item)}
                           >
                             <Trash2 className="h-5 w-5" />
@@ -580,7 +555,7 @@ export default function MenuPage() {
 
           {/* Mobile version */}
           <div className="md:hidden">
-            <Card className="border border-gray-200 rounded-lg shadow-sm py-1">
+            <Card className="border border-gray-200 rounded-md shadow-sm py-1">
               <div className="p-4">
                 {paginatedItems.map((item, index) => (
                   <div
@@ -592,7 +567,7 @@ export default function MenuPage() {
                     )}
                   >
                     <div className="flex items-center gap-2 mb-2 flex-1">
-                      <div className="w-29 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                      <div className="w-29 h-16 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
                         <Image
                           src={item.image}
                           alt={item.name}
@@ -630,7 +605,7 @@ export default function MenuPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="hover:bg-gray-100 h-8 w-8 p-0"
+                          className="hover:bg-gray-100 h-8 w-8 p-0 rounded-md"
                         >
                           <Image
                             src="/images/Edit.svg"
@@ -642,7 +617,7 @@ export default function MenuPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="hover:bg-red-50 h-8 w-8 p-0 text-red-600"
+                          className="hover:bg-red-50 h-8 w-8 p-0 text-red-600 rounded-md"
                           onClick={() => handleDeleteClick(item)}
                         >
                           <Trash2 className="h-5 w-5" />
@@ -655,10 +630,10 @@ export default function MenuPage() {
             </Card>
           </div>
 
-          {/* Delete Confirmation Dialog */}
+          {/* Delete Confirmation Modal - Matches CustomModal requirements  */}
           {isDeleteDialogOpen && deleteCandidate && (
-            <div className="fixed inset-0 bg-black/50 flex h-screen items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg w-full max-w-md">
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex h-screen items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
                 <div className="p-6 border-b">
                   <h2 className="text-xl font-semibold">Confirm Deletion</h2>
                 </div>
@@ -674,6 +649,7 @@ export default function MenuPage() {
                     variant="outline"
                     onClick={() => setIsDeleteDialogOpen(false)}
                     disabled={isDeleting}
+                    className="rounded-md"
                   >
                     Cancel
                   </Button>
@@ -681,6 +657,7 @@ export default function MenuPage() {
                     variant="destructive"
                     onClick={confirmDelete}
                     disabled={isDeleting}
+                    className="rounded-md"
                   >
                     {isDeleting ? "Deleting..." : "Delete"}
                   </Button>
@@ -702,7 +679,7 @@ export default function MenuPage() {
                   size="icon"
                   onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
-                  className="hover:bg-gray-100 disabled:opacity-50"
+                  className="hover:bg-gray-100 disabled:opacity-50 rounded-md"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </Button>
@@ -720,7 +697,7 @@ export default function MenuPage() {
                           size="sm"
                           onClick={() => handlePageChange(page as number)}
                           className={cn(
-                            "min-w-8 md:min-w-10",
+                            "min-w-8 md:min-w-10 rounded-md",
                             currentPage === page &&
                               "bg-orange-500 hover:bg-orange-600 text-white",
                           )}
@@ -739,7 +716,7 @@ export default function MenuPage() {
                     handlePageChange(Math.min(totalPages, currentPage + 1))
                   }
                   disabled={currentPage === totalPages}
-                  className="hover:bg-gray-100 disabled:opacity-50"
+                  className="hover:bg-gray-100 disabled:opacity-50 rounded-md"
                 >
                   <ChevronRight className="h-5 w-5" />
                 </Button>
@@ -748,10 +725,10 @@ export default function MenuPage() {
                   value={`${itemsPerPage}`}
                   onValueChange={handleItemsPerPageChange}
                 >
-                  <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:flex">
+                  <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:flex rounded-md">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="rounded-md">
                     <SelectItem value="10">10 / page</SelectItem>
                     <SelectItem value="20">20 / page</SelectItem>
                     <SelectItem value="50">50 / page</SelectItem>
@@ -780,13 +757,13 @@ export default function MenuPage() {
               <h2 className="text-2xl font-medium text-orange-500 mb-4">
                 You don't have any menu added yet.
               </h2>
-              <p>
+              <p className="text-center">
                 You're just a few clicks away from setting up and running your
                 store. Start by adding different menus for your products.
               </p>
 
               <Link href={"/restaurant/menu/new"}>
-                <Button className="bg-munchprimary mt-8 hover:bg-munchprimaryDark cursor-pointer text-white px-8 py-6 flex items-center justify-center gap-1">
+                <Button className="bg-munchprimary mt-8 hover:bg-munchprimaryDark cursor-pointer text-white px-8 py-6 flex items-center justify-center gap-1 rounded-md">
                   <Plus strokeWidth={3} />
                   <span>Add a menu</span>
                 </Button>

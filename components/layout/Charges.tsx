@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
+import Image from "next/image";
 import {
   Form,
   FormControl,
@@ -66,18 +67,28 @@ interface Charge {
   formattedValue?: string;
   lastUpdated?: string;
   createdAt: string;
+  updatedAt?: string;
+  chargeType?: {
+    label: string;
+    isPercentage: boolean;
+  };
 }
 
-const chargesFormSchema = z.object({
-  chargeTypeId: z.string().min(1, "Please select a charge type"),
-  amount: z
-    .string()
-    .min(1, "Amount is required")
-    .regex(/^\d+(\.\d{1,2})?$/, "Invalid amount format"),
-  serviceOperationIds: z
-    .array(z.string())
-    .min(1, "Select at least one service"),
-});
+const chargesFormSchema = z
+  .object({
+    chargeTypeId: z.string().optional(), // Made optional for edit mode
+    amount: z
+      .string()
+      .min(1, "Amount is required")
+      .regex(/^\d+(\.\d{1,2})?$/, "Invalid amount format"),
+    serviceOperationIds: z
+      .array(z.string())
+      .min(1, "Select at least one service"),
+  })
+  .refine((data) => {
+    // Custom validation: chargeTypeId is required ONLY if we aren't editing (handled via component logic usually, but here for safety)
+    return true;
+  });
 
 type ChargesFormType = z.infer<typeof chargesFormSchema>;
 
@@ -139,18 +150,28 @@ const Charges = () => {
       setServiceOperations(servicesData.data || []);
 
       const enriched = (chargesData.data || []).map((c: any) => {
-        const type = activeTypes.find((t: any) => t.id === c.chargeTypeId);
+        const typeLabel =
+          c.chargeType?.label ||
+          activeTypes.find((t: any) => t.id === c.chargeTypeId)?.label;
+        const isPercentage =
+          c.chargeType?.isPercentage ??
+          activeTypes.find((t: any) => t.id === c.chargeTypeId)?.isPercentage ??
+          false;
+
         return {
           ...c,
-          name: type?.label || "Unknown Charge",
-          formattedValue: type?.isPercentage
+          name: typeLabel || "Unknown Charge",
+          formattedValue: isPercentage
             ? `${c.amount}%`
-            : `₦${Number(c.amount).toFixed(2)}`,
-          lastUpdated: new Date(c.createdAt).toLocaleDateString("en-GB", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          }),
+            : `₦${Number(c.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          lastUpdated: new Date(c.updatedAt || c.createdAt).toLocaleDateString(
+            "en-GB",
+            {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            },
+          ),
         };
       });
       setCharges(enriched);
@@ -190,6 +211,7 @@ const Charges = () => {
           },
         },
       );
+
       if (!res.ok) throw new Error();
       setCharges((prev) => prev.filter((c) => c.id !== deleteCandidate.id));
       setIsDeleteDialogOpen(false);
@@ -208,6 +230,22 @@ const Charges = () => {
         ? `${API_BASE}/vendors/me/businesses/${businessId}/charges/${editingCharge.id}`
         : `${API_BASE}/vendors/me/businesses/${businessId}/charges`;
 
+      let requestBody: any;
+      if (editingCharge) {
+        // Exclude chargeTypeId for PATCH
+        const { chargeTypeId, ...rest } = values;
+        requestBody = {
+          ...rest,
+          amount: parseFloat(values.amount),
+        };
+      } else {
+        requestBody = {
+          ...values,
+          amount: parseFloat(values.amount),
+          isEnabled: true,
+        };
+      }
+
       const res = await fetch(url, {
         method: editingCharge ? "PATCH" : "POST",
         headers: {
@@ -215,15 +253,9 @@ const Charges = () => {
           Authorization: `Bearer ${accessToken}`,
           "x-api-key": API_KEY,
         },
-        body: JSON.stringify({
-          ...values,
-          amount: parseFloat(values.amount),
-          ...(editingCharge ? {} : { isEnabled: true }),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const resData = await res.json();
-      console.log("Charge save response:", resData);
       if (!res.ok) throw new Error("Failed to save charge");
 
       toast.success(
@@ -241,12 +273,12 @@ const Charges = () => {
   };
 
   const selectedType = chargeTypes.find(
-    (t) => t.id === form.watch("chargeTypeId"),
+    (t) => t.id === (editingCharge?.chargeTypeId || form.watch("chargeTypeId")),
   );
   const isPercentage = selectedType?.isPercentage ?? false;
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="bg-white text-gray-900">
       <div className="max-w-7xl mx-auto space-y-8 p-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold">Charges & Fees</h1>
@@ -282,12 +314,27 @@ const Charges = () => {
             <div className="flex justify-center items-center py-20">
               <LoaderCircle className="h-10 w-10 animate-spin text-gray-500" />
             </div>
+          ) : charges.length === 0 ? (
+            <div className="text-center py-16 text-gray-500">
+              <Image
+                src="/images/empty.png"
+                width={160}
+                height={160}
+                className="mx-auto mb-6 opacity-70"
+                alt="No charges"
+              />
+              <p className="text-lg">No charges configured yet</p>
+              <p className="text-sm mt-2">
+                Click "+ Add New Charge" to get started.
+              </p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
                   <TableHead className="ps-6">Name</TableHead>
                   <TableHead>Value</TableHead>
+                  <TableHead>Last Updated</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead className="text-right pe-6">Actions</TableHead>
                 </TableRow>
@@ -303,6 +350,9 @@ const Charges = () => {
                         {charge.name}
                       </TableCell>
                       <TableCell>{charge.formattedValue}</TableCell>
+                      <TableCell className="text-gray-500">
+                        {charge.lastUpdated}
+                      </TableCell>
                       <TableCell>
                         <Switch
                           checked={charge.isEnabled}
@@ -371,7 +421,9 @@ const Charges = () => {
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b">
               <h2 className="text-xl font-semibold">
-                {editingCharge ? "Edit Charge" : "Add New Charge"}
+                {editingCharge
+                  ? `Edit ${editingCharge.name}`
+                  : "Add New Charge"}
               </h2>
               <X
                 className="cursor-pointer text-gray-500"
@@ -384,37 +436,37 @@ const Charges = () => {
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="p-6 space-y-6"
               >
-                {/* 1. Charge Type */}
-                <FormField
-                  control={form.control}
-                  name="chargeTypeId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Charge Type *</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={!!editingCharge}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="h-11 rounded-md">
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent className="rounded-md">
-                          {chargeTypes.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Charge Type field is now ONLY shown when adding new */}
+                {!editingCharge && (
+                  <FormField
+                    control={form.control}
+                    name="chargeTypeId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Charge Type *</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="h-11! w-full rounded-md">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="rounded-md">
+                            {chargeTypes.map((t) => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
-                {/* 2. Amount */}
                 <FormField
                   control={form.control}
                   name="amount"
@@ -439,7 +491,6 @@ const Charges = () => {
                   )}
                 />
 
-                {/* 3. Applicable Services (Now Last) */}
                 <FormField
                   control={form.control}
                   name="serviceOperationIds"
@@ -568,13 +619,14 @@ const Charges = () => {
         </div>
       )}
 
-      {/* Delete Confirmation */}
+      {/* Delete Confirmation Modal */}
       {isDeleteDialogOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-6">
             <h2 className="text-xl font-semibold mb-4">Confirm Deletion</h2>
             <p className="text-gray-700 mb-6">
-              Are you sure you want to delete this charge? This action cannot be
+              Are you sure you want to delete{" "}
+              <strong>{deleteCandidate?.name}</strong>? This action cannot be
               undone.
             </p>
             <div className="flex justify-end gap-4">

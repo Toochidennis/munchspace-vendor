@@ -914,13 +914,6 @@ export default function EditMenuPage() {
         </Tabs>
 
         <div className="flex justify-end gap-4 items-center mt-12 pt-8 border-t border-gray-200">
-          <Button
-            variant="outline"
-            onClick={() => router.back()}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
           {!isFirstTab && (
             <Button
               variant="outline"

@@ -26,10 +26,10 @@ const API_KEY =
 
 // Step 1: Email + Password schema
 const loginSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
+  identifier: z.string({ message: "Please enter a valid email address or phone number." }),
   password: z
     .string()
-    .min(8, { message: "Password must be at least 8 characters." }),
+    .min(6, { message: "Password must be at least 6 characters." }),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
@@ -38,7 +38,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<1 | 2>(1); // 1: Login form, 2: OTP
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [savedEmail, setSavedEmail] = useState("");
+  const [savedIdentifier, setSavedIdentifier] = useState("");
   const [otpError, setOtpError] = useState("");
 
   // Resend OTP logic
@@ -51,7 +51,7 @@ export default function LoginPage() {
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      identifier: "",
       password: "",
     },
   });
@@ -106,18 +106,18 @@ export default function LoginPage() {
           "x-api-key": API_KEY,
         },
         body: JSON.stringify({
-          email: values.email,
+          identifier: values.identifier,
           password: values.password,
         }),
       });
 
       if (response.status === 200) {
-        setSavedEmail(values.email);
+        setSavedIdentifier(values.identifier);
         setStep(2);
         setResendCooldown(60); // Start initial 60-second cooldown
         setCurrentWaitTime(60);
       } else if (response.status === 401) {
-        form.setError("root", { message: "Invalid email or password." });
+        form.setError("root", { message: "Invalid credentials." });
       } else {
         form.setError("root", { message: "An unexpected error occurred." });
       }
@@ -142,7 +142,7 @@ export default function LoginPage() {
           "x-api-key": API_KEY,
         },
         body: JSON.stringify({
-          identifier: savedEmail,
+          identifier: savedIdentifier,
         }),
       });
 
@@ -182,7 +182,7 @@ export default function LoginPage() {
           "x-api-key": API_KEY,
         },
         body: JSON.stringify({
-          identifier: savedEmail,
+          identifier: savedIdentifier,
           otp: code,
         }),
       });
@@ -272,19 +272,19 @@ export default function LoginPage() {
                 >
                   <FormField
                     control={form.control}
-                    name="email"
+                    name="identifier"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="font-normal text-slate-500">
-                          Email
+                          Email / Phone number
                           <span className="-ms-1 pt-1 text-xl text-munchred">
                             *
                           </span>
                         </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Email"
-                            type="email"
+                            placeholder="Email / Phone number"
+                            type="text"
                             className="h-12 placeholder:text-gray-400"
                             {...field}
                           />
@@ -377,10 +377,10 @@ export default function LoginPage() {
             <div className="space-y-8">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
-                  Verify your email
+                  Verify your email / phone number
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Enter the verification code sent to {savedEmail}
+                  Enter the verification code sent to {savedIdentifier}
                 </p>
               </div>
 

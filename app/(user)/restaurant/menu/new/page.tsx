@@ -9,9 +9,7 @@ import {
   Trash2,
   Calendar,
   ArrowLeft,
-  Check,
-  ChevronsUpDown,
-  Loader2,
+  Loader2
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -47,6 +45,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
+import Link from "next/link";
 
 const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 
@@ -406,7 +405,9 @@ export default function CreateMenuPage() {
       <div className="max-w-3xl mx-auto p-8">
         <div className="mb-8 mt-10 md:mt-0">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-4">
-            <ArrowLeft className="h-6 w-6 text-gray-600 hover:text-gray-900 cursor-pointer" />
+            <Link href="/restaurant/menu" className="text-gray-400 hover:text-gray-600">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
             Create Menu
           </h1>
         </div>
@@ -541,7 +542,7 @@ export default function CreateMenuPage() {
                     >
                       <SelectTrigger
                         className={cn(
-                          "h-12 w-full",
+                          "h-12! w-full",
                           errors.categoryTypeId &&
                             "border-red-600 focus-visible:ring-red-600",
                         )}
@@ -781,7 +782,7 @@ export default function CreateMenuPage() {
                       onValueChange={field.onChange}
                       value={field.value ?? ""}
                     >
-                      <SelectTrigger className="h-12">
+                      <SelectTrigger className="h-12!">
                         <SelectValue placeholder="Select discount type (optional)" />
                       </SelectTrigger>
                       <SelectContent>

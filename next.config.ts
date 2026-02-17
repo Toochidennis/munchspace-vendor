@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "api.munchspace.io",  
+        hostname: "dev.api.munchspace.io",
         port: "",
         pathname: "/storage/**",
       },

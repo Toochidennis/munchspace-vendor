@@ -9,16 +9,20 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
+import { toast } from "sonner";
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
-interface OnboardingStatus {
-  availabilityReady: boolean;
-  canGoLive: boolean;
-  chargesReady: boolean;
+interface OnboardingData {
+  businessId: string;
   kycVerified: boolean;
   menuItemsCount: number;
+  availabilityReady: boolean;
+  chargesReady: boolean;
   pending: string[];
+  canGoLive: boolean;
 }
 
 interface Task {
@@ -28,17 +32,54 @@ interface Task {
   actionLabel: string;
   href: string;
   pendingKey: string;
+  isPublishTask?: boolean;
+}
+
+/**
+ * Utility to handle authenticated requests with automatic token refresh
+ */
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+  return response;
 }
 
 export default function SetupGuidePage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
 
-  const taskMapping: Record<
-    string,
-    { title: string; description: string; actionLabel: string; href: string }
-  > = {
+  const taskMapping: Record<string, Omit<Task, "completed" | "pendingKey">> = {
     "Tax Identification Number (TIN) not provided": {
       title: "Complete KYC Verification",
       description:
@@ -62,131 +103,87 @@ export default function SetupGuidePage() {
     },
   };
 
-  const alwaysShownTasks: Task[] = [
-    {
-      title: "Add Store Details",
-      description:
-        "Provide your store name, address, hours and basic information.",
-      completed: true,
-      actionLabel: "View details",
-      href: "/restaurant/dashboard",
-      pendingKey: "store-details",
-    },
-    {
-      title: "Add Settlement Account",
-      description:
-        "Provide the bank account where your earnings should be deposited.",
-      completed: true,
-      actionLabel: "View account",
-      href: "/restaurant/dashboard",
-      pendingKey: "settlement-account",
-    },
-  ];
+  const fetchOnboardingStatus = async () => {
+    try {
+      setLoading(true);
+      const businessId = getBusinessId();
+      if (!businessId) throw new Error("Business identifier not found.");
+
+      const response = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/onboarding`,
+      );
+
+      if (!response.ok) throw new Error("Failed to load setup progress.");
+
+      const res = await response.json();
+      const data: OnboardingData = res.data;
+
+      const updatedTasks: Task[] = [];
+
+      Object.keys(taskMapping).forEach((key) => {
+        const isPending = data.pending.includes(key);
+        updatedTasks.push({
+          ...taskMapping[key],
+          pendingKey: key,
+          completed: !isPending,
+        });
+      });
+
+      if (data.canGoLive) {
+        updatedTasks.push({
+          title: "Publish Store",
+          description:
+            "Make your store live so customers can find you and place orders.",
+          actionLabel: "Publish store",
+          href: "#",
+          completed: false,
+          pendingKey: "PUBLISH_ACTION",
+          isPublishTask: true,
+        });
+      }
+
+      setTasks(updatedTasks);
+    } catch (err: any) {
+      setError(err.message);
+      toast.error(err.message || "Failed to fetch status");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchOnboardingStatus() {
-      setLoading(true);
-      setError(null);
-
-      const businessId = getBusinessId();
-      if (!businessId) {
-        setError("Business identifier not found. Please sign in again.");
-        setLoading(false);
-        return;
-      }
-
-      let accessToken = getAccessToken();
-
-      // Ensure we have a valid token (attempt refresh if missing)
-      if (!accessToken) {
-        const refreshSuccess = await refreshAccessToken();
-        if (!refreshSuccess) {
-          console.log("refresh success is:", refreshSuccess);
-          setError("Your session has expired. Please sign in again.");
-          setLoading(false);
-          return;
-        }
-
-        accessToken = getAccessToken();
-        if (!accessToken) {
-          setError(
-            "Token refresh completed but no valid access token was obtained.",
-          );
-          setLoading(false);
-          return;
-        }
-      }
-
-      const endpoint = `${API_BASE}/vendors/me/businesses/${businessId}/onboarding`;
-
-      const makeRequest = (token: string) =>
-        fetch(endpoint, {
-          method: "GET",
-          headers: {
-            "x-api-key":
-              "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-      try {
-        let response = await makeRequest(accessToken);
-
-        // Handle 401 → refresh and retry once
-        if (response.status === 401) {
-          const refreshSuccess = await refreshAccessToken();
-          if (!refreshSuccess) {
-            throw new Error("Session expired (token refresh failed)");
-          }
-
-          accessToken = getAccessToken();
-          if (!accessToken) {
-            throw new Error("Refresh succeeded but no access token available");
-          }
-
-          response = await makeRequest(accessToken);
-        }
-
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`);
-        }
-
-        const res = await response.json();
-        const data: OnboardingStatus = res.data;
-
-        let dynamicTasks: Task[] = [...alwaysShownTasks];
-
-        data.pending.forEach((pendingMsg) => {
-          const config = taskMapping[pendingMsg];
-          if (config) {
-            dynamicTasks.push({
-              ...config,
-              completed: false,
-              pendingKey: pendingMsg,
-            });
-          }
-        });
-
-        dynamicTasks = dynamicTasks.map((task) => ({
-          ...task,
-          completed: !data.pending.includes(task.pendingKey),
-        }));
-
-        setTasks(dynamicTasks);
-      } catch (err: any) {
-        console.error("Onboarding fetch error:", err);
-        const message =
-          err.message?.includes("expired") || err.message?.includes("refresh")
-            ? "Your session has expired. Please sign in again."
-            : "Failed to load setup progress. Please try again later.";
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchOnboardingStatus();
   }, []);
+
+  const handlePublish = async () => {
+    const businessId = getBusinessId();
+    if (!businessId) return;
+
+    setIsPublishing(true);
+    try {
+      // Sending businessId in JSON body as expected by the API
+      const response = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/publish`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ businessId }),
+        },
+      );
+
+      const resData = await response.json();
+      console.log("Publish response:", resData);
+
+      if (!response.ok)
+        throw new Error(resData.message || "Failed to publish store");
+
+      toast.success(resData.message || "Business is now live.");
+      fetchOnboardingStatus();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to publish store");
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const dismissTask = (pendingKey: string) => {
     setTasks((prev) => prev.filter((task) => task.pendingKey !== pendingKey));
@@ -199,37 +196,21 @@ export default function SetupGuidePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-600">Loading setup progress...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-red-600">{error}</p>
+        <p className="text-slate-600 animate-pulse">Loading setup...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="px-5 md:px-15 py-12 mt-5 md:mt-0">
+    <div className="min-h-screen bg-white">
+      <div className="px-5 md:px-15 py-12 mt-5 md:mt-0 max-w-7xl mx-auto">
         <h1 className="text-4xl font-bold mb-4">Setup Guide</h1>
-        <p className="text-slate-700 mb-2">
-          Complete the steps below to prepare your store for launch. Once all
-          critical items are completed, your store will be ready for customers
-          to view and place orders.
-        </p>
-        <p className="text-slate-700 mb-8">
-          <Link href="#" className="text-blue-500">
-            Need assistance?
-          </Link>{" "}
-          Our team is ready to help.
+        <p className="text-slate-700 mb-8 max-w-2xl">
+          Complete the steps below to prepare your store for launch.
         </p>
 
         <div className="flex items-center gap-4 mb-12">
-          <Progress value={progress} className="flex-1 h-2 bg-gray-200">
+          <Progress value={progress} className="flex-1 h-2 bg-gray-100">
             <div
               className="h-full bg-munchprimary transition-all duration-500"
               style={{ width: `${progress}%` }}
@@ -240,65 +221,73 @@ export default function SetupGuidePage() {
           </span>
         </div>
 
-        {tasks.length === 0 ? (
-          <p className="text-center text-slate-600">
-            No pending setup items at this time.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {tasks.map((task) => (
-              <div
-                key={task.pendingKey}
-                className="text-black rounded-2xl p-6 flex flex-col justify-between border border-gray-100"
-              >
-                <div className="flex items-start gap-3">
-                  {task.completed ? (
-                    <Image
-                      src="/images/CheckCircleSuccess.svg"
-                      alt="Completed"
-                      width={27}
-                      height={27}
-                    />
-                  ) : (
-                    <CircleDashed className="h-6 w-6 text-slate-700 shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg mb-2">{task.title}</h3>
-                    <p className="text-gray-600 leading-relaxed">
-                      {task.description}
-                    </p>
-                  </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {tasks.map((task) => (
+            <div
+              key={task.pendingKey}
+              className="text-black rounded-2xl p-6 flex flex-col justify-between border border-gray-100 relative bg-white shadow-sm"
+            >
+              <div className="flex items-start gap-4">
+                {task.completed ? (
+                  <Image
+                    src="/images/CheckCircleSuccess.svg"
+                    alt="Completed"
+                    width={28}
+                    height={28}
+                  />
+                ) : (
+                  <CircleDashed className="h-7 w-7 text-slate-400 shrink-0 mt-0.5" />
+                )}
+
+                <div className={cn("flex-1", task.isPublishTask && "pr-24")}>
+                  <h3 className="font-bold text-xl mb-2">{task.title}</h3>
+                  <p className="text-gray-500 leading-relaxed text-sm md:text-base">
+                    {task.description}
+                  </p>
                 </div>
 
-                <div className="mt-6">
-                  {!task.completed ? (
-                    <Link href={task.href}>
-                      <Button
-                        variant="default"
-                        className="rounded-full bg-munchprimary hover:bg-orange-600 text-white"
-                      >
-                        {task.actionLabel}
-                      </Button>
-                    </Link>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="rounded-full bg-gray-100 border-gray-100"
-                    >
-                      <div
-                        onClick={() => dismissTask(task.pendingKey)}
-                        className="flex items-center gap-2 text-slate-700 cursor-pointer"
-                      >
-                        <X className="h-4 w-4" />
-                        <span>Dismiss</span>
-                      </div>
-                    </Button>
-                  )}
-                </div>
+                {task.isPublishTask && (
+                  <div className="absolute right-4 top-6 w-24 h-24 pointer-events-none">
+                    <Image
+                      src="/images/publish-illustration.png"
+                      alt="Publish"
+                      width={96}
+                      height={96}
+                      className="object-contain"
+                    />
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+
+              <div className="mt-8">
+                {task.isPublishTask ? (
+                  <Button
+                    onClick={handlePublish}
+                    disabled={isPublishing}
+                    className="rounded-md bg-[#E3723D] hover:bg-orange-600 text-white px-10 py-6 text-lg font-semibold"
+                  >
+                    {isPublishing ? "Publishing..." : "Publish store"}
+                  </Button>
+                ) : !task.completed ? (
+                  <Link href={task.href}>
+                    <Button className="rounded-md bg-munchprimary hover:bg-orange-600 text-white px-6">
+                      {task.actionLabel}
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="rounded-md bg-gray-50 border-gray-100 text-slate-600 flex items-center gap-2"
+                    onClick={() => dismissTask(task.pendingKey)}
+                  >
+                    <X className="h-4 w-4" />
+                    <span>Dismiss</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

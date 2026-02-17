@@ -11,7 +11,7 @@ import {
   AccordionTrigger,
 } from "../ui/accordion";
 import { Switch } from "../ui/switch";
-import { BrushCleaning, ChevronsUpDown, Check, X } from "lucide-react";
+import { BrushCleaning, ChevronsUpDown, Check, X, EyeOff, Eye } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -52,6 +52,7 @@ import { toast } from "sonner";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { format } from "date-fns";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
+import { useStore } from "../context/StoreContext";
 
 const X_API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 const GOOGLE_API_KEY = "AIzaSyDjoKEpZBTaQuO4dPjbN4W1tHEdxuacPFI";
@@ -152,7 +153,7 @@ type StoreInfoDisplayValues = {
 };
 
 const StoreDetails = () => {
-  const [storeImage, setStoreImage] = useState("/images/store-placeholder.png");
+  const { storeImage, setStoreImage, setAddress } = useStore();
   const [previousLogoUrl, setPreviousLogoUrl] = useState<string | null>(null);
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -164,6 +165,11 @@ const StoreDetails = () => {
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [updatingHours, setUpdatingHours] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Visibility states for eye icons
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const [businessTypeOptions, setBusinessTypeOptions] = useState<MetaItem[]>(
     [],
@@ -341,9 +347,12 @@ const StoreDetails = () => {
           fetch("https://dev.api.munchspace.io/api/v1/meta/brand-types", {
             headers,
           }),
-          fetch("https://dev.api.munchspace.io/api/v1/meta/service-operations", {
-            headers,
-          }),
+          fetch(
+            "https://dev.api.munchspace.io/api/v1/meta/service-operations",
+            {
+              headers,
+            },
+          ),
           fetch(
             `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
             { headers },
@@ -500,10 +509,40 @@ const StoreDetails = () => {
     }
   };
 
-  const onPasswordSubmit = (data: PasswordFormValues) => {
-    console.log("Password change submitted:", data);
-    passwordForm.reset();
-    setIsPasswordModalOpen(false);
+  const onPasswordSubmit = async (values: any) => {
+    setIsSubmitting(true);
+    try {
+      const token = getAccessToken();
+      const response = await fetch(
+        "https://dev.api.munchspace.io/api/v1/auth/password/change",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
+          },
+          body: JSON.stringify({
+            currentPassword: values.currentPassword,
+            newPassword: values.newPassword,
+          }),
+        },
+      );
+
+      const data = await response.json();
+      console.log("Password change response:", data, values);
+
+      if (!response.ok)
+        throw new Error(data.message || "Failed to update password");
+
+      toast.success("Password updated successfully");
+      setIsPasswordModalOpen(false);
+      passwordForm.reset();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const onStoreSubmit = async (data: StoreInfoEditValues) => {
@@ -571,10 +610,10 @@ const StoreDetails = () => {
 
   const onAddressSubmit = async (data: AddressEditValues) => {
     try {
-      const token = await getAccessToken();
+      const token = getAccessToken();
       if (!token) return toast.error("Authentication required");
 
-      const businessId = await getBusinessId();
+      const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
@@ -587,8 +626,8 @@ const StoreDetails = () => {
       if (data.postalCode)
         formData.append("address[postalCode]", data.postalCode);
 
-      formData.append("latitude", data.latitude.toString());
-      formData.append("longitude", data.longitude.toString());
+      formData.append("address[latitude]", data.latitude.toString());
+      formData.append("address[longitude]", data.longitude.toString());
 
       const res = await fetch(
         `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
@@ -603,7 +642,8 @@ const StoreDetails = () => {
       );
 
       if (!res.ok) throw new Error("Address update failed");
-
+      const formattedAddress = `${data.streetName}, ${data.city}, ${data.state}`;
+      setAddress(formattedAddress);
       toast.success("Address updated successfully");
 
       setStoreInfo((prev) => ({
@@ -632,10 +672,10 @@ const StoreDetails = () => {
     try {
       setUpdatingHours(true);
 
-      const token = await getAccessToken();
+      const token = getAccessToken();
       if (!token) return toast.error("Authentication required");
 
-      const businessId = await getBusinessId();
+      const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const workingHoursData = form.getValues("workingHours");
@@ -829,7 +869,7 @@ const StoreDetails = () => {
               Update
             </Button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-base mt-6">
+          <div className="grid grid-cols-1 gap-8 text-base mt-6">
             <div>
               <p className="text-gray-500 mb-1 text-sm">Full Address</p>
               <p className="font-medium text-slate-700">
@@ -845,14 +885,14 @@ const StoreDetails = () => {
                   .join(", ") || "—"}
               </p>
             </div>
-            <div>
+            {/* <div>
               <p className="text-gray-500 mb-1 text-sm">Coordinates</p>
               <p className="font-medium text-slate-700">
                 {storeInfo.latitude && storeInfo.longitude
                   ? `${storeInfo.latitude.toFixed(6)}, ${storeInfo.longitude.toFixed(6)}`
                   : "—"}
               </p>
-            </div>
+            </div> */}
           </div>
         </Card>
       </div>
@@ -998,7 +1038,11 @@ const StoreDetails = () => {
 
       {/* Password Modal */}
       <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className="max-w-md bg-white rounded-2xl border-none shadow-2xl overflow-hidden"
+          // Applying your global preference for the backdrop overlay via data attributes or global CSS is recommended,
+          // but here is the structure based on your provided JSX.
+        >
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
               Change Password
@@ -1009,6 +1053,7 @@ const StoreDetails = () => {
               onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
               className="space-y-6"
             >
+              {/* Current Password */}
               <FormField
                 control={passwordForm.control}
                 name="currentPassword"
@@ -1021,12 +1066,31 @@ const StoreDetails = () => {
                       </span>
                     </FormLabel>
                     <FormControl>
-                      <Input type="password" className="h-12" {...field} />
+                      <div className="relative">
+                        <Input
+                          type={showCurrent ? "text" : "password"}
+                          className="h-12 rounded-md pr-10"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCurrent(!showCurrent)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        >
+                          {showCurrent ? (
+                            <EyeOff size={18} />
+                          ) : (
+                            <Eye size={18} />
+                          )}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {/* New Password */}
               <FormField
                 control={passwordForm.control}
                 name="newPassword"
@@ -1039,12 +1103,27 @@ const StoreDetails = () => {
                       </span>
                     </FormLabel>
                     <FormControl>
-                      <Input type="password" className="h-12" {...field} />
+                      <div className="relative">
+                        <Input
+                          type={showNew ? "text" : "password"}
+                          className="h-12 rounded-md pr-10"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNew(!showNew)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        >
+                          {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {/* Confirm Password */}
               <FormField
                 control={passwordForm.control}
                 name="confirmPassword"
@@ -1057,26 +1136,45 @@ const StoreDetails = () => {
                       </span>
                     </FormLabel>
                     <FormControl>
-                      <Input type="password" className="h-12" {...field} />
+                      <div className="relative">
+                        <Input
+                          type={showConfirm ? "text" : "password"}
+                          className="h-12 rounded-md pr-10"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirm(!showConfirm)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        >
+                          {showConfirm ? (
+                            <EyeOff size={18} />
+                          ) : (
+                            <Eye size={18} />
+                          )}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <DialogFooter className="gap-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setIsPasswordModalOpen(false)}
-                  className="px-6 bg-gray-100 h-10 text-black"
+                  className="px-6 bg-gray-100 h-10 text-black rounded-md"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
+                  disabled={isSubmitting}
+                  className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-md"
                 >
-                  Update Password
+                  {isSubmitting ? "Updating..." : "Update Password"}
                 </Button>
               </DialogFooter>
             </form>
@@ -1678,6 +1776,6 @@ const StoreDetails = () => {
       </Dialog>
     </div>
   );
-};
+};;;
 
 export default StoreDetails;
