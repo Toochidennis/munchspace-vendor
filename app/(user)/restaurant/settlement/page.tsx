@@ -315,9 +315,7 @@ export default function EarningsPage() {
 
       {/* Add Account Modal */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent
-          className="sm:max-w-md rounded-2xl border-none shadow-xl bg-white p-6 bg-black/40 backdrop-blur-[2px]"
-        >
+        <DialogContent className="sm:max-w-md rounded-2xl border-none shadow-xl bg-white p-6 bg-black/40 backdrop-blur-[2px]">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
               Add Settlement Account
@@ -433,8 +431,7 @@ export default function EarningsPage() {
       {/* Delete Confirmation Modal */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent
-          className="sm:max-w-sm rounded-2xl border-none shadow-xl bg-white p-6"
-          overlayClassName="bg-black/40 backdrop-blur-[2px]"
+          className="sm:max-w-sm rounded-2xl border-none shadow-xl bg-white p-6 bg-black/40 backdrop-blur-[2px]"
         >
           <DialogHeader>
             <DialogTitle className="text-lg font-bold">
