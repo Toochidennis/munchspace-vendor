@@ -102,7 +102,7 @@ export default function ChangePasswordPage() {
         />
       </div>
 
-      {/* Right Side: Change Password Form */}
+      {/* Right Side: Reset Password Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
         {!passwordChanged && (
           <div className="w-full max-w-md space-y-8">
@@ -115,7 +115,7 @@ export default function ChangePasswordPage() {
             />
             <div className="">
               <h2 className="text-2xl font-bold tracking-tight font-rubik">
-                Change Password
+                Reset Password
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 Enter your new password below.

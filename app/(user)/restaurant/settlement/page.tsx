@@ -78,6 +78,7 @@ async function authenticatedFetch(
   }
 
   let token = getAccessToken();
+  console.log("Initial token:", token);
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
