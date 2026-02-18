@@ -72,6 +72,11 @@ async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
+  // SSR Guard to prevent build errors
+  if (typeof window === "undefined") {
+    return new Response(JSON.stringify({ success: false }), { status: 200 });
+  }
+
   let token = getAccessToken();
   if (!token) {
     const refreshOk = await refreshAccessToken();
@@ -84,6 +89,7 @@ async function authenticatedFetch(
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
+
   if (!(init.body instanceof FormData)) {
     (headers as any)["Content-Type"] = "application/json";
   }
@@ -100,7 +106,6 @@ async function authenticatedFetch(
   }
   return response;
 }
-const businessId = getBusinessId();
 
 export default function EarningsPage() {
   const [activeTab, setActiveTab] = useState<"earnings" | "payout">("earnings");
@@ -113,6 +118,7 @@ export default function EarningsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
+  const [businessId, setBusinessId] = useState<string | null>(null);
 
   const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
@@ -120,12 +126,16 @@ export default function EarningsPage() {
   });
 
   useEffect(() => {
+    // Access localStorage safely inside useEffect
+    const id = getBusinessId();
+    setBusinessId(id);
+
     async function fetchData() {
-      if (!businessId) return;
+      if (!id) return;
       try {
         setIsLoadingAccount(true);
         const accRes = await authenticatedFetch(
-          `${API_BASE}/vendors/me/businesses/${businessId}/financials/bank-account`,
+          `${API_BASE}/vendors/me/businesses/${id}/financials/bank-account`,
         );
         const accJson = await accRes.json();
         if (accJson.success && accJson.data) {
@@ -133,7 +143,7 @@ export default function EarningsPage() {
         }
 
         const bankRes = await authenticatedFetch(
-          `${API_BASE}/vendors/me/businesses/${businessId}/financials/banks`,
+          `${API_BASE}/vendors/me/businesses/${id}/financials/banks`,
         );
         const bankJson = await bankRes.json();
         if (bankJson.success) setBanks(bankJson.data);
@@ -145,7 +155,7 @@ export default function EarningsPage() {
       }
     }
     fetchData();
-  }, [businessId]);
+  }, []);
 
   const onSubmit = async (data: AddSettlementType) => {
     if (!businessId) {
@@ -166,7 +176,6 @@ export default function EarningsPage() {
         bankCode: selectedBank.code,
         logoUrl: "",
       };
-
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/financials/bank-account`,
         {
@@ -174,7 +183,6 @@ export default function EarningsPage() {
           body: JSON.stringify(payload),
         },
       );
-
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || "Failed to add bank account");
@@ -195,7 +203,6 @@ export default function EarningsPage() {
   const confirmDelete = async () => {
     setIsDeleting(true);
     try {
-      // Simulate/Perform delete API call here if available
       setAccount(null);
       setIsDeleteOpen(false);
       toast.success("Account removed successfully");
@@ -314,148 +321,153 @@ export default function EarningsPage() {
 
       {/* Add Account Modal */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md rounded-2xl border-none shadow-xl bg-white p-6 bg-black/40 backdrop-blur-[2px]">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold">
-              Add Settlement Account
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="sm:max-w-md bg-black/40 backdrop-blur-[2px] rounded-2xl border-none p-0 overflow-hidden outline-none">
+          <div className="bg-white m-4 rounded-2xl p-6">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold">
+                Add Settlement Account
+              </DialogTitle>
+            </DialogHeader>
 
-          {isLoadingBanks ? (
-            <div className="py-8 flex justify-center">
-              <LoaderCircle className="h-8 w-8 animate-spin text-orange-600" />
-            </div>
-          ) : (
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-6 mt-4"
-              >
-                <FormField
-                  control={form.control}
-                  name="bankName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Bank Name <span className="text-red-600">*</span>
-                      </FormLabel>
-                      <Popover open={bankOpen} onOpenChange={setBankOpen}>
-                        <PopoverTrigger asChild>
+            {isLoadingBanks ? (
+              <div className="py-8 flex justify-center">
+                <LoaderCircle className="h-8 w-8 animate-spin text-orange-600" />
+              </div>
+            ) : (
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-6 mt-4"
+                >
+                  <FormField
+                    control={form.control}
+                    name="bankName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Bank Name <span className="text-red-600">*</span>
+                        </FormLabel>
+                        <Popover open={bankOpen} onOpenChange={setBankOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-between h-12 rounded-md"
+                              >
+                                {field.value || "Select bank"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <Command>
+                              <CommandInput placeholder="Search bank..." />
+                              <CommandEmpty>No bank found.</CommandEmpty>
+                              <CommandGroup className="max-h-60 overflow-auto">
+                                {banks.map((bank) => (
+                                  <CommandItem
+                                    key={bank.code}
+                                    onSelect={() => {
+                                      form.setValue("bankName", bank.name);
+                                      setBankOpen(false);
+                                    }}
+                                  >
+                                    {bank.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="accountNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Account Number *</FormLabel>
                           <FormControl>
-                            <Button
-                              variant="outline"
-                              className="w-full justify-between h-12 rounded-md"
-                            >
-                              {field.value || "Select bank"}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
+                            <Input className="h-12 rounded-md" {...field} />
                           </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-                          <Command>
-                            <CommandInput placeholder="Search bank..." />
-                            <CommandGroup className="max-h-60 overflow-auto">
-                              {banks.map((bank) => (
-                                <CommandItem
-                                  key={bank.code}
-                                  onSelect={() => {
-                                    form.setValue("bankName", bank.name);
-                                    setBankOpen(false);
-                                  }}
-                                >
-                                  {bank.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="accountName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Account Name *</FormLabel>
+                          <FormControl>
+                            <Input className="h-12 rounded-md" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="accountNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Account Number *</FormLabel>
-                        <FormControl>
-                          <Input className="h-12 rounded-md" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="accountName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Account Name *</FormLabel>
-                        <FormControl>
-                          <Input className="h-12 rounded-md" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="flex justify-end gap-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    className="rounded-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="bg-orange-600 hover:bg-orange-700 text-white rounded-md"
-                  >
-                    {isSubmitting ? "Saving..." : "Add Account"}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          )}
+                  <div className="flex justify-end gap-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsDialogOpen(false)}
+                      className="rounded-md px-6"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
+                    >
+                      {isSubmitting ? "Saving..." : "Add Account"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirmation Modal */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="sm:max-w-sm rounded-2xl border-none shadow-xl bg-white p-6 bg-black/40 backdrop-blur-[2px]">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold">
-              Remove Account?
-            </DialogTitle>
-            <DialogDescription>
-              This will remove your current settlement account. You will need to
-              add a new one to receive payouts.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex gap-3 mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteOpen(false)}
-              className="rounded-md w-full"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDelete}
-              disabled={isDeleting}
-              className="rounded-md w-full bg-red-600 hover:bg-red-700"
-            >
-              {isDeleting ? "Removing..." : "Yes, Remove"}
-            </Button>
-          </DialogFooter>
+        <DialogContent className="sm:max-w-sm rounded-2xl border-none shadow-xl p-0 overflow-hidden bg-black/40 backdrop-blur-[2px]">
+          <div className="bg-white m-4 rounded-2xl p-6">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">
+                Remove Account?
+              </DialogTitle>
+              <DialogDescription>
+                This will remove your current settlement account. You will need
+                to add a new one to receive payouts.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-3 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsDeleteOpen(false)}
+                className="rounded-md w-full"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="rounded-md w-full bg-red-600 hover:bg-red-700"
+              >
+                {isDeleting ? "Removing..." : "Yes, Remove"}
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
