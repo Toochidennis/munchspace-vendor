@@ -100,6 +100,7 @@ async function authenticatedFetch(
   }
   return response;
 }
+const businessId = getBusinessId();
 
 export default function EarningsPage() {
   const [activeTab, setActiveTab] = useState<"earnings" | "payout">("earnings");
@@ -112,8 +113,6 @@ export default function EarningsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
-  const businessId = getBusinessId();
-  console.log("Business ID:", getAccessToken());
 
   const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
@@ -430,9 +429,7 @@ export default function EarningsPage() {
 
       {/* Delete Confirmation Modal */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent
-          className="sm:max-w-sm rounded-2xl border-none shadow-xl bg-white p-6 bg-black/40 backdrop-blur-[2px]"
-        >
+        <DialogContent className="sm:max-w-sm rounded-2xl border-none shadow-xl bg-white p-6 bg-black/40 backdrop-blur-[2px]">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold">
               Remove Account?

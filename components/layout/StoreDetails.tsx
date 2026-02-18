@@ -49,7 +49,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { X as XIcon } from "lucide-react";
 import { toast } from "sonner";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import { format } from "date-fns";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
@@ -536,6 +536,7 @@ const StoreDetails = () => {
         throw new Error(data.message || "Failed to update password");
 
       toast.success("Password updated successfully");
+      logout();
       setIsPasswordModalOpen(false);
       passwordForm.reset();
     } catch (error: any) {
