@@ -6,7 +6,9 @@ import { z } from "zod";
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +21,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
-// Password validation schema (unchanged)
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+
+// Password validation schema
 const formSchema = z
   .object({
     newPassword: z
@@ -43,6 +49,9 @@ const formSchema = z
 type FormValues = z.infer<typeof formSchema>;
 
 export default function ChangePasswordPage() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
+
   const [isLoading, setIsLoading] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -56,35 +65,57 @@ export default function ChangePasswordPage() {
     },
   });
 
-  // Watch newPassword for real-time checks
   const newPassword = form.watch("newPassword");
 
-  // Individual checks (order: length, uppercase, number, special)
   const hasLength = newPassword.length >= 8;
   const hasUppercase = /[A-Z]/.test(newPassword);
   const hasNumber = /[0-9]/.test(newPassword);
   const hasSpecial = /[^a-zA-Z0-9]/.test(newPassword);
 
-  // Strength score
   const strength =
     (hasLength ? 1 : 0) +
     (hasUppercase ? 1 : 0) +
     (hasNumber ? 1 : 0) +
     (hasSpecial ? 1 : 0);
+
   const strengthLabels = ["Too Weak", "Weak", "Fair", "Good", "Strong"];
 
   async function onSubmit(values: FormValues) {
+    if (!token) {
+      toast.error("Invalid or missing reset token.");
+      return;
+    }
+
     setIsLoading(true);
-    console.log(values);
-    await new Promise((r) => setTimeout(r, 1500)); // Simulate API call
-    // Integrate with your password change API here
+    try {
+      const response = await fetch(`${API_BASE}/auth/password/reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+        },
+        body: JSON.stringify({
+          token: token,
+          newPassword: values.newPassword,
+        }),
+      });
+
+      if (response.ok) {
+        setPasswordChanged(true);
+        toast.success("Password reset successful!");
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.message || "Failed to reset password.");
+      }
+    } catch (error) {
+      toast.error("Network error. Please try again.");
+    } finally {
       setIsLoading(false);
-      setPasswordChanged(true)
+    }
   }
 
   return (
     <div className="min-h-dvh grid md:grid-cols-2">
-      {/* Left Side: Large Image */}
       <div className="w-full relative hidden md:block">
         <Image
           src={"/images/logo.svg"}
@@ -102,7 +133,6 @@ export default function ChangePasswordPage() {
         />
       </div>
 
-      {/* Right Side: Reset Password Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
         {!passwordChanged && (
           <div className="w-full max-w-md space-y-8">
@@ -113,7 +143,7 @@ export default function ChangePasswordPage() {
               alt="logo"
               className="lg:hidden"
             />
-            <div className="">
+            <div>
               <h2 className="text-2xl font-bold tracking-tight font-rubik">
                 Reset Password
               </h2>
@@ -161,10 +191,11 @@ export default function ChangePasswordPage() {
                       </FormControl>
                       <FormMessage />
 
-                      {/* Single-Line Segmented Progress Bar */}
                       <div className="mt-4 flex items-center gap-5 justify-between">
                         <div className="flex h-3 gap-2 w-full basis-6/7">
-                          <div className="transition-all duration-300 rounded-full h-2 w-full bg-munchprimary" />
+                          <div
+                            className={`transition-all duration-300 rounded-full h-2 w-full ${strength > 0 ? "bg-munchprimary" : "bg-gray-200"}`}
+                          />
                           <div
                             className={`transition-all duration-300 rounded-full h-2 w-full ${
                               strength > 1 ? "bg-munchprimary" : "bg-gray-200"
@@ -186,7 +217,6 @@ export default function ChangePasswordPage() {
                         </span>
                       </div>
 
-                      {/* Requirements Checklist */}
                       <ul className="mt-4 space-y-1 text-sm">
                         <li className="flex gap-2">
                           {hasLength ? (
@@ -317,7 +347,7 @@ export default function ChangePasswordPage() {
                   {isLoading ? (
                     <LoaderCircle className="animate-spin" />
                   ) : (
-                    "Request reset"
+                    "Reset Password"
                   )}
                 </Button>
               </form>
@@ -352,8 +382,8 @@ export default function ChangePasswordPage() {
             </div>
             <Link href={"/login"} className="mt-8 block">
               <Button
-                type="submit"
-                className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full hover:cursor-pointer"
+                type="button"
+                className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full"
               >
                 Back to Login
               </Button>

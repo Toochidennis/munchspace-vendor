@@ -26,7 +26,9 @@ const API_KEY =
 
 // Step 1: Email + Password schema
 const loginSchema = z.object({
-  identifier: z.string({ message: "Please enter a valid email address or phone number." }),
+  identifier: z.string({
+    message: "Please enter a valid email address or phone number.",
+  }),
   password: z
     .string()
     .min(6, { message: "Password must be at least 6 characters." }),
@@ -35,14 +37,16 @@ const loginSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const [step, setStep] = useState<1 | 2>(1); // 1: Login form, 2: OTP
+  const [step, setStep] = useState<1 | 2>(1);
+  // 1: Login form, 2: OTP
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [savedIdentifier, setSavedIdentifier] = useState("");
   const [otpError, setOtpError] = useState("");
 
   // Resend OTP logic
-  const [resendCooldown, setResendCooldown] = useState(0); // seconds remaining
+  const [resendCooldown, setResendCooldown] = useState(0);
+  // seconds remaining
   const [currentWaitTime, setCurrentWaitTime] = useState(60); // initial 60 seconds
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -87,17 +91,34 @@ export default function LoginPage() {
 
   const handleOtpKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>
+    e: React.KeyboardEvent<HTMLInputElement>,
   ) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
+    if (e.key === "Enter" && otp.join("").length === 6) {
+      onOtpSubmit();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const pastedData = e.clipboardData.getData("text").slice(0, 6);
+    if (!/^\d+$/.test(pastedData)) return;
+
+    const newOtp = [...otp];
+    pastedData.split("").forEach((char, idx) => {
+      if (idx < 6) newOtp[idx] = char;
+    });
+    setOtp(newOtp);
+
+    // Focus the last filled input or the first empty one
+    const nextIndex = Math.min(pastedData.length, 5);
+    otpRefs.current[nextIndex]?.focus();
   };
 
   async function onLoginSubmit(values: LoginValues) {
     setIsLoading(true);
     setOtpError("");
-
     try {
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
@@ -130,7 +151,6 @@ export default function LoginPage() {
 
   async function handleResendOtp() {
     if (resendCooldown > 0) return;
-
     setIsLoading(true);
     setOtpError("");
 
@@ -145,10 +165,11 @@ export default function LoginPage() {
           identifier: savedIdentifier,
         }),
       });
-
       if (response.ok) {
-        setOtp(["", "", "", "", "", ""]); // Clear previous OTP input
-        otpRefs.current[0]?.focus(); // Refocus first input
+        setOtp(["", "", "", "", "", ""]);
+        // Clear previous OTP input
+        otpRefs.current[0]?.focus();
+        // Refocus first input
 
         // Exponential backoff: double the wait time
         const newWaitTime = currentWaitTime * 2;
@@ -157,7 +178,7 @@ export default function LoginPage() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         setOtpError(
-          errorData.message || "Failed to resend OTP. Please try again."
+          errorData.message || "Failed to resend OTP. Please try again.",
         );
       }
     } catch (error) {
@@ -186,22 +207,16 @@ export default function LoginPage() {
           otp: code,
         }),
       });
-
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
-        // const businessId = res.data.vendor.businessIds[0]
-        console.log("businessId", res.data.vendor.businessId);
-
         // Save business id in memory
-        setBusinessId(res.data.vendor.businessId)
+        setBusinessId(res.data.vendor.businessId);
         // Save tokens only after successful OTP verification
         setAccessToken(accessToken);
-        // localStorage.setItem("accessToken", accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30
         }`;
-
         // Immediately redirect to dashboard
         window.location.href = "/restaurant/dashboard";
       } else if (response.status === 401) {
@@ -394,8 +409,12 @@ export default function LoginPage() {
                     value={digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    onPaste={index === 0 ? handlePaste : undefined}
                     className="w-12 h-12 text-center text-lg"
                     maxLength={1}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                   />
                 ))}
               </div>

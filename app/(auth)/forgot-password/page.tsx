@@ -17,15 +17,22 @@ import {
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import { useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { toast } from "sonner";
+
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
 const formSchema = z.object({
-  email: z.email({ message: "Please enter a valid email address." }),
+  email: z.string().email({ message: "Please enter a valid email address." }),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
-export default function LoginPage() {
+export default function ForgotPasswordPage() {
   const [emailSent, setEmailSent] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -34,10 +41,32 @@ export default function LoginPage() {
     },
   });
 
-  function onSubmit(values: FormValues) {
-    console.log(values);
-    setEmailSent(true);
-    // Integrate with your authentication logic here (e.g., NextAuth, server action).
+  async function onSubmit(values: FormValues) {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/auth/password/forgot`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+        },
+        body: JSON.stringify({
+          identifier: values.email,
+        }),
+      });
+
+      if (response.ok) {
+        setEmailSent(true);
+        toast.success("Reset link sent successfully");
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.message || "Failed to send reset link.");
+      }
+    } catch (error) {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -64,7 +93,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right Side: Login Form */}
+      {/* Right Side: Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
         <div className="w-full max-w-md space-y-8">
           <Link href="/">
@@ -80,7 +109,7 @@ export default function LoginPage() {
             <>
               <div className="">
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
-                  Reset Password
+                  Forgot Password
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Please enter your email to request a password reset
@@ -118,9 +147,14 @@ export default function LoginPage() {
 
                   <Button
                     type="submit"
+                    disabled={isLoading}
                     className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full"
                   >
-                    Login
+                    {isLoading ? (
+                      <LoaderCircle className="animate-spin" />
+                    ) : (
+                      "Reset Password"
+                    )}
                   </Button>
                 </form>
               </Form>
@@ -151,11 +185,8 @@ export default function LoginPage() {
                   We have sent you an email with the reset instructions
                 </p>
               </div>
-              <Link href={"/login"} className="">
-                <Button
-                  type="submit"
-                  className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full hover:cursor-pointer"
-                >
+              <Link href={"/login"} className="block mt-6">
+                <Button className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full hover:cursor-pointer">
                   Back to Login
                 </Button>
               </Link>
