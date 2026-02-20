@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import {
   Camera,
@@ -45,7 +45,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
-import Link from "next/link";
 
 const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 
@@ -196,7 +195,8 @@ async function authenticatedFetch(
 
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired during request");
+    if (!refreshOk)
+      throw new Error("Session expired during request (refresh failed)");
     token = getAccessToken();
     if (!token) throw new Error("Refresh succeeded but no token available");
 
@@ -209,16 +209,19 @@ async function authenticatedFetch(
   return response;
 }
 
-export default function CreateMenuPage() {
+export default function EditMenuPage() {
   const [activeTab, setActiveTab] = useState<
     "details" | "sizes" | "extras" | "discounts"
   >("details");
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [showDiscountForm, setShowDiscountForm] = useState(false);
 
   const router = useRouter();
+  const params = useParams();
+  const id = params.slug as string;
 
   const {
     register,
@@ -228,6 +231,7 @@ export default function CreateMenuPage() {
     watch,
     setValue,
     trigger,
+    reset,
     resetField,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -258,9 +262,7 @@ export default function CreateMenuPage() {
       try {
         const res = await authenticatedFetch(
           `${API_BASE}/meta/menu-categories`,
-          {
-            method: "GET",
-          },
+          { method: "GET" },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const response = await res.json();
@@ -270,18 +272,101 @@ export default function CreateMenuPage() {
           setCategories([]);
         }
       } catch (err: any) {
-        const msg = err.message?.includes("expired")
-          ? "Your session has expired. Please sign in again."
-          : "Failed to load categories. Please try again later.";
-        toast.error(msg);
-        setCategories([]);
+        console.error("Failed to load categories:", err);
+        toast.error("Failed to load categories. Please try again later.");
       } finally {
         setLoadingCategories(false);
       }
     };
-
     fetchCategories();
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const fetchMenuItem = async () => {
+      setIsLoading(true);
+      try {
+        const businessId = getBusinessId();
+        if (!businessId) throw new Error("Business ID not found");
+
+        const res = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}`,
+          { method: "GET" },
+        );
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const { data } = await res.json();
+
+        console.log("Full menu item data from API:", data);
+
+        const hasDiscount = !!data.menuItemDiscount?.type;
+
+        reset({
+          name: data.name || "",
+          description: data.description || "",
+          image: data.imageUrl || "",
+          categoryTypeId: data.categoryTypeId?.toString() || "",
+          sellingPrice:
+            data.sellingPrice != null ? Number(data.sellingPrice) : undefined,
+          quantityInStock:
+            data.quantityInStock != null
+              ? Number(data.quantityInStock)
+              : undefined,
+          isAvailable: data.isAvailable ? "available" : "unavailable",
+
+          variants:
+            Array.isArray(data.variants) && data.variants.length > 0
+              ? data.variants.map((v: any) => ({
+                  name: v.name || "",
+                  description: v.description || "",
+                  price: v.price != null ? String(v.price) : "",
+                }))
+              : [],
+
+          addons:
+            Array.isArray(data.addons) && data.addons.length > 0
+              ? data.addons.map((a: any) => ({
+                  name: a.name || "",
+                  description: a.description || "",
+                  price: a.price != null ? String(a.price) : "",
+                }))
+              : [],
+
+          discount: hasDiscount
+            ? {
+                type: data.menuItemDiscount.type,
+                value:
+                  data.menuItemDiscount.value != null
+                    ? String(data.menuItemDiscount.value)
+                    : "",
+                startsAt: data.menuItemDiscount.startsAt
+                  ? new Date(data.menuItemDiscount.startsAt)
+                  : undefined,
+                endsAt: data.menuItemDiscount.endsAt
+                  ? new Date(data.menuItemDiscount.endsAt)
+                  : undefined,
+              }
+            : undefined,
+        });
+
+        setShowDiscountForm(hasDiscount);
+      } catch (err: any) {
+        console.error("Failed to load menu item:", err);
+        toast.error(
+          err.message?.includes("expired")
+            ? "Your session has expired. Please sign in again."
+            : "Failed to load menu item data. Redirecting...",
+        );
+        router.push("/restaurant/menu");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchMenuItem();
+  }, [id, reset, router]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -332,40 +417,48 @@ export default function CreateMenuPage() {
 
   const onSubmit: SubmitHandler<FormData> = async (data) => {
     setIsSubmitting(true);
+
     const formData = new FormData();
 
-    formData.append("menuItem[name]", data.name);
-    formData.append("menuItem[description]", data.description);
-    formData.append("menuItem[sellingPrice]", data.sellingPrice.toString());
+    formData.append("name", data.name.trim());
+    formData.append("description", data.description.trim());
+    formData.append("categoryTypeId", data.categoryTypeId);
+    formData.append("sellingPrice", data.sellingPrice.toString());
+    formData.append("quantityInStock", data.quantityInStock.toString());
     formData.append(
-      "menuItem[quantityInStock]",
-      data.quantityInStock.toString(),
-    );
-    formData.append("menuItem[categoryTypeId]", data.categoryTypeId);
-    formData.append(
-      "menuItem[isAvailable]",
+      "isAvailable",
       data.isAvailable === "available" ? "true" : "false",
     );
 
-    data.variants?.forEach((v, i) => {
-      if (v.name.trim()) {
-        formData.append(`variants[${i}][name]`, v.name);
-        formData.append(`variants[${i}][description]`, v.description || "");
-        formData.append(`variants[${i}][price]`, v.price);
-      }
-    });
+    if (data.variants && data.variants.length > 0) {
+      data.variants.forEach((variant, index) => {
+        if (variant.name?.trim()) {
+          formData.append(`variants[${index}][name]`, variant.name.trim());
+          formData.append(
+            `variants[${index}][description]`,
+            variant.description || "",
+          );
+          formData.append(`variants[${index}][price]`, variant.price || "0");
+        }
+      });
+    }
 
-    data.addons?.forEach((a, i) => {
-      if (a.name.trim()) {
-        formData.append(`addons[${i}][name]`, a.name);
-        formData.append(`addons[${i}][description]`, a.description || "");
-        formData.append(`addons[${i}][price]`, a.price);
-      }
-    });
+    if (data.addons && data.addons.length > 0) {
+      data.addons.forEach((addon, index) => {
+        if (addon.name?.trim()) {
+          formData.append(`addons[${index}][name]`, addon.name.trim());
+          formData.append(
+            `addons[${index}][description]`,
+            addon.description || "",
+          );
+          formData.append(`addons[${index}][price]`, addon.price || "0");
+        }
+      });
+    }
 
-    if (data.discount?.type && data.discount.value?.trim()) {
+    if (data.discount?.type && data.discount?.value?.trim()) {
       formData.append("discount[type]", data.discount.type);
-      formData.append("discount[value]", data.discount.value);
+      formData.append("discount[value]", data.discount.value.trim());
       if (data.discount.startsAt) {
         formData.append(
           "discount[startsAt]",
@@ -380,7 +473,7 @@ export default function CreateMenuPage() {
       }
     }
 
-    if (data.image?.startsWith("data:image")) {
+    if (data.image.startsWith("data:image")) {
       const blob = await fetch(data.image).then((res) => res.blob());
       formData.append("file", blob, "menu-image.jpg");
     }
@@ -389,28 +482,40 @@ export default function CreateMenuPage() {
 
     try {
       const res = await authenticatedFetch(
-        `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/compose`,
-        { method: "POST", body: formData },
+        `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}/compose`,
+        {
+          method: "PATCH",
+          body: formData,
+        },
       );
 
-      const responseData = await res.json();
-
-      if (res.ok) {
-        toast.success("Menu item created successfully");
-        // router.push("/restaurant/menu");
-      } else {
-        toast.error(responseData?.message || "Failed to create menu item");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(
+          errorData.message || errorData.error || "Update failed",
+        );
       }
+
+      toast.success("Menu item updated successfully");
+      router.push("/restaurant/menu");
     } catch (err: any) {
-      toast.error(
-        err.message?.includes("expired")
-          ? "Session expired. Please sign in again."
-          : "An unexpected error occurred.",
-      );
+      console.error("Update error:", err);
+      const msg = err.message?.includes("expired")
+        ? "Your session has expired. Please sign in again."
+        : "Failed to update menu item. Please try again.";
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    );
+  }
 
   const isFirstTab = activeTab === "details";
   const isLastTab = activeTab === "discounts";
@@ -420,13 +525,11 @@ export default function CreateMenuPage() {
       <div className="max-w-3xl mx-auto p-8">
         <div className="mb-8 mt-10 md:mt-0">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-4">
-            <Link
-              href="/restaurant/menu"
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            Create Menu
+            <ArrowLeft
+              className="h-6 w-6 text-gray-600 hover:text-gray-900 cursor-pointer"
+              onClick={() => router.back()}
+            />
+            Edit Menu
           </h1>
         </div>
 
@@ -524,12 +627,13 @@ export default function CreateMenuPage() {
                     )}
                   >
                     {image ? (
-                      <Image
+                      <img
                         src={image}
                         alt="Menu item"
                         width={300}
                         height={200}
                         className="rounded-lg object-cover max-h-64"
+                        crossOrigin="anonymous"
                       />
                     ) : (
                       <>
@@ -554,10 +658,7 @@ export default function CreateMenuPage() {
                   control={control}
                   name="categoryTypeId"
                   render={({ field }) => (
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <SelectTrigger
                         className={cn(
                           "h-12! w-full",
@@ -567,7 +668,7 @@ export default function CreateMenuPage() {
                       >
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="w-full">
                         {loadingCategories ? (
                           <div className="p-4 text-center text-gray-500">
                             Loading categories...
@@ -699,26 +800,26 @@ export default function CreateMenuPage() {
               {variantFields.map((field, index) => (
                 <div key={field.id} className="space-y-3 border-b pb-4">
                   <div className="flex items-center gap-4">
-                    <div className="flex-1 space-y-1">
+                    <div className="flex-1">
                       <Input
                         placeholder="Size name (e.g. Small)"
                         {...register(`variants.${index}.name`)}
                         className="h-12"
                       />
                       {errors.variants?.[index]?.name && (
-                        <p className="text-red-600 text-xs">
+                        <p className="text-red-600 text-sm mt-1">
                           {errors.variants[index]?.name?.message}
                         </p>
                       )}
                     </div>
-                    <div className="w-32 space-y-1">
+                    <div className="w-32">
                       <Input
                         placeholder="Price"
                         {...register(`variants.${index}.price`)}
                         className="h-12"
                       />
                       {errors.variants?.[index]?.price && (
-                        <p className="text-red-600 text-xs">
+                        <p className="text-red-600 text-sm mt-1">
                           {errors.variants[index]?.price?.message}
                         </p>
                       )}
@@ -727,7 +828,7 @@ export default function CreateMenuPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => removeVariant(index)}
-                      className="text-red-600 hover:bg-red-50 mt-6"
+                      className="text-red-600 hover:bg-red-50"
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
@@ -771,26 +872,26 @@ export default function CreateMenuPage() {
               {addonFields.map((field, index) => (
                 <div key={field.id} className="space-y-3 border-b pb-4">
                   <div className="flex items-center gap-4">
-                    <div className="flex-1 space-y-1">
+                    <div className="flex-1">
                       <Input
                         placeholder="Addon name (e.g. Extra Plantain)"
                         {...register(`addons.${index}.name`)}
                         className="h-12"
                       />
                       {errors.addons?.[index]?.name && (
-                        <p className="text-red-600 text-xs">
+                        <p className="text-red-600 text-sm mt-1">
                           {errors.addons[index]?.name?.message}
                         </p>
                       )}
                     </div>
-                    <div className="w-32 space-y-1">
+                    <div className="w-32">
                       <Input
                         placeholder="Price"
                         {...register(`addons.${index}.price`)}
                         className="h-12"
                       />
                       {errors.addons?.[index]?.price && (
-                        <p className="text-red-600 text-xs">
+                        <p className="text-red-600 text-sm mt-1">
                           {errors.addons[index]?.price?.message}
                         </p>
                       )}
@@ -799,7 +900,7 @@ export default function CreateMenuPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => removeAddon(index)}
-                      className="text-red-600 hover:bg-red-50 mt-6"
+                      className="text-red-600 hover:bg-red-50"
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
@@ -898,6 +999,7 @@ export default function CreateMenuPage() {
                               </p>
                             </div>
                           </div>
+
                           <div className="flex items-start space-x-3">
                             <RadioGroupItem
                               value="FLAT"
@@ -916,6 +1018,7 @@ export default function CreateMenuPage() {
                               </p>
                             </div>
                           </div>
+
                           <div className="flex items-start space-x-3">
                             <RadioGroupItem
                               value="FIXED_PRICE"
@@ -954,7 +1057,7 @@ export default function CreateMenuPage() {
                         </span>
                       </div>
                       {errors.discount?.value && (
-                        <p className="text-red-600 text-sm">
+                        <p className="text-red-600 text-sm mt-1">
                           {errors.discount.value.message}
                         </p>
                       )}
@@ -1091,10 +1194,10 @@ export default function CreateMenuPage() {
             {isSubmitting ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Saving...
+                {isLastTab ? "Updating..." : "Saving..."}
               </>
             ) : isLastTab ? (
-              "Add Menu"
+              "Update Menu"
             ) : (
               "Next"
             )}

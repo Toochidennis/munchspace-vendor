@@ -18,9 +18,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { setAccessToken } from "@/app/lib/auth";
+import { setAccessToken, setBusinessId } from "@/app/lib/auth";
 
-const API_BASE = "https://api.munchspace.io/api/v1";
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
@@ -55,16 +55,17 @@ const registerSchema = z
 type RegisterValues = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
-  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Register, 2: OTP, 3: Success
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  // 1: Register, 2: OTP, 3: Success
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [savedEmail, setSavedEmail] = useState("");
   const [otpError, setOtpError] = useState("");
-
   // Resend OTP logic
   const [resendCooldown, setResendCooldown] = useState(0); // seconds
-  const [currentWaitTime, setCurrentWaitTime] = useState(60); // initial 60 seconds
+  const [currentWaitTime, setCurrentWaitTime] = useState(60);
+  // initial 60 seconds
 
   const form = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
@@ -77,7 +78,6 @@ export default function RegisterPage() {
       confirmPassword: "",
     },
   });
-
   const password = form.watch("password");
 
   // Password strength checks
@@ -128,15 +128,45 @@ export default function RegisterPage() {
 
   const handleOtpKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>
+    e: React.KeyboardEvent<HTMLInputElement>,
   ) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
+    if (e.key === "Enter" && otp.join("").length === 6) {
+      onOtpSubmit();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const pastedData = e.clipboardData.getData("text").slice(0, 6);
+    if (!/^\d+$/.test(pastedData)) return;
+
+    const newOtp = [...otp];
+    pastedData.split("").forEach((char, idx) => {
+      if (idx < 6) newOtp[idx] = char;
+    });
+    setOtp(newOtp);
+
+    // Focus the last filled input or the first empty one
+    const nextIndex = Math.min(pastedData.length, 5);
+    otpRefs.current[nextIndex]?.focus();
   };
 
   async function onRegisterSubmit(values: RegisterValues) {
     setIsLoading(true);
+    // Normalize phone number
+    let normalizedPhone = values.phone.trim();
+    // Remove leading zero if present
+    if (normalizedPhone.startsWith("0")) {
+      normalizedPhone = normalizedPhone.substring(1);
+    }
+
+    // Add +234 if it doesn't already start with +
+    if (!normalizedPhone.startsWith("+")) {
+      normalizedPhone = "+234" + normalizedPhone;
+    }
+
     try {
       const response = await fetch(`${API_BASE}/auth/signup`, {
         method: "POST",
@@ -148,15 +178,15 @@ export default function RegisterPage() {
           firstName: values.firstName,
           lastName: values.lastName,
           email: values.email,
-          phone: values.phone,
+          phone: normalizedPhone,
           password: values.password,
         }),
       });
-
       if (response.status === 201) {
         setSavedEmail(values.email);
         setStep(2);
-        setResendCooldown(60); // Start initial cooldown
+        setResendCooldown(60);
+        // Start initial cooldown
         setCurrentWaitTime(60);
       } else if (response.status === 400) {
         const errorData = await response.json();
@@ -182,7 +212,6 @@ export default function RegisterPage() {
 
   async function handleResendOtp() {
     if (resendCooldown > 0) return;
-
     setIsLoading(true);
     setOtpError("");
 
@@ -197,11 +226,10 @@ export default function RegisterPage() {
           identifier: savedEmail,
         }),
       });
-
       if (response.ok) {
-        setOtp(["", "", "", "", "", ""]); // Clear OTP
+        setOtp(["", "", "", "", "", ""]);
+        // Clear OTP
         otpRefs.current[0]?.focus();
-
         // Exponential backoff: double the wait time
         const newWaitTime = currentWaitTime * 2;
         setCurrentWaitTime(newWaitTime);
@@ -209,7 +237,7 @@ export default function RegisterPage() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         setOtpError(
-          errorData.message || "Failed to resend OTP. Please try again."
+          errorData.message || "Failed to resend OTP. Please try again.",
         );
       }
     } catch (error) {
@@ -238,17 +266,18 @@ export default function RegisterPage() {
           otp: code,
         }),
       });
-
       if (response.status === 200) {
-        const otpResponse = await response.json();
-        const { accessToken, refreshToken } = otpResponse.data;
+        const res = await response.json();
+        const { accessToken, refreshToken } = res.data;
 
+        // Save business ID in memory
+        setBusinessId(res.data.vendor.businessId);
         // Store tokens
         setAccessToken(accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30
         }`;
-
+        // Go to success step (setup store prompt) instead of redirecting
         setStep(3);
       } else if (response.status === 401) {
         setOtpError("Invalid or expired OTP.");
@@ -316,7 +345,7 @@ export default function RegisterPage() {
                   onSubmit={form.handleSubmit(onRegisterSubmit)}
                   className="space-y-6"
                 >
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="firstName"
@@ -623,8 +652,12 @@ export default function RegisterPage() {
                     value={digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    onPaste={index === 0 ? handlePaste : undefined}
                     className="w-12 h-12 text-center text-lg"
                     maxLength={1}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                   />
                 ))}
               </div>

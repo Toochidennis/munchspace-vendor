@@ -1,30 +1,48 @@
 "use client";
 
-import { act, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 import {
   LayoutDashboard,
   ShoppingBag,
   Menu as MenuIcon,
-  Users,
   DollarSign,
   Settings,
   Globe,
   BellRing,
-  ChevronLeft,
-  ChevronRight,
   Ellipsis,
+  X,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 import { Card } from "../ui/card";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { logout } from "@/app/lib/auth";
+import { getAccessToken, logout } from "@/app/lib/auth";
+import { useStore } from "../context/StoreContext";
+import { Button } from "../ui/button";
+
+type VendorProfile = {
+  name: string;
+  displayName: string;
+  email: string;
+  phone: string;
+  createdAt: string;
+};
+
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
 export default function RestaurantSidebar() {
+  const { storeImage, address } = useStore();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileCollapsed, setMobileCollapsed] = useState(false);
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [profile, setProfile] = useState<VendorProfile | null>(null);
+  const [shortName, setShortName] = useState<string>("");
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   const [showMore, setShowMore] = useState(false);
 
@@ -58,12 +76,6 @@ export default function RestaurantSidebar() {
   ];
 
   const accountItems = [
-    // {
-    //   icon: Users,
-    //   label: "Team",
-    //   href: "/restaurant/team",
-    //   active: pathname.startsWith("/restaurant/team"),
-    // },
     {
       icon: DollarSign,
       label: "Settlement",
@@ -78,12 +90,52 @@ export default function RestaurantSidebar() {
     },
   ];
 
+  // Fetch vendor profile
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const token = getAccessToken();
+      if (!token) return;
+
+      setLoadingProfile(true);
+      try {
+        const res = await fetch(`${API_BASE}/vendors/me`, {
+          method: "GET",
+          headers: {
+            "x-api-key": API_KEY,
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch profile");
+        }
+
+        const json = await res.json();
+        if (json.success && json.data) {
+          setProfile(json.data);
+          const words = json.data.name.split(" ");
+          const firstTwoInitials = words
+            .slice(0, 2)
+            .map((w: string) => w.charAt(0).toUpperCase())
+            .join("");
+          setShortName(firstTwoInitials);
+        }
+      } catch (err) {
+        console.error("Profile fetch error:", err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
   return (
     <div>
       <div
         className={cn(
-          "relative md:flex flex-col h-screen hidden bg-munchprimary border-r p-4 border-gray-200 transition-all duration-300",
-          collapsed ? "w-fit" : "w-70"
+          "relative md:flex flex-col h-screen hidden bg-munchprimary p-4 transition-all duration-300",
+          collapsed ? "w-fit" : "w-70",
         )}
       >
         {/* Collapse Toggle Button */}
@@ -100,18 +152,17 @@ export default function RestaurantSidebar() {
         </button>
         {/* Header */}
         <div className="flex items-center gap-3 bg-white shrink-0 rounded-xl px-2 py-2">
-          <Image
-            src="/images/auth/store.svg"
+          <img
+            src={storeImage || "/images/auth/store.svg"}
             width={50}
             height={50}
             alt="restaurant"
             className="h-10 w-10"
+            crossOrigin="anonymous"
           />
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-900">
-                No 32, opposite Zara mall, mainland
-              </p>
+              <p className="text-xs text-gray-900">{address}</p>
             </div>
           )}
         </div>
@@ -128,9 +179,9 @@ export default function RestaurantSidebar() {
               <Link href={item.href} className="block" key={item.label}>
                 <button
                   className={cn(
-                    "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3",
+                    "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3 cursor-pointer",
                     collapsed && "justify-center px-0",
-                    item.active ? "bg-black/13" : "hover:bg-black/10"
+                    item.active ? "bg-black/13" : "hover:bg-black/10",
                   )}
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
@@ -150,10 +201,10 @@ export default function RestaurantSidebar() {
               <Link href={item.href} key={item.label}>
                 <button
                   className={cn(
-                    "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full mt-2",
+                    "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full mt-2 cursor-pointer",
                     collapsed && "justify-center px-0",
                     item.active ? "bg-black/13" : "hover:bg-black/10",
-                    "hover:bg-black/10"
+                    "hover:bg-black/10",
                   )}
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
@@ -171,7 +222,7 @@ export default function RestaurantSidebar() {
             className={cn(
               "flex items-center gap-4 px-4 py-3 rounded-lg transition-colors justify-center bg-white w-full text-munchprimary",
               collapsed && "justify-center px-0",
-              " hover:bg-gray-100"
+              " hover:bg-gray-100",
             )}
           >
             <Globe className="h-5 w-5 shrink-0" />
@@ -183,23 +234,27 @@ export default function RestaurantSidebar() {
             onMouseLeave={() => setShowMore(false)}
             className={cn(
               "flex items-center gap-3 pt-4",
-              collapsed && "flex-col gap-2"
+              collapsed && "flex-col gap-2",
             )}
           >
             <Card
               className={cn(
                 "absolute -top-29 w-full p-3 py-3 text-slate-500 hidden",
                 collapsed && "p-1.5 -top-26",
-                showMore && "block"
+                showMore && "block",
               )}
             >
               <ul className="space-y-1">
-                <li>
+                <li
+                  onClick={() => {
+                    setIsProfileDialogOpen(true);
+                  }}
+                >
                   <button
                     className={cn(
-                      "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
+                      "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full cursor-pointer",
                       collapsed && "justify-center px-0",
-                      "hover:bg-black/10"
+                      "hover:bg-black/10",
                     )}
                   >
                     <Image
@@ -213,29 +268,31 @@ export default function RestaurantSidebar() {
                   </button>
                 </li>
                 <li>
-                  <button
-                    className={cn(
-                      "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
-                      collapsed && "justify-center px-0",
-                      "hover:bg-black/10"
-                    )}
-                  >
-                    <Image
-                      src={"/images/SettingFilled.svg"}
-                      width={18}
-                      height={18}
-                      alt="logout"
-                      className="h-5 w-5 shrink-0"
-                    />
-                    {!collapsed && <span className="text-sm">Settings</span>}
-                  </button>
+                  <Link href={"/restaurant/account-settings"} className="block">
+                    <button
+                      className={cn(
+                        "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full cursor-pointer",
+                        collapsed && "justify-center px-0",
+                        "hover:bg-black/10",
+                      )}
+                    >
+                      <Image
+                        src={"/images/SettingFilled.svg"}
+                        width={18}
+                        height={18}
+                        alt="logout"
+                        className="h-5 w-5 shrink-0"
+                      />
+                      {!collapsed && <span className="text-sm">Settings</span>}
+                    </button>
+                  </Link>
                 </li>
                 <li>
                   <button
                     className={cn(
-                      "flex items-center bg-munchprimary text-white gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
+                      "flex items-center bg-munchprimary text-white gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full cursor-pointer",
                       collapsed && "justify-center px-0",
-                      "hover:bg-munchprimaryDark"
+                      "hover:bg-munchprimaryDark",
                     )}
                     onClick={logout}
                   >
@@ -252,18 +309,20 @@ export default function RestaurantSidebar() {
               </ul>
             </Card>
             <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center shrink-0">
-              <span className="text-lg font-bold text-gray-700">IA</span>
+              <span className="text-lg font-bold text-gray-700">
+                {shortName}
+              </span>
             </div>
-            {!collapsed && (
+            {!collapsed && !loadingProfile && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Idris Adegoke</p>
-                <p className="text-xs">Admin</p>
+                <p className="text-sm font-medium truncate">{profile?.name}</p>
+                <p className="text-xs">Vendor</p>
               </div>
             )}
             <button
               className={cn(
                 "p-2 rounded-lg  transition-colors",
-                collapsed && "hidden"
+                collapsed && "hidden",
               )}
             >
               <Ellipsis className="h-4 w-4" />
@@ -275,7 +334,7 @@ export default function RestaurantSidebar() {
       <div
         className={cn(
           "absolute flex md:hidden flex-col bg-munchprimary border-r border-gray-200 transition-all duration-300 z-30 min-h-screen",
-          mobileCollapsed ? "w-full" : "w-2"
+          mobileCollapsed ? "w-full" : "w-2",
         )}
       >
         {mobileCollapsed ? (
@@ -320,7 +379,7 @@ export default function RestaurantSidebar() {
                       <button
                         className={cn(
                           "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3",
-                          item.active ? "bg-black/13" : "hover:bg-black/10"
+                          item.active ? "bg-black/13" : "hover:bg-black/10",
                         )}
                       >
                         <item.icon className="h-5 w-5 shrink-0" />
@@ -339,7 +398,7 @@ export default function RestaurantSidebar() {
                       <button
                         className={cn(
                           "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3",
-                          "hover:bg-black/10"
+                          "hover:bg-black/10",
                         )}
                       >
                         <item.icon className="h-5 w-5 shrink-0" />
@@ -358,7 +417,7 @@ export default function RestaurantSidebar() {
                 className={cn(
                   "flex items-center gap-4 px-4 py-3 rounded-lg transition-colors justify-center bg-white w-full text-munchprimary",
                   mobileCollapsed && "justify-center px-0",
-                  " hover:bg-gray-100"
+                  " hover:bg-gray-100",
                 )}
               >
                 <Globe className="h-5 w-5 shrink-0" />
@@ -373,15 +432,15 @@ export default function RestaurantSidebar() {
                 <Card
                   className={cn(
                     "absolute -top-29 w-full p-3 py-3 text-slate-500 hidden",
-                    showMore && "block"
+                    showMore && "block",
                   )}
                 >
                   <ul className="space-y-1">
-                    <li>
+                    <li onClick={() => setIsProfileDialogOpen(true)}>
                       <button
                         className={cn(
                           "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
-                          "hover:bg-black/10"
+                          "hover:bg-black/10",
                         )}
                       >
                         <Image
@@ -395,27 +454,32 @@ export default function RestaurantSidebar() {
                       </button>
                     </li>
                     <li>
-                      <button
-                        className={cn(
-                          "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
-                          "hover:bg-black/10"
-                        )}
+                      <a
+                        href={"/restaurant/account-settings"}
+                        className="block"
                       >
-                        <Image
-                          src={"/images/SettingFilled.svg"}
-                          width={18}
-                          height={18}
-                          alt="logout"
-                          className="h-5 w-5 shrink-0"
-                        />
-                        <span className="text-sm">Settings</span>
-                      </button>
+                        <button
+                          className={cn(
+                            "flex items-center gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
+                            "hover:bg-black/10",
+                          )}
+                        >
+                          <Image
+                            src={"/images/SettingFilled.svg"}
+                            width={18}
+                            height={18}
+                            alt="logout"
+                            className="h-5 w-5 shrink-0"
+                          />
+                          <span className="text-sm">Settings</span>
+                        </button>
+                      </a>
                     </li>
                     <li>
                       <button
                         className={cn(
                           "flex items-center bg-munchprimary text-white gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
-                          "hover:bg-munchprimaryDark"
+                          "hover:bg-munchprimaryDark",
                         )}
                         onClick={logout}
                       >
@@ -432,11 +496,15 @@ export default function RestaurantSidebar() {
                   </ul>
                 </Card>
                 <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center shrink-0">
-                  <span className="text-lg font-bold text-gray-700">IA</span>
+                  <span className="text-lg font-bold text-gray-700">
+                    {shortName}
+                  </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">Idris Adegoke</p>
-                  <p className="text-xs">Admin</p>
+                  <p className="text-sm font-medium truncate">
+                    {profile?.name}
+                  </p>
+                  <p className="text-xs">Vendor</p>
                 </div>
                 <button
                   className={cn("p-2 rounded-lg  transition-colors")}
@@ -454,7 +522,7 @@ export default function RestaurantSidebar() {
               onClick={() => setMobileCollapsed(!mobileCollapsed)}
               className={cn(
                 "w-fit mb-7 absolute top-4 bg-white rounded p-3 -right-15",
-                mobileCollapsed && ""
+                mobileCollapsed && "",
               )}
             >
               <Image
@@ -465,6 +533,113 @@ export default function RestaurantSidebar() {
               />
             </button>
           </>
+        )}
+      </div>
+
+      {/* Dialog */}
+      <CustomModal
+        isOpen={isProfileDialogOpen}
+        onClose={() => setIsProfileDialogOpen(false)}
+        title="Profile Details"
+        maxWidth="sm:max-w-[450px]"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setIsProfileDialogOpen(false)}
+              className="rounded-md"
+            >
+              Cancel
+            </Button>
+          </>
+        }
+      >
+        {loadingProfile ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-munchprimary" />
+          </div>
+        ) : profile ? (
+          <div className="space-y-5">
+            <div className="flex items-start gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Full Name</p>
+                <p className="font-medium text-gray-900">
+                  {profile.name || profile.displayName || "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Email Address</p>
+                <p className="font-medium text-gray-900">
+                  {profile.email || "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Phone Number</p>
+                <p className="font-medium text-gray-900">
+                  {profile.phone || "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-center text-gray-500 py-8">
+            Could not load profile information
+          </p>
+        )}
+      </CustomModal>
+    </div>
+  );
+}
+
+function CustomModal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+  maxWidth = "sm:max-w-[640px]",
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  maxWidth?: string;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          "relative w-full bg-white shadow-xl overflow-hidden rounded animate-in zoom-in-95 duration-200",
+          maxWidth,
+        )}
+      >
+        <div className="flex border-b items-center justify-between px-6 py-4">
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <button
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+        {footer && (
+          <div className="flex justify-end gap-3 px-6 py-4 border-t bg-white">
+            {footer}
+          </div>
         )}
       </div>
     </div>

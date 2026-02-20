@@ -1,5 +1,5 @@
+import { StoreProvider } from "@/components/context/StoreContext";
 import RestaurantSidebar from "@/components/layout/Sidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
 
 export default function DashboardLayout({
   children,
@@ -7,11 +7,11 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SidebarProvider>
+    <StoreProvider>
       <div className="flex h-screen w-screen">
         <RestaurantSidebar />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
-    </SidebarProvider>
+    </StoreProvider>
   );
 }

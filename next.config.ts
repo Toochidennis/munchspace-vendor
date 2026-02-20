@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
         hostname: "res.cloudinary.com",
         port: "",
       },
+      {
+        protocol: "https",
+        hostname: "dev.api.munchspace.io",
+        port: "",
+        pathname: "/storage/**",
+      },
     ],
   },
 };

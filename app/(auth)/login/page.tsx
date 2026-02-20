@@ -18,31 +18,35 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { setAccessToken } from "@/app/lib/auth";
+import { setAccessToken, setBusinessId } from "@/app/lib/auth";
 
-const API_BASE = "https://api.munchspace.io/api/v1";
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
 // Step 1: Email + Password schema
 const loginSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
+  identifier: z.string({
+    message: "Please enter a valid email address or phone number.",
+  }),
   password: z
     .string()
-    .min(8, { message: "Password must be at least 8 characters." }),
+    .min(6, { message: "Password must be at least 6 characters." }),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const [step, setStep] = useState<1 | 2>(1); // 1: Login form, 2: OTP
+  const [step, setStep] = useState<1 | 2>(1);
+  // 1: Login form, 2: OTP
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [savedEmail, setSavedEmail] = useState("");
+  const [savedIdentifier, setSavedIdentifier] = useState("");
   const [otpError, setOtpError] = useState("");
 
   // Resend OTP logic
-  const [resendCooldown, setResendCooldown] = useState(0); // seconds remaining
+  const [resendCooldown, setResendCooldown] = useState(0);
+  // seconds remaining
   const [currentWaitTime, setCurrentWaitTime] = useState(60); // initial 60 seconds
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -51,7 +55,7 @@ export default function LoginPage() {
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      identifier: "",
       password: "",
     },
   });
@@ -87,17 +91,34 @@ export default function LoginPage() {
 
   const handleOtpKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>
+    e: React.KeyboardEvent<HTMLInputElement>,
   ) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
+    if (e.key === "Enter" && otp.join("").length === 6) {
+      onOtpSubmit();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const pastedData = e.clipboardData.getData("text").slice(0, 6);
+    if (!/^\d+$/.test(pastedData)) return;
+
+    const newOtp = [...otp];
+    pastedData.split("").forEach((char, idx) => {
+      if (idx < 6) newOtp[idx] = char;
+    });
+    setOtp(newOtp);
+
+    // Focus the last filled input or the first empty one
+    const nextIndex = Math.min(pastedData.length, 5);
+    otpRefs.current[nextIndex]?.focus();
   };
 
   async function onLoginSubmit(values: LoginValues) {
     setIsLoading(true);
     setOtpError("");
-
     try {
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
@@ -106,18 +127,18 @@ export default function LoginPage() {
           "x-api-key": API_KEY,
         },
         body: JSON.stringify({
-          email: values.email,
+          identifier: values.identifier,
           password: values.password,
         }),
       });
 
       if (response.status === 200) {
-        setSavedEmail(values.email);
+        setSavedIdentifier(values.identifier);
         setStep(2);
         setResendCooldown(60); // Start initial 60-second cooldown
         setCurrentWaitTime(60);
       } else if (response.status === 401) {
-        form.setError("root", { message: "Invalid email or password." });
+        form.setError("root", { message: "Invalid credentials." });
       } else {
         form.setError("root", { message: "An unexpected error occurred." });
       }
@@ -130,7 +151,6 @@ export default function LoginPage() {
 
   async function handleResendOtp() {
     if (resendCooldown > 0) return;
-
     setIsLoading(true);
     setOtpError("");
 
@@ -142,13 +162,14 @@ export default function LoginPage() {
           "x-api-key": API_KEY,
         },
         body: JSON.stringify({
-          identifier: savedEmail,
+          identifier: savedIdentifier,
         }),
       });
-
       if (response.ok) {
-        setOtp(["", "", "", "", "", ""]); // Clear previous OTP input
-        otpRefs.current[0]?.focus(); // Refocus first input
+        setOtp(["", "", "", "", "", ""]);
+        // Clear previous OTP input
+        otpRefs.current[0]?.focus();
+        // Refocus first input
 
         // Exponential backoff: double the wait time
         const newWaitTime = currentWaitTime * 2;
@@ -157,7 +178,7 @@ export default function LoginPage() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         setOtpError(
-          errorData.message || "Failed to resend OTP. Please try again."
+          errorData.message || "Failed to resend OTP. Please try again.",
         );
       }
     } catch (error) {
@@ -182,22 +203,20 @@ export default function LoginPage() {
           "x-api-key": API_KEY,
         },
         body: JSON.stringify({
-          identifier: savedEmail,
+          identifier: savedIdentifier,
           otp: code,
         }),
       });
-
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
-
+        // Save business id in memory
+        setBusinessId(res.data.vendor.businessId);
         // Save tokens only after successful OTP verification
         setAccessToken(accessToken);
-        // localStorage.setItem("accessToken", accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30
         }`;
-
         // Immediately redirect to dashboard
         window.location.href = "/restaurant/dashboard";
       } else if (response.status === 401) {
@@ -268,19 +287,19 @@ export default function LoginPage() {
                 >
                   <FormField
                     control={form.control}
-                    name="email"
+                    name="identifier"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="font-normal text-slate-500">
-                          Email
+                          Email / Phone number
                           <span className="-ms-1 pt-1 text-xl text-munchred">
                             *
                           </span>
                         </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Email"
-                            type="email"
+                            placeholder="Email / Phone number"
+                            type="text"
                             className="h-12 placeholder:text-gray-400"
                             {...field}
                           />
@@ -373,10 +392,10 @@ export default function LoginPage() {
             <div className="space-y-8">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
-                  Verify your email
+                  Verify your email / phone number
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Enter the verification code sent to {savedEmail}
+                  Enter the verification code sent to {savedIdentifier}
                 </p>
               </div>
 
@@ -390,8 +409,12 @@ export default function LoginPage() {
                     value={digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    onPaste={index === 0 ? handlePaste : undefined}
                     className="w-12 h-12 text-center text-lg"
                     maxLength={1}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                   />
                 ))}
               </div>

@@ -1,7 +1,36 @@
+export function setBusinessId(id: string | null) {
+  if (id) {
+    const item = {
+      value: id,
+      expiry: Date.now() + 60 * 2000 * 10000,
+    };
+    localStorage.setItem("businessId", JSON.stringify(item));
+  } else {
+    localStorage.removeItem("businessId");
+  }
+}
+
+export function getBusinessId(): string | null {
+  const itemStr = localStorage.getItem("businessId");
+  // console.log("item str", itemStr)
+  if (!itemStr) return null;
+
+  try {
+    const item = JSON.parse(itemStr);
+    if (Date.now() > item.expiry) {
+      localStorage.removeItem("businessId");
+      return null; // Expired
+    }
+    return item.value;
+  } catch (error) {
+    localStorage.removeItem("businessId");
+    return null;
+  }
+}
+
 // app/lib/auth.ts (Updated for localStorage persistence of access token)
-const TTL_MS = 30 * 60 * 1000;
+const TTL_MS = 60 * 2000 * 1000;
 export function setAccessToken(token: string | null) {
-  
   if (token) {
     const item = {
       value: token,
@@ -34,7 +63,8 @@ export function getAccessToken(): string | null {
 export async function logout() {
   const accessToken = getAccessToken();
   setAccessToken(null); // Clear access token from localStorage
-
+  setBusinessId(null);
+  
   // Extract refresh token from cookie to send to backend
   const cookies = document.cookie.split("; ");
   const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
@@ -46,7 +76,7 @@ export async function logout() {
 
   if (refreshToken) {
     try {
-      await fetch("https://api.munchspace.io/api/v1/auth/token/revoke", {
+      await fetch("https://dev.api.munchspace.io/api/v1/auth/token/revoke", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

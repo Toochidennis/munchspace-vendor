@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { format } from "date-fns";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   LoaderCircle,
   ArrowLeft,
@@ -45,10 +47,10 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
-import { getAccessToken } from "@/app/lib/auth";
+import { getAccessToken, setBusinessId } from "@/app/lib/auth";
 
 const setupSchema = z.object({
-  storeImage: z.string().url().optional(),
+  storeImage: z.any().optional(), // not used in form, just for type safety
   legalName: z.string().min(1, "Legal name is required."),
   displayName: z.string().min(1, "Display name is required."),
   storeEmail: z.string().email("Invalid email address."),
@@ -57,7 +59,7 @@ const setupSchema = z.object({
   description: z
     .string()
     .min(10, "Description must be at least 10 characters."),
-  socialLink: z.string().url({ message: "Invalid URL" }).optional(),
+  socialLink: z.string().optional(),
 
   businessType: z.string().min(1, "Select a business type."),
   brandType: z.string().optional(),
@@ -71,14 +73,14 @@ const setupSchema = z.object({
       enabled: z.boolean(),
       start: z.string(),
       end: z.string(),
-    })
+    }),
   ),
 
   country: z.string().min(1, "Country is required."),
   state: z.string().min(1, "State is required."),
   lga: z.string().min(1, "LGA is required."),
   streetName: z.string().min(1, "Street name is required."),
-  fullAddress: z.string().min(1, "Full address is required."),
+  city: z.string().min(1, "City is required."),
   postalCode: z.string().optional(),
   latitude: z.number(),
   longitude: z.number(),
@@ -98,17 +100,19 @@ const daysOfWeek = [
   "Sunday",
 ];
 
-const API_BASE = "https://api.munchspace.io/api/v1";
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
 const GOOGLE_API_KEY = "AIzaSyDjoKEpZBTaQuO4dPjbN4W1tHEdxuacPFI";
 
 export default function SetupStorePage() {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
   const [brandTypeOpen, setBrandTypeOpen] = useState(false);
   const [serviceOperationOpen, setServiceOperationOpen] = useState(false);
@@ -136,22 +140,23 @@ export default function SetupStorePage() {
     resolver: zodResolver(setupSchema),
     mode: "onChange",
     defaultValues: {
-      businessType: "",
-      brandType: "",
-      serviceOperations: [],
       legalName: "",
       displayName: "",
       storeEmail: "",
       phoneNumber: "",
       description: "",
+      socialLink: "", // ← Critical fix: always string, never undefined
       country: "",
       state: "",
       lga: "",
       streetName: "",
-      fullAddress: "",
-      postalCode: "",
+      city: "",
+      postalCode: "", // ← Critical fix: always string, never undefined
       latitude: 0,
       longitude: 0,
+      businessType: "",
+      brandType: "",
+      serviceOperations: [],
       workingHours: {
         Monday: { enabled: true, start: "08:00", end: "20:00" },
         Tuesday: { enabled: true, start: "08:00", end: "20:00" },
@@ -188,22 +193,16 @@ export default function SetupStorePage() {
         if (btRes.ok) {
           const json = await btRes.json();
           btData = Array.isArray(json) ? json : json.data || json.items || [];
-        } else {
-          throw new Error(`Business types: ${btRes.status}`);
         }
 
         if (brRes.ok) {
           const json = await brRes.json();
           brData = Array.isArray(json) ? json : json.data || json.items || [];
-        } else {
-          throw new Error(`Brand types: ${brRes.status}`);
         }
 
         if (soRes.ok) {
           const json = await soRes.json();
           soData = Array.isArray(json) ? json : json.data || json.items || [];
-        } else {
-          throw new Error(`Service operations: ${soRes.status}`);
         }
 
         const normalize = (arr: any[]) =>
@@ -218,7 +217,7 @@ export default function SetupStorePage() {
       } catch (err: any) {
         console.error("Meta fetch error:", err);
         setMetaError(
-          "Failed to load business types, brand types or service operations."
+          "Failed to load business types, brand types or service operations.",
         );
       } finally {
         setMetaLoading(false);
@@ -277,7 +276,7 @@ export default function SetupStorePage() {
         });
 
         const searchInput = document.getElementById(
-          "location-search"
+          "location-search",
         ) as HTMLInputElement;
         if (searchInput) {
           const autocomplete = new placesLib.Autocomplete(searchInput);
@@ -322,7 +321,7 @@ export default function SetupStorePage() {
         "state",
         "lga",
         "streetName",
-        "fullAddress",
+        "city",
         "latitude",
         "longitude",
       ];
@@ -340,30 +339,34 @@ export default function SetupStorePage() {
       try {
         const values = form.getValues();
 
-        const transformedWorkingHours = daysOfWeek
-          .map((day) => ({
-            day: day.toUpperCase(),
-            openTime: values.workingHours[day].start,
-            closeTime: values.workingHours[day].end,
-          }))
-          .filter((_, index) => values.workingHours[daysOfWeek[index]].enabled);
+        // Normalize phone number
+        let normalizedPhone = values.phoneNumber.trim();
 
-        // Prepare FormData for multipart/form-data
+        // Remove leading zero if present
+        if (normalizedPhone.startsWith("0")) {
+          normalizedPhone = normalizedPhone.substring(1);
+        }
+
+        // Add +234 if it doesn't already start with +
+        if (!normalizedPhone.startsWith("+")) {
+          normalizedPhone = "+234" + normalizedPhone;
+        }
+
         const formData = new FormData();
 
         formData.append("legalName", values.legalName);
         formData.append("displayName", values.displayName);
         formData.append("email", values.storeEmail);
-        formData.append("phone", values.phoneNumber);
+        formData.append("phone", normalizedPhone);
         formData.append("description", values.description);
 
-        if (values.socialLink) {
-          formData.append("website", values.socialLink);
-        }
+        // if (values.socialLink?.trim()) {
+        //   formData.append("website", values.socialLink);
+        // }
 
         formData.append(
           "establishedAt",
-          format(values.establishedDate, "yyyy-MM-dd")
+          format(values.establishedDate, "yyyy-MM-dd"),
         );
 
         if (values.businessType) {
@@ -373,59 +376,76 @@ export default function SetupStorePage() {
           formData.append("brandTypeId", values.brandType);
         }
 
-        // Send each service operation ID separately
         values.serviceOperations.forEach((id) => {
           formData.append("serviceOperationIds[]", id);
         });
 
-        // Complex objects as JSON strings
-        formData.append(
-          "workingHours",
-          JSON.stringify(transformedWorkingHours)
+        const enabledDays = daysOfWeek.filter(
+          (day) => values.workingHours[day]?.enabled,
         );
+
+        enabledDays.forEach((day, index) => {
+          formData.append(`workingHours[${index}][day]`, day.toUpperCase());
+          formData.append(
+            `workingHours[${index}][openTime]`,
+            values.workingHours[day].start,
+          );
+          formData.append(
+            `workingHours[${index}][closeTime]`,
+            values.workingHours[day].end,
+          );
+        });
 
         const addressObj = {
           country: values.country,
           state: values.state,
           lga: values.lga,
           streetName: values.streetName,
-          fullAddress: values.fullAddress,
+          city: values.city,
           postalCode: values.postalCode || null,
           latitude: Number(values.latitude),
           longitude: Number(values.longitude),
         };
         formData.append("address", JSON.stringify(addressObj));
-        console.log(addressObj.latitude, addressObj.longitude)
 
-        if (values.storeImage) {
-          formData.append("imageUrl", values.storeImage);
+        if (selectedImageFile) {
+          formData.append("image", selectedImageFile);
         }
 
         const accessToken = getAccessToken();
 
-
         const response = await fetch(`${API_BASE}/vendors/me/businesses`, {
           method: "POST",
           headers: {
-            // Do NOT set Content-Type → browser will handle multipart boundary
             "x-api-key": API_KEY,
             Authorization: `Bearer ${accessToken}`,
           },
           body: formData,
         });
 
-        console.log("formData", [...formData.entries()]);
-
         const feedback = await response.json();
-        // console.log("Server response:", feedback);
 
         if (response.ok) {
-          console.log("Store created successfully!");
-          // window.location.href = "/restaurant/dashboard";
+          setBusinessId(feedback.data.businessId)
+          toast.success("Store created successfully!", {
+            description: "Redirecting to dashboard...",
+            duration: 3000,
+          });
+
+          setTimeout(() => {
+            router.push("/restaurant/dashboard");
+          }, 1500);
         } else {
+          toast.error("Failed to create store", {
+            description:
+              feedback.message || "Please check your input and try again.",
+          });
           console.error("Failed to create store:", feedback);
         }
       } catch (error) {
+        toast.error("An error occurred", {
+          description: "Something went wrong while creating the store.",
+        });
         console.error("Error submitting store:", error);
       } finally {
         setIsLoading(false);
@@ -442,44 +462,18 @@ export default function SetupStorePage() {
     if (step > 1) setStep(step - 1);
   };
 
-  const handleCloudinaryUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploading(true);
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
 
+    setSelectedImageFile(file);
     const localPreview = URL.createObjectURL(file);
     setPreviewUrl(localPreview);
-    form.setValue("storeImage", localPreview);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", "property-maestro-unsigned");
-
-    try {
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/property-meastro/image/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.secure_url) {
-        form.setValue("storeImage", data.secure_url);
-        setPreviewUrl(data.secure_url);
-      } else {
-        throw new Error(data.error?.message || "Upload failed");
-      }
-    } catch (error: any) {
-      console.error("Cloudinary upload error:", error);
-    } finally {
-      setUploading(false);
-    }
   };
 
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
@@ -554,7 +548,6 @@ export default function SetupStorePage() {
               }}
               className="space-y-8"
             >
-              {/* Step 1: Store Details */}
               {step === 1 && (
                 <>
                   <div className="space-y-6">
@@ -563,17 +556,15 @@ export default function SetupStorePage() {
                         <input
                           type="file"
                           accept="image/png,image/jpeg,image/jpg"
-                          onChange={handleCloudinaryUpload}
+                          onChange={handleImageChange}
                           className="hidden"
                           id="cloudinary-direct-upload"
-                          disabled={uploading}
                         />
                         <label htmlFor="cloudinary-direct-upload">
                           <Button
                             asChild
                             variant={"outline"}
                             className="w-full rounded-lg cursor-pointer border-0 justify-start py-10"
-                            disabled={uploading}
                           >
                             <div className="flex gap-4">
                               {previewUrl ? (
@@ -714,7 +705,7 @@ export default function SetupStorePage() {
                                 variant="outline"
                                 className={cn(
                                   "w-full justify-start text-left font-normal h-12 hover:text-slate-400 hover:bg-white",
-                                  !field.value && "text-muted-foreground"
+                                  !field.value && "text-muted-foreground",
                                 )}
                               >
                                 {field.value
@@ -731,6 +722,7 @@ export default function SetupStorePage() {
                                 field.onChange(date);
                                 setDatePopoverOpen(false);
                               }}
+                              initialFocus
                             />
                           </PopoverContent>
                         </Popover>
@@ -745,14 +737,13 @@ export default function SetupStorePage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="font-normal text-slate-500">
-                          Store Description{" "}
-                          <span className="text-munchred">*</span>
+                          Description <span className="text-munchred">*</span>
                         </FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Describe your store..."
+                            placeholder="Describe your store"
                             className="h-25 placeholder:text-slate-400"
-                            rows={9}
+                            rows={3}
                             {...field}
                           />
                         </FormControl>
@@ -767,11 +758,11 @@ export default function SetupStorePage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="font-normal text-slate-500">
-                          Website or Social Link (optional)
+                          Social Media Link (optional)
                         </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="https://example.com"
+                            placeholder="e.g. https://instagram.com/store"
                             className="h-12 placeholder:text-slate-400"
                             {...field}
                           />
@@ -783,285 +774,293 @@ export default function SetupStorePage() {
                 </>
               )}
 
-              {/* Step 2: Business Type & Service Operations */}
               {step === 2 && (
-                <div className="space-y-8">
-                  {metaLoading && (
-                    <p className="text-center">Loading options...</p>
-                  )}
+                <div className="space-y-6">
                   {metaError && (
-                    <p className="text-center text-red-500">{metaError}</p>
+                    <p className="text-red-500 text-center">{metaError}</p>
                   )}
-
-                  <FormField
-                    control={form.control}
-                    name="businessType"
-                    render={() => (
-                      <FormItem className="mb-5">
-                        <FormLabel className="font-normal text-slate-500">
-                          Business Type <span className="text-munchred">*</span>
-                        </FormLabel>
-                        <Popover
-                          open={businessTypeOpen}
-                          onOpenChange={setBusinessTypeOpen}
-                        >
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
-                                disabled={
-                                  metaLoading || businessTypes.length === 0
-                                }
-                              >
-                                <span className="truncate">
-                                  {form.watch("businessType")
-                                    ? formatBadgeLabel(
-                                        form.watch("businessType"),
-                                        businessTypes
-                                      )
-                                    : "Select business type"}
-                                </span>
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-full p-0"
-                            align="start"
-                            side="bottom"
-                          >
-                            <Command className="max-h-72 overflow-y-auto">
-                              <CommandInput placeholder="Search business type..." />
-                              <CommandEmpty>No type found.</CommandEmpty>
-                              <CommandGroup>
-                                {businessTypes.map((option) => (
-                                  <CommandItem
-                                    key={option.value}
-                                    onSelect={() => {
-                                      form.setValue(
-                                        "businessType",
-                                        option.value
-                                      );
-                                      setBusinessTypeOpen(false);
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        form.watch("businessType") ===
-                                          option.value
-                                          ? "opacity-100"
-                                          : "opacity-0"
-                                      )}
-                                    />
-                                    {option.label}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="brandType"
-                    render={() => {
-                      const watchedBrandType = form.watch("brandType");
-
-                      return (
-                        <FormItem className="mb-5">
-                          <FormLabel className="font-normal text-slate-500">
-                            Brand Type (optional)
-                          </FormLabel>
-                          <Popover
-                            open={brandTypeOpen}
-                            onOpenChange={setBrandTypeOpen}
-                          >
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
-                                  disabled={
-                                    metaLoading || brandTypes.length === 0
-                                  }
-                                >
-                                  <span className="truncate">
-                                    {watchedBrandType
-                                      ? formatBadgeLabel(
-                                          watchedBrandType,
-                                          brandTypes
-                                        )
-                                      : "Select brand type"}
-                                  </span>
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-full p-0"
-                              align="start"
-                              side="bottom"
+                  {metaLoading ? (
+                    <div className="flex justify-center py-10">
+                      <LoaderCircle className="animate-spin" />
+                    </div>
+                  ) : (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="businessType"
+                        render={() => (
+                          <FormItem className="mb-5">
+                            <FormLabel className="font-normal text-slate-500">
+                              Business Type{" "}
+                              <span className="text-munchred">*</span>
+                            </FormLabel>
+                            <Popover
+                              open={businessTypeOpen}
+                              onOpenChange={setBusinessTypeOpen}
                             >
-                              <Command className="max-h-72 overflow-y-auto">
-                                <CommandInput placeholder="Search brand type..." />
-                                <CommandEmpty>No type found.</CommandEmpty>
-                                <CommandGroup>
-                                  {brandTypes.map((option) => (
-                                    <CommandItem
-                                      key={option.value}
-                                      onSelect={() => {
-                                        form.setValue(
-                                          "brandType",
-                                          watchedBrandType === option.value
-                                            ? ""
-                                            : option.value
-                                        );
-                                        setBrandTypeOpen(false);
-                                      }}
-                                    >
-                                      <Check
-                                        className={cn(
-                                          "mr-2 h-4 w-4",
-                                          watchedBrandType === option.value
-                                            ? "opacity-100"
-                                            : "opacity-0"
-                                        )}
-                                      />
-                                      {option.label}
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      );
-                    }}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="serviceOperations"
-                    render={() => (
-                      <FormItem className="mb-0">
-                        <FormLabel className="font-normal text-slate-500">
-                          Service Operation{" "}
-                          <span className="text-munchred">*</span>
-                        </FormLabel>
-                        <Popover
-                          open={serviceOperationOpen}
-                          onOpenChange={setServiceOperationOpen}
-                        >
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
-                                disabled={
-                                  metaLoading || serviceOperations.length === 0
-                                }
-                              >
-                                <span className="truncate">
-                                  {form.watch("serviceOperations").length > 0
-                                    ? `${
-                                        form.watch("serviceOperations").length
-                                      } selected`
-                                    : "Select service operations"}
-                                </span>
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-full p-0"
-                            align="start"
-                            side="bottom"
-                          >
-                            <Command className="max-h-72 overflow-y-auto">
-                              <CommandInput placeholder="Search operation..." />
-                              <CommandEmpty>No operation found.</CommandEmpty>
-                              <CommandGroup>
-                                {serviceOperations.map((option) => (
-                                  <CommandItem
-                                    key={option.value}
-                                    onSelect={() => {
-                                      const current =
-                                        form.getValues("serviceOperations");
-                                      if (current.includes(option.value)) {
-                                        form.setValue(
-                                          "serviceOperations",
-                                          current.filter(
-                                            (v) => v !== option.value
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                                    disabled={
+                                      metaLoading || businessTypes.length === 0
+                                    }
+                                  >
+                                    <span className="truncate">
+                                      {form.watch("businessType")
+                                        ? formatBadgeLabel(
+                                            form.watch("businessType"),
+                                            businessTypes,
                                           )
-                                        );
-                                      } else {
-                                        form.setValue("serviceOperations", [
-                                          ...current,
-                                          option.value,
-                                        ]);
-                                      }
-                                      setServiceOperationOpen(false);
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        form
-                                          .watch("serviceOperations")
-                                          .includes(option.value)
-                                          ? "opacity-100"
-                                          : "opacity-0"
-                                      )}
-                                    />
-                                    {option.label}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {form.watch("serviceOperations").map((value) => (
-                            <Badge
-                              key={value}
-                              variant="secondary"
-                              className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
-                            >
-                              {formatBadgeLabel(value, serviceOperations)}
-                              <span
-                                className="ml-2 cursor-pointer"
-                                onClick={() =>
-                                  form.setValue(
-                                    "serviceOperations",
-                                    form
-                                      .getValues("serviceOperations")
-                                      .filter((v) => v !== value)
-                                  )
-                                }
+                                        : "Select business type"}
+                                    </span>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-full p-0"
+                                align="start"
+                                side="bottom"
                               >
-                                <X className="w-4 font-black" />
-                              </span>
-                            </Badge>
-                          ))}
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                                <Command className="max-h-72 overflow-y-auto">
+                                  <CommandInput placeholder="Search type..." />
+                                  <CommandEmpty>No type found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {businessTypes.map((option) => (
+                                      <CommandItem
+                                        key={option.value}
+                                        onSelect={() => {
+                                          form.setValue(
+                                            "businessType",
+                                            option.value,
+                                          );
+                                          setBusinessTypeOpen(false);
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            form.watch("businessType") ===
+                                              option.value
+                                              ? "opacity-100"
+                                              : "opacity-0",
+                                          )}
+                                        />
+                                        {option.label}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="brandType"
+                        render={() => {
+                          const watchedBrandType = form.watch("brandType");
+
+                          return (
+                            <FormItem className="mb-5">
+                              <FormLabel className="font-normal text-slate-500">
+                                Brand Type (optional)
+                              </FormLabel>
+                              <Popover
+                                open={brandTypeOpen}
+                                onOpenChange={setBrandTypeOpen}
+                              >
+                                <PopoverTrigger asChild>
+                                  <FormControl>
+                                    <Button
+                                      variant="outline"
+                                      role="combobox"
+                                      className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                                      disabled={
+                                        metaLoading || brandTypes.length === 0
+                                      }
+                                    >
+                                      <span className="truncate">
+                                        {watchedBrandType
+                                          ? formatBadgeLabel(
+                                              watchedBrandType,
+                                              brandTypes,
+                                            )
+                                          : "Select brand type"}
+                                      </span>
+                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                  </FormControl>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className="w-full p-0"
+                                  align="start"
+                                  side="bottom"
+                                >
+                                  <Command className="max-h-72 overflow-y-auto">
+                                    <CommandInput placeholder="Search brand type..." />
+                                    <CommandEmpty>No type found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {brandTypes.map((option) => (
+                                        <CommandItem
+                                          key={option.value}
+                                          onSelect={() => {
+                                            form.setValue(
+                                              "brandType",
+                                              watchedBrandType === option.value
+                                                ? ""
+                                                : option.value,
+                                            );
+                                            setBrandTypeOpen(false);
+                                          }}
+                                        >
+                                          <Check
+                                            className={cn(
+                                              "mr-2 h-4 w-4",
+                                              watchedBrandType === option.value
+                                                ? "opacity-100"
+                                                : "opacity-0",
+                                            )}
+                                          />
+                                          {option.label}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="serviceOperations"
+                        render={() => (
+                          <FormItem className="mb-0">
+                            <FormLabel className="font-normal text-slate-500">
+                              Service Operation{" "}
+                              <span className="text-munchred">*</span>
+                            </FormLabel>
+                            <Popover
+                              open={serviceOperationOpen}
+                              onOpenChange={setServiceOperationOpen}
+                            >
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                                    disabled={
+                                      metaLoading ||
+                                      serviceOperations.length === 0
+                                    }
+                                  >
+                                    <span className="truncate">
+                                      {form.watch("serviceOperations").length >
+                                      0
+                                        ? `${
+                                            form.watch("serviceOperations")
+                                              .length
+                                          } selected`
+                                        : "Select service operations"}
+                                    </span>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-full p-0"
+                                align="start"
+                                side="bottom"
+                              >
+                                <Command className="max-h-72 overflow-y-auto">
+                                  <CommandInput placeholder="Search operation..." />
+                                  <CommandEmpty>
+                                    No operation found.
+                                  </CommandEmpty>
+                                  <CommandGroup>
+                                    {serviceOperations.map((option) => (
+                                      <CommandItem
+                                        key={option.value}
+                                        onSelect={() => {
+                                          const current =
+                                            form.getValues("serviceOperations");
+                                          if (current.includes(option.value)) {
+                                            form.setValue(
+                                              "serviceOperations",
+                                              current.filter(
+                                                (v) => v !== option.value,
+                                              ),
+                                            );
+                                          } else {
+                                            form.setValue("serviceOperations", [
+                                              ...current,
+                                              option.value,
+                                            ]);
+                                          }
+                                          setServiceOperationOpen(false);
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            form
+                                              .watch("serviceOperations")
+                                              .includes(option.value)
+                                              ? "opacity-100"
+                                              : "opacity-0",
+                                          )}
+                                        />
+                                        {option.label}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {form.watch("serviceOperations").map((value) => (
+                                <Badge
+                                  key={value}
+                                  variant="secondary"
+                                  className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
+                                >
+                                  {formatBadgeLabel(value, serviceOperations)}
+                                  <span
+                                    className="ml-2 cursor-pointer"
+                                    onClick={() =>
+                                      form.setValue(
+                                        "serviceOperations",
+                                        form
+                                          .getValues("serviceOperations")
+                                          .filter((v) => v !== value),
+                                      )
+                                    }
+                                  >
+                                    <X className="w-4 font-black" />
+                                  </span>
+                                </Badge>
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
                 </div>
               )}
 
-              {/* Step 3: Working Hours */}
               {step === 3 && (
                 <div className="space-y-4">
                   {daysOfWeek.map((day) => {
@@ -1095,7 +1094,7 @@ export default function SetupStorePage() {
                               onCheckedChange={(checked) =>
                                 form.setValue(
                                   `workingHours.${day}.enabled`,
-                                  checked
+                                  checked,
                                 )
                               }
                             />
@@ -1120,7 +1119,7 @@ export default function SetupStorePage() {
                                 className={cn(
                                   "",
                                   isOpen &&
-                                    "rotate-180 transition-transform duration-200 ease-in-out"
+                                    "rotate-180 transition-transform duration-200 ease-in-out",
                                 )}
                               />
                             </Button>
@@ -1141,7 +1140,7 @@ export default function SetupStorePage() {
                                   onChange={(e) =>
                                     form.setValue(
                                       `workingHours.${day}.start`,
-                                      e.target.value
+                                      e.target.value,
                                     )
                                   }
                                 />
@@ -1157,7 +1156,7 @@ export default function SetupStorePage() {
                                   onChange={(e) =>
                                     form.setValue(
                                       `workingHours.${day}.end`,
-                                      e.target.value
+                                      e.target.value,
                                     )
                                   }
                                 />
@@ -1180,7 +1179,6 @@ export default function SetupStorePage() {
                 </div>
               )}
 
-              {/* Step 4: Store Address */}
               {step === 4 && (
                 <div className="space-y-6">
                   <FormItem>
@@ -1272,6 +1270,7 @@ export default function SetupStorePage() {
                               placeholder="e.g. 100001"
                               className="h-12 placeholder:text-slate-400"
                               {...field}
+                              value={field.value ?? ""}
                             />
                           </FormControl>
                           <FormMessage />
@@ -1302,17 +1301,16 @@ export default function SetupStorePage() {
 
                   <FormField
                     control={form.control}
-                    name="fullAddress"
+                    name="city"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="font-normal text-slate-500">
-                          Full Address <span className="text-munchred">*</span>
+                          City <span className="text-munchred">*</span>
                         </FormLabel>
                         <FormControl>
-                          <Textarea
-                            placeholder="Enter full address"
-                            className="h-25 placeholder:text-slate-400"
-                            rows={3}
+                          <Input
+                            placeholder="Enter city name"
+                            className="h-12 placeholder:text-slate-400"
                             {...field}
                           />
                         </FormControl>
@@ -1323,7 +1321,6 @@ export default function SetupStorePage() {
                 </div>
               )}
 
-              {/* Navigation */}
               <div className="flex justify-between">
                 {step > 1 && (
                   <Button

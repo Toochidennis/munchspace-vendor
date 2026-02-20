@@ -1,7 +1,7 @@
 // app/lib/api.ts (remains as previously provided)
 import { getAccessToken, logout, setAccessToken } from "@/app/lib/auth";
 
-const API_BASE = "https://api.munchspace.io/api/v1";
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
@@ -45,6 +45,7 @@ export async function refreshAccessToken(): Promise<string | null> {
   const cookies = document.cookie.split("; ");
   const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
   const refreshToken = refreshCookie ? refreshCookie.split("=")[1] : null;
+  // console.log("refresh token", refreshToken)
 
   if (!refreshToken) return null;
 
@@ -54,11 +55,10 @@ export async function refreshAccessToken(): Promise<string | null> {
       headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
       body: JSON.stringify({ refreshToken }),
     });
-    // console.log("res", refreshToken);
 
     if (!response.ok) throw new Error("Refresh failed");
     const res = await response.json();
-    const { accessToken, refreshToken: newRefreshToken } = res;
+    const { accessToken, refreshToken: newRefreshToken } = res.data;
 
     setAccessToken(accessToken);
     if (newRefreshToken) {

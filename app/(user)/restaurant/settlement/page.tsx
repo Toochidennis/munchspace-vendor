@@ -1,48 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Trash2,
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  LoaderCircle,
-  ChevronsUpDown,
-  Check,
-  X,
-} from "lucide-react";
-import { format, subDays, parse } from "date-fns";
-
+import { useState, useEffect } from "react";
+import { Trash2, Plus, LoaderCircle, ChevronsUpDown } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/lib/utils";
-import Image from "next/image";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
   FormControl,
@@ -63,806 +33,438 @@ import {
   CommandInput,
   CommandItem,
 } from "@/components/ui/command";
-import { Value } from "@radix-ui/react-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import Image from "next/image";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { refreshAccessToken } from "@/app/lib/api";
 
 const addSettlementSchema = z.object({
-  // id: z.number(),
-  bankName: z.string("Bank name is required"),
-  accountName: z.string("Account name is required"),
-  accountNumber: z.string("Account number is required"),
+  bankName: z.string().min(1, "Bank name is required"),
+  accountName: z.string().min(1, "Account name is required"),
+  accountNumber: z.string().min(1, "Account number is required"),
 });
 
-type addSettlementType = z.infer<typeof addSettlementSchema>;
+type AddSettlementType = z.infer<typeof addSettlementSchema>;
+
+interface BankOption {
+  name: string;
+  code: string;
+}
 
 interface SettlementAccount {
-  id: number;
+  businessId?: string;
   bankName: string;
   accountName: string;
   accountNumber: string;
-  logo: string;
+  bankCode?: string;
+  logoUrl?: string;
 }
 
-interface EarningsItem {
-  id: string;
-  type: string;
-  date: string; // "Dec 20, 2025" format
-  amount: string;
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  if (typeof window === "undefined") {
+    return new Response(JSON.stringify({ success: false }), { status: 200 });
+  }
+
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+  return response;
 }
-
-// Expanded earnings data with more items
-const earningsData: EarningsItem[] = [
-  {
-    id: "ORD001",
-    type: "Order Payment",
-    date: "Dec 20, 2025",
-    amount: "₦4,500.00",
-  },
-  {
-    id: "ORD002",
-    type: "Order Payment",
-    date: "Dec 19, 2025",
-    amount: "₦3,200.00",
-  },
-  {
-    id: "ORD003",
-    type: "Order Payment",
-    date: "Dec 18, 2025",
-    amount: "₦5,800.00",
-  },
-  { id: "ORD004", type: "Refund", date: "Dec 17, 2025", amount: "-₦1,200.00" },
-  {
-    id: "ORD005",
-    type: "Order Payment",
-    date: "Dec 16, 2025",
-    amount: "₦6,000.00",
-  },
-  {
-    id: "ORD006",
-    type: "Order Payment",
-    date: "Dec 15, 2025",
-    amount: "₦2,900.00",
-  },
-  {
-    id: "ORD007",
-    type: "Order Payment",
-    date: "Dec 14, 2025",
-    amount: "₦7,150.00",
-  },
-  { id: "ORD008", type: "Refund", date: "Dec 13, 2025", amount: "-₦800.00" },
-  {
-    id: "ORD009",
-    type: "Order Payment",
-    date: "Dec 12, 2025",
-    amount: "₦4,300.00",
-  },
-  {
-    id: "ORD010",
-    type: "Order Payment",
-    date: "Dec 11, 2025",
-    amount: "₦5,500.00",
-  },
-  {
-    id: "ORD011",
-    type: "Order Payment",
-    date: "Dec 10, 2025",
-    amount: "₦3,750.00",
-  },
-  {
-    id: "ORD012",
-    type: "Order Payment",
-    date: "Dec 09, 2025",
-    amount: "₦6,200.00",
-  },
-  { id: "ORD013", type: "Refund", date: "Dec 08, 2025", amount: "-₦1,500.00" },
-  {
-    id: "ORD014",
-    type: "Order Payment",
-    date: "Dec 07, 2025",
-    amount: "₦8,000.00",
-  },
-  {
-    id: "ORD015",
-    type: "Order Payment",
-    date: "Dec 06, 2025",
-    amount: "₦2,400.00",
-  },
-  {
-    id: "ORD016",
-    type: "Order Payment",
-    date: "Dec 05, 2025",
-    amount: "₦4,100.00",
-  },
-  {
-    id: "ORD017",
-    type: "Order Payment",
-    date: "Dec 04, 2025",
-    amount: "₦5,900.00",
-  },
-  {
-    id: "ORD018",
-    type: "Order Payment",
-    date: "Dec 03, 2025",
-    amount: "₦3,600.00",
-  },
-  { id: "ORD019", type: "Refund", date: "Dec 02, 2025", amount: "-₦900.00" },
-  {
-    id: "ORD020",
-    type: "Order Payment",
-    date: "Dec 01, 2025",
-    amount: "₦7,800.00",
-  },
-  {
-    id: "ORD021",
-    type: "Order Payment",
-    date: "Nov 30, 2025",
-    amount: "₦4,200.00",
-  },
-  {
-    id: "ORD022",
-    type: "Order Payment",
-    date: "Nov 29, 2025",
-    amount: "₦6,500.00",
-  },
-  {
-    id: "ORD023",
-    type: "Order Payment",
-    date: "Nov 28, 2025",
-    amount: "₦3,100.00",
-  },
-  { id: "ORD024", type: "Refund", date: "Nov 27, 2025", amount: "-₦2,000.00" },
-  {
-    id: "ORD025",
-    type: "Order Payment",
-    date: "Nov 26, 2025",
-    amount: "₦5,300.00",
-  },
-];
-
-const bankOptions = [
-  { name: "Access Bank", logo: "/images/UBA.svg", value: "access-bank" },
-  { name: "Fidelity Bank", logo: "/images/UBA.svg", value: "fidelity-bank" },
-  { name: "GTBank", logo: "/images/UBA.svg", value: "gt-bank" },
-  { name: "Polaris Bank", logo: "/images/UBA.svg", value: "polaris-bank" },
-  { name: "Stanbic IBTC", logo: "/images/UBA.svg", value: "stanbic-bank" },
-  { name: "Union Bank", logo: "/images/UBA.svg", value: "union-bank" },
-  {
-    name: "United Bank for Africa",
-    logo: "/images/UBA.svg",
-    value: "uba",
-  },
-  { name: "Wema Bank", logo: "/images/UBA.svg", value: "wema-bank" },
-  { name: "Zenith Bank", logo: "/images/UBA.svg", value: "zenith-bank" },
-];
 
 export default function EarningsPage() {
   const [activeTab, setActiveTab] = useState<"earnings" | "payout">("earnings");
-  const [accounts, setAccounts] = useState<SettlementAccount[]>([
-    // {
-    //   id: 1,
-    //   logo: "/images/UBA.svg",
-    //   bankName: "United Bank for Africa",
-    //   accountName: "Meshack Daniel",
-    //   accountNumber: "2107622057",
-    // },
-  ]);
+  const [account, setAccount] = useState<SettlementAccount | null>(null);
+  const [banks, setBanks] = useState<BankOption[]>([]);
+  const [isLoadingBanks, setIsLoadingBanks] = useState(true);
+  const [isLoadingAccount, setIsLoadingAccount] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [filterPeriod, setFilterPeriod] = useState<"7" | "30" | "90">("30");
-  const [isLoading, setIsLoading] = useState(false);
-  const [banklogo, setBanklogo] = useState("/images");
-  const [bankNameOpen, setBankNameOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
+  const [businessId, setBusinessId] = useState<string | null>(null);
 
-  // const [formData, setFormData] = useState({
-  //   bankName: "",
-  //   accountName: "",
-  //   accountNumber: "",
-  // });
-
-  const addSettlementForm = useForm<addSettlementType>({
+  const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
-    mode: "onChange",
+    defaultValues: { bankName: "", accountName: "", accountNumber: "" },
   });
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  useEffect(() => {
+    const id = getBusinessId();
+    setBusinessId(id);
 
-  // Current date as per context: December 21, 2025
-  const currentDate = new Date(2025, 11, 21); // Month is 0-indexed (11 = December)
+    async function fetchData() {
+      if (!id) return;
+      try {
+        setIsLoadingAccount(true);
+        const accRes = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${id}/financials/bank-account`,
+        );
+        const accJson = await accRes.json();
 
-  // Filter data based on selected period
-  const daysMap: Record<"7" | "30" | "90", number> = {
-    "7": 6, // inclusive: today - 6 days
-    "30": 29,
-    "90": 89,
-  };
+        if (accJson.success && accJson.data) {
+          setAccount(accJson.data);
+        }
 
-  const startDate = subDays(currentDate, daysMap[filterPeriod]);
-
-  const filteredData = earningsData.filter((item) => {
-    const itemDate = parse(item.date, "MMM dd, yyyy", new Date());
-    return itemDate >= startDate;
-  });
-
-  // Pagination logic on filtered data
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredData.slice(
-    startIndex,
-    startIndex + itemsPerPage
-  );
-
-  // Reset page when filter changes
-  const handleFilterChange = (value: "7" | "30" | "90") => {
-    setFilterPeriod(value);
-    setCurrentPage(1);
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  const handleItemsPerPageChange = (value: string) => {
-    setItemsPerPage(Number(value));
-    setCurrentPage(1);
-  };
-
-  const getPageNumbers = () => {
-    if (totalPages <= 5) {
-      return Array.from({ length: totalPages }, (_, i) => i + 1);
-    }
-
-    const pages: (number | string)[] = [];
-
-    if (currentPage <= 5) {
-      for (let i = 1; i <= 5; i++) {
-        pages.push(i);
-      }
-      if (totalPages > 5) {
-        pages.push("...");
-        pages.push(totalPages);
-      }
-    } else if (currentPage > 5 && currentPage < totalPages - 4) {
-      pages.push(1);
-      pages.push("...");
-      pages.push(currentPage - 1, currentPage, currentPage + 1);
-      pages.push("...");
-      pages.push(totalPages);
-    } else {
-      pages.push(1);
-      pages.push("...");
-      for (let i = totalPages - 4; i <= totalPages; i++) {
-        pages.push(i);
+        const bankRes = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${id}/financials/banks`,
+        );
+        const bankJson = await bankRes.json();
+        if (bankJson.success) setBanks(bankJson.data);
+      } catch (err) {
+        console.error("Fetch error:", err);
+      } finally {
+        setIsLoadingAccount(false);
+        setIsLoadingBanks(false);
       }
     }
+    fetchData();
+  }, []);
 
-    return pages;
+  const onSubmit = async (data: AddSettlementType) => {
+    if (!businessId) {
+      toast.error("Business ID is missing");
+      return;
+    }
+
+    const selectedBank = banks.find((b) => b.name === data.bankName);
+    if (!selectedBank) {
+      toast.error("Selected bank not found");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        ...data,
+        bankCode: selectedBank.code,
+        logoUrl: "",
+      };
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/financials/bank-account`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to add bank account");
+      }
+
+      const resJson = await res.json();
+      setAccount(resJson.data || payload);
+      setIsDialogOpen(false);
+      form.reset();
+      toast.success("Settlement account added successfully");
+    } catch (err: any) {
+      toast.error(err.message || "An error occurred");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const openDialog = () => {
-    // setFormData({ bankName: "", accountName: "", accountNumber: "" });
-    setIsDialogOpen(true);
-  };
-
-  const onAddSettlementSubmit = (data: addSettlementType) => {
-    const newAccount: SettlementAccount = {
-      id: accounts.length + 1,
-      bankName: data.bankName,
-      accountName: data.accountName,
-      accountNumber: data.accountNumber,
-      logo: "/images/UBA.svg",
-    };
-    setAccounts([...accounts, newAccount]);
-    setIsDialogOpen(false);
-  };
-
-  // const handleSubmit = () => {
-  //   if (
-  //     !formData.bankName ||
-  //     !formData.accountName ||
-  //     !formData.accountNumber
-  //   ) {
-  //     alert("Please fill in all fields");
-  //     return;
-  //   }
-
-  //   const newAccount: SettlementAccount = {
-  //     id: accounts.length + 1,
-  //     bankName: formData.bankName,
-  //     accountName: formData.accountName,
-  //     accountNumber: formData.accountNumber,
-  //   };
-
-  //   setAccounts([...accounts, newAccount]);
-  //   setIsDialogOpen(false);
-  // };
-
-  const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this account?")) {
-      setAccounts(accounts.filter((a) => a.id !== id));
+  const confirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      setAccount(null);
+      setIsDeleteOpen(false);
+      toast.success("Account removed successfully");
+    } catch (error) {
+      toast.error("Failed to remove account");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto">
-        {/* Page Title */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Settlement</h1>
-          <p className="text-gray-600 text-sm mt-2">
-            Manage your payout account, track earnings, and monitor money
-            movement for your store.
-          </p>
-        </div>
-        {/* Tabs */}
+        <h1 className="text-3xl font-bold text-gray-900">Settlement</h1>
+        <p className="text-gray-600 text-sm mt-2">
+          Manage your payout account and track earnings.
+        </p>
+
         <div className="flex gap-8 border-b border-gray-200 mt-10">
           <button
             onClick={() => setActiveTab("earnings")}
-            className={`pb-2 font-medium transition-colors ${
+            className={cn(
+              "pb-2 font-medium transition-colors",
               activeTab === "earnings"
                 ? "text-orange-600 border-b-2 border-orange-600"
-                : "text-gray-500 hover:text-gray-900"
-            }`}
+                : "text-gray-500 hover:text-gray-900",
+            )}
           >
             Earnings & Activity
           </button>
           <button
             onClick={() => setActiveTab("payout")}
-            className={`pb-2 font-medium transition-colors ${
+            className={cn(
+              "pb-2 font-medium transition-colors",
               activeTab === "payout"
                 ? "text-orange-600 border-b-2 border-orange-600"
-                : "text-gray-500 hover:text-gray-900"
-            }`}
+                : "text-gray-500 hover:text-gray-900",
+            )}
           >
             Payout Accounts
           </button>
         </div>
 
-        {/* Earnings & Activity Tab */}
         {activeTab === "earnings" && (
-          <>
-            {accounts.length > 0 ? (
-              <div className="space-y-8">
-                {/* Earnings Card */}
-                <div className="bg-gray-100 mt-5 rounded-xl p-5">
-                  <h2 className="text-xl font-bold text-gray-900 mb-4">
-                    Earnings
-                  </h2>
-                  <p className="text-gray-600 text-sm mb-6">
-                    Your available balance updates once an order is paid and
-                    confirmed by the customer's bank.
-                    <br />
-                    Funds are held until the order is successfully delivered by
-                    our dispatch rider. This can take up to 2 days.
-                    <br />
-                    <a href="#" className="text-orange-600 underline">
-                      Need assistance?
-                    </a>{" "}
-                    Our team is ready to help.
-                  </p>
-
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                    <div className="p-3 md:p-6 pb-0">
-                      <p className="text-gray-500 mb-2 text-sm">
-                        Total balance
-                      </p>
-                      <p className="text-3xl font-bold text-gray-900">₦0.00</p>
-                    </div>
-                    <div className="p-3 md:p-6 pb-0">
-                      <p className="text-gray-500 mb-2 text-sm">
-                        Funds on hold
-                      </p>
-                      <p className="text-3xl font-bold text-gray-900">₦0.00</p>
-                    </div>
-                    <div className="p-3 md:p-6 pb-0">
-                      <p className="text-gray-500 mb-2 text-sm">
-                        In transit to bank
-                      </p>
-                      <p className="text-3xl font-bold text-gray-900">₦0.00</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activity Filter */}
-                <div className="flex justify-end mb-4">
-                  <Select
-                    value={filterPeriod}
-                    onValueChange={handleFilterChange}
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="7">Last 7 days</SelectItem>
-                      <SelectItem value="30">Last 30 days</SelectItem>
-                      <SelectItem value="90">Last 90 days</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead>ID</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paginatedData.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={4}
-                            className="text-center text-gray-500 py-12"
-                          >
-                            No activity found
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        paginatedData.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell className="font-medium">
-                              {item.id}
-                            </TableCell>
-                            <TableCell>{item.type}</TableCell>
-                            <TableCell>{item.date}</TableCell>
-                            <TableCell className="text-right font-medium">
-                              {item.amount}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {/* Pagination */}
-                {paginatedData.length > 0 && (
-                  <div className="flex items-center justify-center mx-2 gap-5 text-sm">
-                    <p className="text-gray-600 hidden md:block">
-                      Total <span>{filteredData.length}</span> items
-                    </p>
-
-                    <div className="flex items-center gap-2 md:gap-4">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          handlePageChange(Math.max(1, currentPage - 1))
-                        }
-                        disabled={currentPage === 1}
-                        className="hover:bg-gray-100 disabled:opacity-50"
-                      >
-                        <ChevronLeft className="h-5 w-5" />
-                      </Button>
-
-                      <div className="flex items-center gap-2">
-                        {getPageNumbers().map((page, index) => (
-                          <div key={index}>
-                            {page === "..." ? (
-                              <span className="text-gray-500 px-2 flex items-center">
-                                <p className="-mt-2">...</p>
-                              </span>
-                            ) : (
-                              <Button
-                                variant={
-                                  currentPage === page ? "default" : "ghost"
-                                }
-                                size="sm"
-                                onClick={() => handlePageChange(page as number)}
-                                className={cn(
-                                  "min-w-8 md:min-w-10",
-                                  currentPage === page &&
-                                    "bg-orange-500 hover:bg-orange-600 text-white"
-                                )}
-                              >
-                                {page}
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          handlePageChange(
-                            Math.min(totalPages, currentPage + 1)
-                          )
-                        }
-                        disabled={currentPage === totalPages}
-                        className="hover:bg-gray-100 disabled:opacity-50"
-                      >
-                        <ChevronRight className="h-5 w-5" />
-                      </Button>
-
-                      <Select
-                        value={`${itemsPerPage}`}
-                        onValueChange={handleItemsPerPageChange}
-                      >
-                        <SelectTrigger className="w-32 bg-white border-gray-300 hidden md:flex">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="10">10 / page</SelectItem>
-                          <SelectItem value="20">20 / page</SelectItem>
-                          <SelectItem value="50">50 / page</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
+          <div className="mt-10">
+            {isLoadingAccount ? (
+              <Skeleton className="h-[120px] w-full rounded-md" />
+            ) : account ? (
+              <div className="bg-gray-100 rounded-xl p-5">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">
+                  Earnings
+                </h2>
+                <p className="text-3xl font-bold text-gray-900">₦0.00</p>
               </div>
             ) : (
-              <div className="flex justify-center mt-3 text-center">
-                  <div className="max-w-xl">
-                    <Image src={"/images/Cash on Delivery.png"} width={300} height={300} alt="cash on delivery" className="mx-auto" />
-                  <h3 className="font-rubik font-semibold text-munchprimary text-2xl">
-                    You haven’t set up your settlement account yet.
-                  </h3>
-                  <p className="text-sm max-w-lg mt-2">
-                    Set up your settlement account to receive payouts from
-                    orders, track your earnings, and view money movements for
-                    your store.
-                  </p>
-                  <Button
-                    className="bg-munchprimary mt-5 text-white"
-                    onClick={() => setActiveTab("payout")}
-                  >
-                    Setup settlement account
-                  </Button>
-                </div>
+              <div className="flex flex-col items-center text-center">
+                <Image
+                  src="/images/Cash on Delivery.png"
+                  width={300}
+                  height={300}
+                  alt="cash"
+                />
+                <h3 className="font-semibold text-2xl mt-4">
+                  No settlement account set up.
+                </h3>
+                <Button
+                  className="bg-munchprimary mt-5 text-white rounded-md"
+                  onClick={() => setActiveTab("payout")}
+                >
+                  Setup settlement account
+                </Button>
               </div>
             )}
-          </>
+          </div>
         )}
 
-        {/* Payout Accounts Tab remains unchanged */}
         {activeTab === "payout" && (
-          <div className="space-y-8  mt-5">
-            <div className="space-y-6">
-              {accounts.map((account) => (
-                <div
-                  key={account.id}
-                  className="flex items-center justify-between bg-gray-50 rounded-lg px-2 py-6 md:p-6"
+          <div className="space-y-8 mt-5">
+            {isLoadingAccount ? (
+              <Skeleton className="h-[100px] w-full rounded-md" />
+            ) : account ? (
+              <div className="flex items-center justify-between bg-gray-50 rounded-lg p-6">
+                <div>
+                  <p className="font-medium text-lg text-gray-900">
+                    {account.bankName}
+                  </p>
+                  <p className="text-gray-600">{account.accountNumber}</p>
+                  <p className="text-sm text-gray-500">{account.accountName}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="border-red-600 text-red-600 hover:bg-red-50 rounded-md"
+                  onClick={() => setIsDeleteOpen(true)}
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="bg-red-600 rounded-full ">
-                      <Image
-                        src={account.logo}
-                        width={200}
-                        height={200}
-                        alt={`${account.accountName} logo`}
-                        className="rounded-full w-12 h-12 object-cover"
-                      />
-                    </div>
-                    <div>
-                      <p className="font-medium text-lg text-gray-900">
-                        {account.bankName}
-                      </p>
-                      <p className="text-gray-600">{account.accountNumber}</p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleDelete(account.id)}
-                    className="border-red-600 text-red-600 hover:bg-red-50 flex justify-center"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="hidden md:inline">Delete</span>
-                  </Button>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-center">
-              <Button
-                onClick={openDialog}
-                variant="ghost"
-                className="text-gray-600 hover:text-gray-900"
-              >
-                <Plus className="h-5 w-5 mr-2" />
-                Add Another Account
-              </Button>
-            </div>
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete
+                </Button>
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                <Button
+                  onClick={() => setIsDialogOpen(true)}
+                  variant="ghost"
+                  className="text-gray-600 rounded-md"
+                >
+                  <Plus className="h-5 w-5 mr-2" /> Add Another Account
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Dialog remains unchanged */}
-      <div
-        className={cn(
-          "bg-black/50 z-50 w-full absolute right-0 top-0 h-screen overflow-hidden flex justify-center items-center",
-          isDialogOpen ? "absolute" : "hidden"
-        )}
-      >
-        {/* <DialogContent className="bg-white text-gray-900 max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">
-              Add Settlement Accounts
-            </DialogTitle>
-          </DialogHeader> */}
+      {/* Add Account Modal */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md bg-black/40 backdrop-blur-[2px] rounded-2xl border-none p-0 overflow-hidden outline-none">
+          <div className="bg-white m-4 rounded-2xl p-6">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold">
+                Add Settlement Account
+              </DialogTitle>
+            </DialogHeader>
 
-        <div className="w-85  md:w-lg bg-white font-rubik rounded-lg py-5 relative">
-          <div className="flex justify-between px-3 md:px-6">
-            <h1 className="text-xl font-semibold">Add Settlement Accounts</h1>
-            <X
-              className="text-gray-600"
-              onClick={() => setIsDialogOpen(false)}
-            />
-          </div>
-          <hr className="mt-3" />
-          <div className="space-y-2 py-4 px-3 md:px-6">
-            <p className="text-gray-600 text-sm">
-              Provide the bank account MunchSpace will use to pay out your
-              store's earnings.
-            </p>
-          </div>
-
-          <Form {...addSettlementForm}>
-            <form
-              onSubmit={addSettlementForm.handleSubmit(onAddSettlementSubmit)}
-              className="space-y-6 px-3 md:px-6 mt-2"
-            >
-              <FormField
-                control={addSettlementForm.control}
-                name="bankName"
-                render={() => (
-                  <FormItem className="mb-5">
-                    <FormLabel className="font-normal text-slate-500">
-                      Bank Name <span className="text-munchred">*</span>
-                    </FormLabel>
-                    <Popover open={bankNameOpen} onOpenChange={setBankNameOpen}>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            className={cn(
-                              "w-full justify-between font-normal h-12 hover:text-slate-400 hover:bg-white",
-                              addSettlementForm.getValues("bankName")
-                                ? "text-black"
-                                : "text-slate-400"
-                            )}
-                          >
-                            <div className="flex gap-2 items-center">
-                              {banklogo !== "/images" && (
-                                <Image
-                                  src={banklogo}
-                                  width={300}
-                                  height={300}
-                                  alt={`bank logo`}
-                                  className="w-7 bg-red-500 h-7 rounded-full"
-                                />
-                              )}
-                              {addSettlementForm.getValues("bankName")
-                                ? addSettlementForm.getValues("bankName")
-                                : "Select Bank"}
-                            </div>
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="w-70 md:w-md"
-                        onOpenAutoFocus={(e) => e.preventDefault()}
-                      >
-                        <Command className="">
-                          <CommandInput
-                            // autoFocus={false}
-                            placeholder="Search bank ..."
-                          />
-                          <CommandEmpty>No type found.</CommandEmpty>
-                          <CommandGroup className="max-h-50 overflow-y-auto">
-                            {bankOptions.map((option) => (
-                              <CommandItem
-                                key={option.value}
-                                onSelect={async () => {
-                                  const current =
-                                    addSettlementForm.getValues("bankName");
-                                  addSettlementForm.setValue(
-                                    "bankName",
-                                    option.name
-                                  );
-                                  setBanklogo(option.logo);
-                                  await addSettlementForm.trigger("bankName");
-                                  setBankNameOpen(false);
-                                }}
+            {isLoadingBanks ? (
+              <div className="py-8 flex justify-center">
+                <LoaderCircle className="h-8 w-8 animate-spin text-orange-600" />
+              </div>
+            ) : (
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-6 mt-4"
+                >
+                  <FormField
+                    control={form.control}
+                    name="bankName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Bank Name <span className="text-red-600">*</span>
+                        </FormLabel>
+                        <Popover open={bankOpen} onOpenChange={setBankOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-between h-12 rounded-md"
                               >
-                                <Image
-                                  src={option.logo}
-                                  width={300}
-                                  height={300}
-                                  alt={`${option.name} logo`}
-                                  className="w-7 bg-red-500 h-7 rounded-full"
-                                />
-                                {option.name}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage className="" />
-                  </FormItem>
-                )}
-              />
-              <div className="grid md:grid--2 gap-4">
-                <FormField
-                  control={addSettlementForm.control}
-                  name="accountNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Account Number
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Account Number"
-                          className="h-12"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={addSettlementForm.control}
-                  name="accountName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Account Name
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Account Name"
-                          className="h-12"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <div className="flex gap-4 items-center">
-                  <Button
-                    onClick={() => setIsDialogOpen(false)}
-                    className="px-6 bg-gray-100 h-10 text-black"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
-                  >
-                    {isLoading ? (
-                      <LoaderCircle className="animate-spin" />
-                    ) : (
-                      "Submit"
+                                {field.value || "Select bank"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <Command>
+                              <CommandInput placeholder="Search bank..." />
+                              <CommandEmpty>No bank found.</CommandEmpty>
+                              <CommandGroup className="max-h-60 overflow-auto">
+                                {banks.map((bank) => (
+                                  <CommandItem
+                                    key={bank.code}
+                                    onSelect={() => {
+                                      form.setValue("bankName", bank.name);
+                                      setBankOpen(false);
+                                    }}
+                                  >
+                                    {bank.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                  </Button>
-                </div>
-              </div>
-            </form>
-          </Form>
-        </div>
+                  />
 
-        {/* </DialogContent> */}
-      </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="accountNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Account Number *</FormLabel>
+                          <FormControl>
+                            <Input className="h-12 rounded-md" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="accountName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Account Name *</FormLabel>
+                          <FormControl>
+                            <Input className="h-12 rounded-md" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsDialogOpen(false)}
+                      className="rounded-md px-6"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
+                    >
+                      {isSubmitting ? "Saving..." : "Add Account"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <DialogContent className="sm:max-w-sm rounded-2xl border-none shadow-xl p-0 overflow-hidden bg-black/40 backdrop-blur-[2px]">
+          <div className="bg-white m-4 rounded-2xl p-6">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">
+                Remove Account?
+              </DialogTitle>
+              <DialogDescription>
+                This will remove your current settlement account. You will need
+                to add a new one to receive payouts.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-3 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsDeleteOpen(false)}
+                className="rounded-md w-full"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="rounded-md w-full bg-red-600 hover:bg-red-700"
+              >
+                {isDeleting ? "Removing..." : "Yes, Remove"}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
