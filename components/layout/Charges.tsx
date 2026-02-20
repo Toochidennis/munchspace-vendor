@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "../ui/switch";
 import { toast } from "sonner";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { Skeleton } from "../ui/skeleton";
 
 interface ChargeType {
   id: string;
@@ -311,9 +312,7 @@ const Charges = () => {
 
         <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
           {isDataLoading ? (
-            <div className="flex justify-center items-center py-20">
-              <LoaderCircle className="h-10 w-10 animate-spin text-gray-500" />
-            </div>
+            <ChargesSkeleton />
           ) : charges.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <Image
@@ -654,3 +653,71 @@ const Charges = () => {
 };
 
 export default Charges;
+
+
+const ChargesSkeleton = () => {
+  return (
+    <div className="bg-white text-gray-900">
+      <div className="max-w-7xl mx-auto space-y-8 p-6">
+        {/* Header Skeleton */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <Skeleton className="h-8 w-48 rounded-md" />
+          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+            <Skeleton className="h-10 w-full md:w-60 rounded-md" />
+            <Skeleton className="h-10 w-40 rounded-md" />
+          </div>
+        </div>
+
+        {/* Table Skeleton */}
+        <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gray-50">
+                <TableHead className="ps-6">
+                  <Skeleton className="h-4 w-20" />
+                </TableHead>
+                <TableHead>
+                  <Skeleton className="h-4 w-16" />
+                </TableHead>
+                <TableHead>
+                  <Skeleton className="h-4 w-24" />
+                </TableHead>
+                <TableHead>
+                  <Skeleton className="h-4 w-16" />
+                </TableHead>
+                <TableHead className="text-right pe-6">
+                  <Skeleton className="h-4 w-20 ml-auto" />
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell className="ps-6">
+                    <Skeleton className="h-5 w-32 rounded-md" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-20 rounded-md" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-24 rounded-md" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-6 w-10 rounded-full" />{" "}
+                    {/* Switch shape */}
+                  </TableCell>
+                  <TableCell className="text-right pe-6">
+                    <div className="flex justify-end gap-2">
+                      <Skeleton className="h-8 w-8 rounded-md" />
+                      <Skeleton className="h-8 w-8 rounded-md" />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    </div>
+  );
+};

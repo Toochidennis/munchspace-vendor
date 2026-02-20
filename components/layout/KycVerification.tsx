@@ -21,6 +21,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
+import { Skeleton } from "../ui/skeleton";
 
 interface DocumentState {
   fileUrl?: string | null;
@@ -364,11 +365,7 @@ export default function KycVerification() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-8 flex items-center justify-center">
-        <LoaderCircle className="h-10 w-10 animate-spin text-gray-500" />
-      </div>
-    );
+    return <KycSkeleton />;
   }
 
   return (
@@ -506,3 +503,46 @@ export default function KycVerification() {
     </div>
   );
 }
+
+
+const KycSkeleton = () => {
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="mx-auto max-w-5xl space-y-12">
+        <div className="space-y-8">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-5"
+            >
+              {/* Title and Badge Section */}
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-7 w-64 rounded-md" />
+                  <div className="flex items-center gap-3 mt-2">
+                    <Skeleton className="h-5 w-24 rounded-md" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Description Section */}
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full rounded-md" />
+                <Skeleton className="h-4 w-3/4 rounded-md" />
+              </div>
+
+              {/* Action/Input Section */}
+              <div className="pt-4 space-y-4">
+                {/* Specifically mimics the TIN input or the Upload button area */}
+                <Skeleton className="h-10 w-40 rounded-md" />
+
+                {/* Optional additional line for the 'Accepted formats' text */}
+                <Skeleton className="h-3 w-56 rounded-md" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};

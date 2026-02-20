@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { Trash2, Plus, LoaderCircle, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,6 +33,7 @@ import {
   CommandInput,
   CommandItem,
 } from "@/components/ui/command";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { z } from "zod";
@@ -72,13 +72,11 @@ async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  // SSR Guard to prevent build errors
   if (typeof window === "undefined") {
     return new Response(JSON.stringify({ success: false }), { status: 200 });
   }
 
   let token = getAccessToken();
-  console.log("Initial token:", token);
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
@@ -127,7 +125,6 @@ export default function EarningsPage() {
   });
 
   useEffect(() => {
-    // Access localStorage safely inside useEffect
     const id = getBusinessId();
     setBusinessId(id);
 
@@ -139,6 +136,7 @@ export default function EarningsPage() {
           `${API_BASE}/vendors/me/businesses/${id}/financials/bank-account`,
         );
         const accJson = await accRes.json();
+
         if (accJson.success && accJson.data) {
           setAccount(accJson.data);
         }
@@ -249,7 +247,9 @@ export default function EarningsPage() {
 
         {activeTab === "earnings" && (
           <div className="mt-10">
-            {account ? (
+            {isLoadingAccount ? (
+              <Skeleton className="h-[120px] w-full rounded-md" />
+            ) : account ? (
               <div className="bg-gray-100 rounded-xl p-5">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   Earnings
@@ -280,7 +280,9 @@ export default function EarningsPage() {
 
         {activeTab === "payout" && (
           <div className="space-y-8 mt-5">
-            {account && (
+            {isLoadingAccount ? (
+              <Skeleton className="h-[100px] w-full rounded-md" />
+            ) : account ? (
               <div className="flex items-center justify-between bg-gray-50 rounded-lg p-6">
                 <div>
                   <p className="font-medium text-lg text-gray-900">
@@ -297,9 +299,7 @@ export default function EarningsPage() {
                   <Trash2 className="h-4 w-4 mr-2" /> Delete
                 </Button>
               </div>
-            )}
-
-            {!account && !isLoadingAccount && (
+            ) : (
               <div className="flex justify-center">
                 <Button
                   onClick={() => setIsDialogOpen(true)}
@@ -308,12 +308,6 @@ export default function EarningsPage() {
                 >
                   <Plus className="h-5 w-5 mr-2" /> Add Another Account
                 </Button>
-              </div>
-            )}
-
-            {isLoadingAccount && (
-              <div className="flex justify-center py-10">
-                <LoaderCircle className="h-8 w-8 animate-spin text-orange-600" />
               </div>
             )}
           </div>

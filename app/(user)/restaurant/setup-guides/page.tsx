@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ interface OnboardingData {
   menuItemsCount: number;
   availabilityReady: boolean;
   chargesReady: boolean;
+  settlementReady: boolean;
   pending: string[];
   canGoLive: boolean;
 }
@@ -35,9 +37,6 @@ interface Task {
   isPublishTask?: boolean;
 }
 
-/**
- * Utility to handle authenticated requests with automatic token refresh
- */
 async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
@@ -54,13 +53,11 @@ async function authenticatedFetch(
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
-
   if (!(init.body instanceof FormData)) {
     (headers as any)["Content-Type"] = "application/json";
   }
 
   let response = await fetch(url, { ...init, headers });
-
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
@@ -74,9 +71,9 @@ async function authenticatedFetch(
 }
 
 export default function SetupGuidePage() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
 
   const taskMapping: Record<string, Omit<Task, "completed" | "pendingKey">> = {
@@ -101,6 +98,13 @@ export default function SetupGuidePage() {
       actionLabel: "Add charges",
       href: "/restaurant/setup/charges",
     },
+    "Settlement account not configured": {
+      title: "Add Settlement Account",
+      description:
+        "Add your bank account details to receive payouts for your orders.",
+      actionLabel: "Add account",
+      href: "/restaurant/settlement",
+    },
   };
 
   const fetchOnboardingStatus = async () => {
@@ -117,6 +121,13 @@ export default function SetupGuidePage() {
 
       const res = await response.json();
       const data: OnboardingData = res.data;
+      console.log("Onboarding status:", data);
+
+      // Requirement: If pending is empty, redirect to dashboard
+      if (data.pending && data.pending.length === 0 && !data.canGoLive) {
+        router.push("/restaurant/dashboard");
+        return;
+      }
 
       const updatedTasks: Task[] = [];
 
@@ -144,7 +155,6 @@ export default function SetupGuidePage() {
 
       setTasks(updatedTasks);
     } catch (err: any) {
-      setError(err.message);
       toast.error(err.message || "Failed to fetch status");
     } finally {
       setLoading(false);
@@ -161,7 +171,6 @@ export default function SetupGuidePage() {
 
     setIsPublishing(true);
     try {
-      // Sending businessId in JSON body as expected by the API
       const response = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/publish`,
         {
@@ -171,13 +180,12 @@ export default function SetupGuidePage() {
       );
 
       const resData = await response.json();
-      console.log("Publish response:", resData);
-
       if (!response.ok)
         throw new Error(resData.message || "Failed to publish store");
 
       toast.success(resData.message || "Business is now live.");
-      fetchOnboardingStatus();
+      // After publishing, everything is done, redirect to dashboard
+      router.push("/restaurant/dashboard");
     } catch (err: any) {
       toast.error(err.message || "Failed to publish store");
     } finally {
@@ -194,11 +202,7 @@ export default function SetupGuidePage() {
     tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-600 animate-pulse">Loading setup...</p>
-      </div>
-    );
+    return <SetupSkeleton />;
   }
 
   return (
@@ -292,3 +296,44 @@ export default function SetupGuidePage() {
     </div>
   );
 }
+
+
+const SetupSkeleton = () => {
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="px-5 md:px-15 py-12 mt-5 md:mt-0 max-w-7xl mx-auto">
+        {/* Title and Description Skeletons */}
+        <div className="h-10 w-48 bg-gray-200 animate-pulse rounded-md mb-4" />
+        <div className="h-5 w-96 bg-gray-100 animate-pulse rounded-md mb-8" />
+
+        {/* Progress Bar Skeleton */}
+        <div className="flex items-center gap-4 mb-12">
+          <div className="flex-1 h-2 bg-gray-100 animate-pulse rounded-full" />
+          <div className="h-4 w-24 bg-gray-100 animate-pulse rounded-md" />
+        </div>
+
+        {/* Task Cards Skeletons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="rounded-2xl p-6 border border-gray-100 bg-white shadow-sm space-y-4"
+            >
+              <div className="flex items-start gap-4">
+                <div className="h-7 w-7 rounded-full bg-gray-200 animate-pulse shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-6 w-3/4 bg-gray-200 animate-pulse rounded-md" />
+                  <div className="h-4 w-full bg-gray-100 animate-pulse rounded-md" />
+                  <div className="h-4 w-5/6 bg-gray-100 animate-pulse rounded-md" />
+                </div>
+              </div>
+              <div className="mt-8">
+                <div className="h-10 w-32 bg-gray-200 animate-pulse rounded-md" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};

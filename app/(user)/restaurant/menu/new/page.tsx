@@ -9,7 +9,7 @@ import {
   Trash2,
   Calendar,
   ArrowLeft,
-  Loader2
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -52,32 +52,68 @@ const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().min(1, "Description is required"),
-  image: z.string().min(1, "Image is required"),
+  image: z.string().min(1, "Please upload an image"),
   categoryTypeId: z.string().min(1, "Category is required"),
-  sellingPrice: z.number().gte(0, "Selling price cannot be less than 0"),
+  sellingPrice: z
+    .number("Selling price is required")
+    .min(1, "Selling price must be at least 1")
+    .positive("Selling price must be greater than 0"),
   quantityInStock: z
-    .number()
+    .number("Quantity in stock is required")
     .int("Quantity must be a whole number")
-    .gte(0, "Quantity cannot be less than 0"),
+    .min(1, "Quantity must be at least 1"),
   isAvailable: z.enum(["available", "unavailable"]),
+
   variants: z
     .array(
       z.object({
-        name: z.string(),
-        description: z.string(),
-        price: z.string(),
+        name: z.string().min(1, "Size name is required"),
+        description: z.string().optional(),
+        price: z
+          .string()
+          .min(1, "Price is required")
+          .refine((val) => !isNaN(Number(val)) && Number(val) >= 1, {
+            message: "Price must be at least 1",
+          }),
       }),
     )
-    .optional(),
+    .optional()
+    .refine(
+      (variants) => {
+        if (!variants || variants.length === 0) return true;
+        return variants.every((v) => v.name.trim() && v.price.trim());
+      },
+      {
+        message: "All added variants must have a name and valid price",
+        path: [],
+      },
+    ),
+
   addons: z
     .array(
       z.object({
-        name: z.string(),
-        description: z.string(),
-        price: z.string(),
+        name: z.string().min(1, "Addon name is required"),
+        description: z.string().optional(),
+        price: z
+          .string()
+          .min(1, "Price is required")
+          .refine((val) => !isNaN(Number(val)) && Number(val) >= 1, {
+            message: "Price must be at least 1",
+          }),
       }),
     )
-    .optional(),
+    .optional()
+    .refine(
+      (addons) => {
+        if (!addons || addons.length === 0) return true;
+        return addons.every((a) => a.name.trim() && a.price.trim());
+      },
+      {
+        message: "All added extras must have a name and valid price",
+        path: [],
+      },
+    ),
+
   discount: z
     .object({
       type: z.enum(["PERCENTAGE", "FLAT", "FIXED_PRICE"]).optional(),
@@ -86,15 +122,37 @@ const formSchema = z.object({
       endsAt: z.date().optional(),
     })
     .optional()
+    .refine((data) => !data?.type || !!data?.value?.trim(), {
+      message: "Discount value is required",
+      path: ["value"],
+    })
     .refine(
       (data) => {
         if (!data?.type) return true;
-        return !!data?.value && data.value.trim() !== "";
+        const val = Number(data.value);
+        if (isNaN(val) || val <= 0) return false;
+        if (data.type === "PERCENTAGE") return val <= 100;
+        return true;
       },
       {
-        message: "Discount value is required when type is selected",
+        message: "Discount value must be greater than 0 (max 100% for percentage)",
         path: ["value"],
       },
+    )
+    .refine((data) => !data?.type || !!data?.startsAt, {
+      message: "Start date is required",
+      path: ["startsAt"],
+    })
+    .refine((data) => !data?.type || !!data?.endsAt, {
+      message: "End date is required",
+      path: ["endsAt"],
+    })
+    .refine(
+      (data) => {
+        if (!data?.startsAt || !data?.endsAt) return true;
+        return data.endsAt >= data.startsAt;
+      },
+      { message: "End date cannot be before start date", path: ["endsAt"] },
     ),
 });
 
@@ -119,13 +177,9 @@ async function authenticatedFetch(
 
   if (!token) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired - refresh failed");
-    }
+    if (!refreshOk) throw new Error("Session expired - refresh failed");
     token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
+    if (!token) throw new Error("Refresh succeeded but no token available");
   }
 
   const headers: HeadersInit = {
@@ -142,21 +196,13 @@ async function authenticatedFetch(
 
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired during request (refresh failed)");
-    }
-
+    if (!refreshOk) throw new Error("Session expired during request");
     token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
+    if (!token) throw new Error("Refresh succeeded but no token available");
 
     response = await fetch(url, {
       ...init,
-      headers: {
-        ...headers,
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { ...headers, Authorization: `Bearer ${token}` },
     });
   }
 
@@ -164,10 +210,13 @@ async function authenticatedFetch(
 }
 
 export default function CreateMenuPage() {
-  const [activeTab, setActiveTab] = useState("details");
+  const [activeTab, setActiveTab] = useState<
+    "details" | "sizes" | "extras" | "discounts"
+  >("details");
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDiscountForm, setShowDiscountForm] = useState(false);
 
   const router = useRouter();
 
@@ -179,65 +228,51 @@ export default function CreateMenuPage() {
     watch,
     setValue,
     trigger,
+    resetField,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     mode: "onChange",
     defaultValues: {
       isAvailable: "available",
-      sellingPrice: 0,
-      quantityInStock: 0,
-      // variants, addons, discount left undefined → they are optional
     },
   });
 
   const image = watch("image");
+  const discountType = watch("discount.type");
 
   const {
     fields: variantFields,
     append: appendVariant,
     remove: removeVariant,
-  } = useFieldArray({
-    control,
-    name: "variants",
-  });
+  } = useFieldArray({ control, name: "variants" });
 
   const {
     fields: addonFields,
     append: appendAddon,
     remove: removeAddon,
-  } = useFieldArray({
-    control,
-    name: "addons",
-  });
+  } = useFieldArray({ control, name: "addons" });
 
   useEffect(() => {
     const fetchCategories = async () => {
       setLoadingCategories(true);
-
       try {
         const res = await authenticatedFetch(
           `${API_BASE}/meta/menu-categories`,
-          { method: "GET" },
+          {
+            method: "GET",
+          },
         );
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const response = await res.json();
-
         if (response.success && Array.isArray(response.data)) {
           setCategories(response.data);
         } else {
-          console.warn("Unexpected category response format:", response);
           setCategories([]);
         }
       } catch (err: any) {
-        console.error("Failed to load categories:", err);
-        const msg =
-          err.message?.includes("expired") || err.message?.includes("refresh")
-            ? "Your session has expired. Please sign in again."
-            : "Failed to load categories. Please try again later.";
+        const msg = err.message?.includes("expired")
+          ? "Your session has expired. Please sign in again."
+          : "Failed to load categories. Please try again later.";
         toast.error(msg);
         setCategories([]);
       } finally {
@@ -259,24 +294,28 @@ export default function CreateMenuPage() {
     }
   };
 
-  const validateDetails = async () => {
-    const result = await trigger([
-      "name",
-      "description",
-      "image",
-      "categoryTypeId",
-      "sellingPrice",
-      "quantityInStock",
-    ]);
-    return result;
+  const validateCurrentTab = async () => {
+    if (activeTab === "details") {
+      return await trigger([
+        "name",
+        "description",
+        "image",
+        "categoryTypeId",
+        "sellingPrice",
+        "quantityInStock",
+      ]);
+    }
+    if (activeTab === "sizes") return await trigger("variants");
+    if (activeTab === "extras") return await trigger("addons");
+    if (activeTab === "discounts") return await trigger("discount");
+    return true;
   };
 
   const handleNext = async () => {
-    if (activeTab === "details") {
-      if (!(await validateDetails())) return;
-    }
+    const isValid = await validateCurrentTab();
+    if (!isValid) return;
 
-    const currentIndex = tabOrder.indexOf(activeTab as any);
+    const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex < tabOrder.length - 1) {
       setActiveTab(tabOrder[currentIndex + 1]);
     } else {
@@ -285,7 +324,7 @@ export default function CreateMenuPage() {
   };
 
   const handleBack = () => {
-    const currentIndex = tabOrder.indexOf(activeTab as any);
+    const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex > 0) {
       setActiveTab(tabOrder[currentIndex - 1]);
     }
@@ -293,7 +332,6 @@ export default function CreateMenuPage() {
 
   const onSubmit: SubmitHandler<FormData> = async (data) => {
     setIsSubmitting(true);
-
     const formData = new FormData();
 
     formData.append("menuItem[name]", data.name);
@@ -309,36 +347,23 @@ export default function CreateMenuPage() {
       data.isAvailable === "available" ? "true" : "false",
     );
 
-    // Variants - only send if there are meaningful entries
-    if (data.variants && data.variants.length > 0) {
-      data.variants.forEach((variant, index) => {
-        if (variant.name?.trim()) {
-          formData.append(`variants[${index}][name]`, variant.name);
-          formData.append(
-            `variants[${index}][description]`,
-            variant.description || "",
-          );
-          formData.append(`variants[${index}][price]`, variant.price || "0");
-        }
-      });
-    }
+    data.variants?.forEach((v, i) => {
+      if (v.name.trim()) {
+        formData.append(`variants[${i}][name]`, v.name);
+        formData.append(`variants[${i}][description]`, v.description || "");
+        formData.append(`variants[${i}][price]`, v.price);
+      }
+    });
 
-    // Addons - only send if there are meaningful entries
-    if (data.addons && data.addons.length > 0) {
-      data.addons.forEach((addon, index) => {
-        if (addon.name?.trim()) {
-          formData.append(`addons[${index}][name]`, addon.name);
-          formData.append(
-            `addons[${index}][description]`,
-            addon.description || "",
-          );
-          formData.append(`addons[${index}][price]`, addon.price || "0");
-        }
-      });
-    }
+    data.addons?.forEach((a, i) => {
+      if (a.name.trim()) {
+        formData.append(`addons[${i}][name]`, a.name);
+        formData.append(`addons[${i}][description]`, a.description || "");
+        formData.append(`addons[${i}][price]`, a.price);
+      }
+    });
 
-    // Discount - only send if type and value are present
-    if (data.discount?.type && data.discount?.value?.trim()) {
+    if (data.discount?.type && data.discount.value?.trim()) {
       formData.append("discount[type]", data.discount.type);
       formData.append("discount[value]", data.discount.value);
       if (data.discount.startsAt) {
@@ -355,7 +380,7 @@ export default function CreateMenuPage() {
       }
     }
 
-    if (data.image.startsWith("data:image")) {
+    if (data.image?.startsWith("data:image")) {
       const blob = await fetch(data.image).then((res) => res.blob());
       formData.append("file", blob, "menu-image.jpg");
     }
@@ -365,33 +390,23 @@ export default function CreateMenuPage() {
     try {
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/compose`,
-        {
-          method: "POST",
-          body: formData,
-        },
+        { method: "POST", body: formData },
       );
 
       const responseData = await res.json();
 
-      console.log("Create menu item response:", responseData);
-
       if (res.ok) {
         toast.success("Menu item created successfully");
-        router.push("/restaurant/menu");
+        // router.push("/restaurant/menu");
       } else {
-        const errorMessage =
-          responseData?.error ||
-          responseData?.message ||
-          "Failed to create menu item. Please try again.";
-        toast.error(errorMessage);
+        toast.error(responseData?.message || "Failed to create menu item");
       }
     } catch (err: any) {
-      console.error("Error submitting form", err);
-      const msg =
-        err.message?.includes("expired") || err.message?.includes("refresh")
-          ? "Your session has expired. Please sign in again."
-          : "An unexpected error occurred while creating the menu item.";
-      toast.error(msg);
+      toast.error(
+        err.message?.includes("expired")
+          ? "Session expired. Please sign in again."
+          : "An unexpected error occurred.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -405,7 +420,10 @@ export default function CreateMenuPage() {
       <div className="max-w-3xl mx-auto p-8">
         <div className="mb-8 mt-10 md:mt-0">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-4">
-            <Link href="/restaurant/menu" className="text-gray-400 hover:text-gray-600">
+            <Link
+              href="/restaurant/menu"
+              className="text-gray-400 hover:text-gray-600"
+            >
               <ArrowLeft className="h-5 w-5" />
             </Link>
             Create Menu
@@ -549,7 +567,7 @@ export default function CreateMenuPage() {
                       >
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
-                      <SelectContent className="w-full">
+                      <SelectContent>
                         {loadingCategories ? (
                           <div className="p-4 text-center text-gray-500">
                             Loading categories...
@@ -583,7 +601,7 @@ export default function CreateMenuPage() {
                   </Label>
                   <Input
                     type="number"
-                    min={0}
+                    min={1}
                     step="0.01"
                     placeholder="0.00"
                     {...register("sellingPrice", { valueAsNumber: true })}
@@ -608,8 +626,8 @@ export default function CreateMenuPage() {
                   </Label>
                   <Input
                     type="number"
-                    min={0}
-                    step="1"
+                    min={1}
+                    step={1}
                     placeholder="0"
                     {...register("quantityInStock", { valueAsNumber: true })}
                     className={cn(
@@ -641,7 +659,7 @@ export default function CreateMenuPage() {
                           <RadioGroupItem value="available" id="available" />
                           <Label
                             htmlFor="available"
-                            className="font-normal cursor-pointer text-munchprimary"
+                            className="font-normal cursor-pointer"
                           >
                             Available
                           </Label>
@@ -671,25 +689,45 @@ export default function CreateMenuPage() {
               Specify the sizes/variants for this menu item (optional).
             </p>
 
+            {errors.variants && typeof errors.variants.message === "string" && (
+              <p className="text-red-600 text-sm text-center">
+                {errors.variants.message}
+              </p>
+            )}
+
             <div className="space-y-4">
               {variantFields.map((field, index) => (
                 <div key={field.id} className="space-y-3 border-b pb-4">
                   <div className="flex items-center gap-4">
-                    <Input
-                      placeholder="Size name (e.g. Small)"
-                      {...register(`variants.${index}.name`)}
-                      className="h-12"
-                    />
-                    <Input
-                      placeholder="Price"
-                      {...register(`variants.${index}.price`)}
-                      className="h-12"
-                    />
+                    <div className="flex-1 space-y-1">
+                      <Input
+                        placeholder="Size name (e.g. Small)"
+                        {...register(`variants.${index}.name`)}
+                        className="h-12"
+                      />
+                      {errors.variants?.[index]?.name && (
+                        <p className="text-red-600 text-xs">
+                          {errors.variants[index]?.name?.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="w-32 space-y-1">
+                      <Input
+                        placeholder="Price"
+                        {...register(`variants.${index}.price`)}
+                        className="h-12"
+                      />
+                      {errors.variants?.[index]?.price && (
+                        <p className="text-red-600 text-xs">
+                          {errors.variants[index]?.price?.message}
+                        </p>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => removeVariant(index)}
-                      className="text-red-600 hover:bg-red-50"
+                      className="text-red-600 hover:bg-red-50 mt-6"
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
@@ -703,16 +741,18 @@ export default function CreateMenuPage() {
               ))}
             </div>
 
-            <Button
-              variant="outline"
-              onClick={() =>
-                appendVariant({ name: "", description: "", price: "" })
-              }
-              className="gap-2"
-            >
-              <Plus className="h-5 w-5 text-munchprimary" />
-              Add Variant
-            </Button>
+            <div className="text-center">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  appendVariant({ name: "", description: "", price: "" })
+                }
+                className="gap-2"
+              >
+                <Plus className="h-5 w-5 text-munchprimary" />
+                Add Variant
+              </Button>
+            </div>
           </TabsContent>
 
           <TabsContent value="extras" className="space-y-8">
@@ -721,25 +761,45 @@ export default function CreateMenuPage() {
               (optional).
             </p>
 
+            {errors.addons && typeof errors.addons.message === "string" && (
+              <p className="text-red-600 text-sm text-center">
+                {errors.addons.message}
+              </p>
+            )}
+
             <div className="space-y-4">
               {addonFields.map((field, index) => (
                 <div key={field.id} className="space-y-3 border-b pb-4">
                   <div className="flex items-center gap-4">
-                    <Input
-                      placeholder="Addon name (e.g. Extra Plantain)"
-                      {...register(`addons.${index}.name`)}
-                      className="h-12"
-                    />
-                    <Input
-                      placeholder="Price"
-                      {...register(`addons.${index}.price`)}
-                      className="h-12"
-                    />
+                    <div className="flex-1 space-y-1">
+                      <Input
+                        placeholder="Addon name (e.g. Extra Plantain)"
+                        {...register(`addons.${index}.name`)}
+                        className="h-12"
+                      />
+                      {errors.addons?.[index]?.name && (
+                        <p className="text-red-600 text-xs">
+                          {errors.addons[index]?.name?.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="w-32 space-y-1">
+                      <Input
+                        placeholder="Price"
+                        {...register(`addons.${index}.price`)}
+                        className="h-12"
+                      />
+                      {errors.addons?.[index]?.price && (
+                        <p className="text-red-600 text-xs">
+                          {errors.addons[index]?.price?.message}
+                        </p>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => removeAddon(index)}
-                      className="text-red-600 hover:bg-red-50"
+                      className="text-red-600 hover:bg-red-50 mt-6"
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
@@ -753,16 +813,18 @@ export default function CreateMenuPage() {
               ))}
             </div>
 
-            <Button
-              variant="outline"
-              onClick={() =>
-                appendAddon({ name: "", description: "", price: "" })
-              }
-              className="gap-2"
-            >
-              <Plus className="h-5 w-5 text-munchprimary" />
-              Add Extra
-            </Button>
+            <div className="text-center">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  appendAddon({ name: "", description: "", price: "" })
+                }
+                className="gap-2"
+              >
+                <Plus className="h-5 w-5 text-munchprimary" />
+                Add Extra
+              </Button>
+            </div>
           </TabsContent>
 
           <TabsContent value="discounts" className="space-y-8">
@@ -771,134 +833,256 @@ export default function CreateMenuPage() {
               item (optional).
             </p>
 
-            <div className="space-y-6 border border-gray-200 rounded-lg p-6">
-              <div className="space-y-4">
-                <Label>Discount Type</Label>
-                <Controller
-                  control={control}
-                  name="discount.type"
-                  render={({ field }) => (
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value ?? ""}
-                    >
-                      <SelectTrigger className="h-12!">
-                        <SelectValue placeholder="Select discount type (optional)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PERCENTAGE">
-                          Percentage off
-                        </SelectItem>
-                        <SelectItem value="FLAT">Flat amount off</SelectItem>
-                        <SelectItem value="FIXED_PRICE">Fixed price</SelectItem>
-                      </SelectContent>
-                    </Select>
+            {!showDiscountForm ? (
+              <div className="text-center">
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    setShowDiscountForm(true);
+                    setValue("discount.type", "PERCENTAGE");
+                  }}
+                >
+                  <Plus className="h-5 w-5 text-munchprimary" />
+                  Add Discount
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-6 border border-gray-200 rounded-lg p-6 relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-4 right-4 text-red-600 hover:bg-red-50"
+                  onClick={() => {
+                    setShowDiscountForm(false);
+                    resetField("discount");
+                  }}
+                >
+                  <Trash2 className="h-5 w-5" />
+                </Button>
+
+                {errors.discount &&
+                  typeof errors.discount.message === "string" && (
+                    <p className="text-red-600 text-sm text-center">
+                      {errors.discount.message}
+                    </p>
                   )}
-                />
-              </div>
 
-              <div className="space-y-2">
-                <Label>Discount Value</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="0"
-                    {...register("discount.value")}
-                    className="h-12"
-                  />
-                  <span className="text-gray-600">
-                    {watch("discount.type") === "PERCENTAGE"
-                      ? "%"
-                      : watch("discount.type") === "FLAT" ||
-                          watch("discount.type") === "FIXED_PRICE"
-                        ? "₦"
-                        : ""}
-                  </span>
-                </div>
-                {errors.discount?.value && (
-                  <p className="text-red-600 text-sm">
-                    {errors.discount.value.message}
-                  </p>
-                )}
-              </div>
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <Label>Discount Type</Label>
+                    <Controller
+                      control={control}
+                      name="discount.type"
+                      render={({ field }) => (
+                        <RadioGroup
+                          onValueChange={field.onChange}
+                          value={field.value ?? ""}
+                          className="flex flex-col gap-4"
+                        >
+                          <div className="flex items-start space-x-3">
+                            <RadioGroupItem
+                              value="PERCENTAGE"
+                              id="percentage"
+                              className="mt-1"
+                            />
+                            <div>
+                              <Label
+                                htmlFor="percentage"
+                                className="cursor-pointer font-medium"
+                              >
+                                Percentage off
+                              </Label>
+                              <p className="text-sm text-gray-600">
+                                Reduce price by a percentage
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-start space-x-3">
+                            <RadioGroupItem
+                              value="FLAT"
+                              id="flat"
+                              className="mt-1"
+                            />
+                            <div>
+                              <Label
+                                htmlFor="flat"
+                                className="cursor-pointer font-medium"
+                              >
+                                Flat amount off
+                              </Label>
+                              <p className="text-sm text-gray-600">
+                                ₦ amount off original price
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-start space-x-3">
+                            <RadioGroupItem
+                              value="FIXED_PRICE"
+                              id="fixed"
+                              className="mt-1"
+                            />
+                            <div>
+                              <Label
+                                htmlFor="fixed"
+                                className="cursor-pointer font-medium"
+                              >
+                                Set promo price
+                              </Label>
+                              <p className="text-sm text-gray-600">
+                                Sell at a new fixed price
+                              </p>
+                            </div>
+                          </div>
+                        </RadioGroup>
+                      )}
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Start Date</Label>
-                  <Controller
-                    control={control}
-                    name="discount.startsAt"
-                    render={({ field }) => (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-left font-normal h-12"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {field.value
-                              ? format(field.value, "dd/MM/yyyy")
-                              : "DD/MM/YYYY"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={field.value ?? undefined}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    )}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>End Date</Label>
-                  <Controller
-                    control={control}
-                    name="discount.endsAt"
-                    render={({ field }) => (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-left font-normal h-12"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {field.value
-                              ? format(field.value, "dd/MM/yyyy")
-                              : "DD/MM/YYYY"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={field.value ?? undefined}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    )}
-                  />
+                  {discountType && (
+                    <div className="space-y-2">
+                      <Label>Discount Value</Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          type="text"
+                          placeholder="0"
+                          {...register("discount.value")}
+                          className="h-12 max-w-[200px]"
+                        />
+                        <span className="text-gray-700 font-medium min-w-[50px]">
+                          {discountType === "PERCENTAGE" ? "%" : "₦"}
+                        </span>
+                      </div>
+                      {errors.discount?.value && (
+                        <p className="text-red-600 text-sm">
+                          {errors.discount.value.message}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label
+                        className={cn(
+                          errors.discount?.startsAt && "text-red-600",
+                        )}
+                      >
+                        Start Date <span className="text-red-600">*</span>
+                      </Label>
+                      <Controller
+                        control={control}
+                        name="discount.startsAt"
+                        render={({ field }) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal h-12",
+                                  !field.value && "text-muted-foreground",
+                                  errors.discount?.startsAt && "border-red-600",
+                                )}
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {field.value
+                                  ? format(field.value, "dd/MM/yyyy")
+                                  : "DD/MM/YYYY"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <CalendarComponent
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                initialFocus
+                                disabled={(date) =>
+                                  date <
+                                  new Date(new Date().setHours(0, 0, 0, 0))
+                                }
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      />
+                      {errors.discount?.startsAt && (
+                        <p className="text-red-600 text-sm">
+                          {errors.discount.startsAt.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        className={cn(
+                          errors.discount?.endsAt && "text-red-600",
+                        )}
+                      >
+                        End Date <span className="text-red-600">*</span>
+                      </Label>
+                      <Controller
+                        control={control}
+                        name="discount.endsAt"
+                        render={({ field }) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal h-12",
+                                  !field.value && "text-muted-foreground",
+                                  errors.discount?.endsAt && "border-red-600",
+                                )}
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {field.value
+                                  ? format(field.value, "dd/MM/yyyy")
+                                  : "DD/MM/YYYY"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <CalendarComponent
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                initialFocus
+                                disabled={(date) => {
+                                  const start = watch("discount.startsAt");
+                                  return (
+                                    date <
+                                      new Date(
+                                        new Date().setHours(0, 0, 0, 0),
+                                      ) || (start ? date < start : false)
+                                  );
+                                }}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      />
+                      {errors.discount?.endsAt && (
+                        <p className="text-red-600 text-sm">
+                          {errors.discount.endsAt.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </TabsContent>
         </Tabs>
 
         <div className="flex justify-end gap-2 items-center mt-12 pt-8 border-t border-gray-200">
-          <div>
-            {!isFirstTab && (
-              <Button
-                onClick={handleBack}
-                className="gap-2 px-8 bg-gray-100 hover:bg-gray-200 text-munchprimary"
-                disabled={isSubmitting}
-              >
-                Back
-              </Button>
-            )}
-          </div>
+          {!isFirstTab && (
+            <Button
+              onClick={handleBack}
+              className="gap-2 px-8 bg-gray-100 hover:bg-gray-200 text-munchprimary"
+              disabled={isSubmitting}
+            >
+              Back
+            </Button>
+          )}
           <Button
             onClick={handleNext}
             className="bg-orange-500 hover:bg-munchprimary text-white px-8 flex items-center gap-2"

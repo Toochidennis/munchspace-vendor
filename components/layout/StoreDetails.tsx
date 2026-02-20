@@ -53,6 +53,7 @@ import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import { format } from "date-fns";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
+import { Skeleton } from "../ui/skeleton";
 
 const X_API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 const GOOGLE_API_KEY = "AIzaSyDjoKEpZBTaQuO4dPjbN4W1tHEdxuacPFI";
@@ -323,13 +324,13 @@ const StoreDetails = () => {
       try {
         setLoading(true);
 
-        const token = await getAccessToken();
+        const token = getAccessToken();
         if (!token) {
           toast.error("Authentication required");
           return;
         }
 
-        const businessId = await getBusinessId();
+        const businessId = getBusinessId();
         if (!businessId) {
           toast.error("No business ID found");
           return;
@@ -735,7 +736,7 @@ const StoreDetails = () => {
   };
 
   if (loading) {
-    return <div className="p-8 text-center">Loading store details...</div>;
+    return <StoreSkeleton />;
   }
 
   return (
@@ -1777,6 +1778,77 @@ const StoreDetails = () => {
       </Dialog>
     </div>
   );
-};;;
+}
 
 export default StoreDetails;
+
+
+const StoreSkeleton = () => {
+  return (
+    <div className="space-y-6">
+      {/* Image Upload Card Skeleton */}
+      <Card className="p-4 md:p-8 bg-white border-gray-100 shadow-none">
+        <div className="flex items-center gap-4">
+          <div className="flex gap-8">
+            <div className="relative">
+              <Skeleton className="w-24 h-24 rounded-xl" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2 items-center">
+              <Skeleton className="h-4 w-40 rounded-md" />
+            </div>
+            <Skeleton className="h-3 w-32 rounded-md mt-1" />
+          </div>
+        </div>
+      </Card>
+
+      {/* Main Info Cards Skeleton */}
+      <div className="space-y-6">
+        {/* Store Information Card */}
+        <Card className="p-8 border-gray-100 shadow-none">
+          <div className="flex items-center justify-between mb-8">
+            <Skeleton className="h-8 w-48 rounded-md" />
+            <Skeleton className="h-10 w-24 rounded-full" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-3 w-20 rounded-md" />
+                <Skeleton className="h-5 w-32 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Store Address Card */}
+        <Card className="p-8 border-gray-100 shadow-none">
+          <div className="flex items-center justify-between mb-8">
+            <Skeleton className="h-8 w-40 rounded-md" />
+            <Skeleton className="h-10 w-24 rounded-full" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-3 w-20 rounded-md" />
+                <Skeleton className="h-5 w-32 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Operational Hours Accordion Skeleton */}
+        <Card className="p-8 border-gray-100 shadow-none">
+          <div className="flex items-center justify-between mb-4">
+            <Skeleton className="h-8 w-56 rounded-md" />
+          </div>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-md" />
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};

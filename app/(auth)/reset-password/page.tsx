@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -48,7 +48,10 @@ const formSchema = z
 
 type FormValues = z.infer<typeof formSchema>;
 
-export default function ChangePasswordPage() {
+// ──────────────────────────────────────────────
+// Inner component that uses useSearchParams
+// ──────────────────────────────────────────────
+function ResetPasswordContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
@@ -115,6 +118,266 @@ export default function ChangePasswordPage() {
   }
 
   return (
+    <div className="w-full flex items-center justify-center bg-background px-8">
+      {!passwordChanged && (
+        <div className="w-full max-w-md space-y-8">
+          <Image
+            src={"/images/logo.svg"}
+            width={100}
+            height={75}
+            alt="logo"
+            className="lg:hidden"
+          />
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight font-rubik">
+              Reset Password
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Enter your new password below.
+            </p>
+          </div>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              <FormField
+                control={form.control}
+                name="newPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      New Password
+                      <span className="-ms-1 pt-1 text-xl text-munchred">
+                        *
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          placeholder="New Password"
+                          className="h-12 placeholder:text-gray-400"
+                          type={showNewPassword ? "text" : "password"}
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                        >
+                          {showNewPassword ? (
+                            <EyeOff size={20} />
+                          ) : (
+                            <Eye size={20} />
+                          )}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+
+                    <div className="mt-4 flex items-center gap-5 justify-between">
+                      <div className="flex h-3 gap-2 w-full basis-6/7">
+                        <div
+                          className={`transition-all duration-300 rounded-full h-2 w-full ${strength > 0 ? "bg-munchprimary" : "bg-gray-200"}`}
+                        />
+                        <div
+                          className={`transition-all duration-300 rounded-full h-2 w-full ${
+                            strength > 1 ? "bg-munchprimary" : "bg-gray-200"
+                          }`}
+                        />
+                        <div
+                          className={`transition-all duration-300 rounded-full h-2 w-full ${
+                            strength > 2 ? "bg-munchprimary" : "bg-gray-200"
+                          }`}
+                        />
+                        <div
+                          className={`transition-all duration-300 rounded-full h-2 w-full ${
+                            strength > 3 ? "bg-munchprimary" : "bg-gray-200"
+                          }`}
+                        />
+                      </div>
+                      <span className="text-sm whitespace-nowrap -mt-1">
+                        {strengthLabels[strength]}
+                      </span>
+                    </div>
+
+                    <ul className="mt-4 space-y-1 text-sm">
+                      <li className="flex gap-2">
+                        {hasLength ? (
+                          <Image
+                            src={"/images/CheckCircleSuccess.svg"}
+                            width={20}
+                            height={20}
+                            alt="checked"
+                          />
+                        ) : (
+                          <Image
+                            src={"/images/CheckCircle.svg"}
+                            width={20}
+                            height={20}
+                            alt="unchecked"
+                          />
+                        )}
+                        At least 8 characters
+                      </li>
+                      <li className="flex gap-2">
+                        {hasUppercase ? (
+                          <Image
+                            src={"/images/CheckCircleSuccess.svg"}
+                            width={20}
+                            height={20}
+                            alt="checked"
+                          />
+                        ) : (
+                          <Image
+                            src={"/images/CheckCircle.svg"}
+                            width={20}
+                            height={20}
+                            alt="unchecked"
+                          />
+                        )}
+                        At least 1 uppercase character (A-Z)
+                      </li>
+                      <li className="flex gap-2">
+                        {hasNumber ? (
+                          <Image
+                            src={"/images/CheckCircleSuccess.svg"}
+                            width={20}
+                            height={20}
+                            alt="checked"
+                          />
+                        ) : (
+                          <Image
+                            src={"/images/CheckCircle.svg"}
+                            width={20}
+                            height={20}
+                            alt="unchecked"
+                          />
+                        )}
+                        At least 1 number (0-9)
+                      </li>
+                      <li className="flex gap-2">
+                        <div>
+                          {hasSpecial ? (
+                            <Image
+                              src={"/images/CheckCircleSuccess.svg"}
+                              width={20}
+                              height={20}
+                              alt="checked"
+                            />
+                          ) : (
+                            <Image
+                              src={"/images/CheckCircle.svg"}
+                              width={20}
+                              height={20}
+                              alt="unchecked"
+                            />
+                          )}
+                        </div>
+                        <span className="block">
+                          At least 1 special character (e.g., ! @ # $ % ^ & *
+                          etc.)
+                        </span>
+                      </li>
+                    </ul>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Confirm Password
+                      <span className="-ms-1 pt-1 text-xl text-munchred">
+                        *
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          placeholder="Confirm Password"
+                          className="h-12 placeholder:text-gray-400"
+                          type={showConfirmPassword ? "text" : "password"}
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowConfirmPassword(!showConfirmPassword)
+                          }
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                        >
+                          {showConfirmPassword ? (
+                            <EyeOff size={20} />
+                          ) : (
+                            <Eye size={20} />
+                          )}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Button
+                type="submit"
+                disabled={isLoading || strength < 4}
+                className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full"
+              >
+                {isLoading ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  "Reset Password"
+                )}
+              </Button>
+            </form>
+          </Form>
+
+          <p className="text-center text-sm text-muted-foreground">
+            <Link
+              href="/login"
+              className="font-medium text-munchprimary hover:text-munchprimaryDark underline"
+            >
+              Back to Login
+            </Link>
+          </p>
+        </div>
+      )}
+      {passwordChanged && (
+        <div>
+          <div className="">
+            <h2 className="text-2xl font-bold tracking-tight font-rubik flex gap-3">
+              <span>All Done!</span>
+              <Image
+                src={"/images/CheckCircleSuccess.svg"}
+                width={25}
+                height={25}
+                alt="success icon"
+              />
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground max-w-96">
+              Your password has been successfully changed. You can now proceed
+              to the login page with your new password.
+            </p>
+          </div>
+          <Link href={"/login"} className="mt-8 block">
+            <Button
+              type="button"
+              className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full"
+            >
+              Back to Login
+            </Button>
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ChangePasswordPage() {
+  return (
     <div className="min-h-dvh grid md:grid-cols-2">
       <div className="w-full relative hidden md:block">
         <Image
@@ -133,264 +396,16 @@ export default function ChangePasswordPage() {
         />
       </div>
 
-      <div className="w-full flex items-center justify-center bg-background px-8">
-        {!passwordChanged && (
-          <div className="w-full max-w-md space-y-8">
-            <Image
-              src={"/images/logo.svg"}
-              width={100}
-              height={75}
-              alt="logo"
-              className="lg:hidden"
-            />
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight font-rubik">
-                Reset Password
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Enter your new password below.
-              </p>
-            </div>
-
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-6"
-              >
-                <FormField
-                  control={form.control}
-                  name="newPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        New Password
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Input
-                            placeholder="New Password"
-                            className="h-12 placeholder:text-gray-400"
-                            type={showNewPassword ? "text" : "password"}
-                            {...field}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowNewPassword(!showNewPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                          >
-                            {showNewPassword ? (
-                              <EyeOff size={20} />
-                            ) : (
-                              <Eye size={20} />
-                            )}
-                          </button>
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-
-                      <div className="mt-4 flex items-center gap-5 justify-between">
-                        <div className="flex h-3 gap-2 w-full basis-6/7">
-                          <div
-                            className={`transition-all duration-300 rounded-full h-2 w-full ${strength > 0 ? "bg-munchprimary" : "bg-gray-200"}`}
-                          />
-                          <div
-                            className={`transition-all duration-300 rounded-full h-2 w-full ${
-                              strength > 1 ? "bg-munchprimary" : "bg-gray-200"
-                            }`}
-                          />
-                          <div
-                            className={`transition-all duration-300 rounded-full h-2 w-full ${
-                              strength > 2 ? "bg-munchprimary" : "bg-gray-200"
-                            }`}
-                          />
-                          <div
-                            className={`transition-all duration-300 rounded-full h-2 w-full ${
-                              strength > 3 ? "bg-munchprimary" : "bg-gray-200"
-                            }`}
-                          />
-                        </div>
-                        <span className="text-sm whitespace-nowrap -mt-1">
-                          {strengthLabels[strength]}
-                        </span>
-                      </div>
-
-                      <ul className="mt-4 space-y-1 text-sm">
-                        <li className="flex gap-2">
-                          {hasLength ? (
-                            <Image
-                              src={"/images/CheckCircleSuccess.svg"}
-                              width={20}
-                              height={20}
-                              alt="checked"
-                            />
-                          ) : (
-                            <Image
-                              src={"/images/CheckCircle.svg"}
-                              width={20}
-                              height={20}
-                              alt="unchecked"
-                            />
-                          )}
-                          At least 8 characters
-                        </li>
-                        <li className="flex gap-2">
-                          {hasUppercase ? (
-                            <Image
-                              src={"/images/CheckCircleSuccess.svg"}
-                              width={20}
-                              height={20}
-                              alt="checked"
-                            />
-                          ) : (
-                            <Image
-                              src={"/images/CheckCircle.svg"}
-                              width={20}
-                              height={20}
-                              alt="unchecked"
-                            />
-                          )}
-                          At least 1 uppercase character (A-Z)
-                        </li>
-                        <li className="flex gap-2">
-                          {hasNumber ? (
-                            <Image
-                              src={"/images/CheckCircleSuccess.svg"}
-                              width={20}
-                              height={20}
-                              alt="checked"
-                            />
-                          ) : (
-                            <Image
-                              src={"/images/CheckCircle.svg"}
-                              width={20}
-                              height={20}
-                              alt="unchecked"
-                            />
-                          )}
-                          At least 1 number (0-9)
-                        </li>
-                        <li className="flex gap-2">
-                          <div>
-                            {hasSpecial ? (
-                              <Image
-                                src={"/images/CheckCircleSuccess.svg"}
-                                width={20}
-                                height={20}
-                                alt="checked"
-                              />
-                            ) : (
-                              <Image
-                                src={"/images/CheckCircle.svg"}
-                                width={20}
-                                height={20}
-                                alt="unchecked"
-                              />
-                            )}
-                          </div>
-                          <span className="block">
-                            At least 1 special character (e.g., ! @ # $ % ^ & *
-                            etc.)
-                          </span>
-                        </li>
-                      </ul>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Confirm Password
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Input
-                            placeholder="Confirm Password"
-                            className="h-12 placeholder:text-gray-400"
-                            type={showConfirmPassword ? "text" : "password"}
-                            {...field}
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowConfirmPassword(!showConfirmPassword)
-                            }
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                          >
-                            {showConfirmPassword ? (
-                              <EyeOff size={20} />
-                            ) : (
-                              <Eye size={20} />
-                            )}
-                          </button>
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Button
-                  type="submit"
-                  disabled={isLoading || strength < 4}
-                  className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full"
-                >
-                  {isLoading ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    "Reset Password"
-                  )}
-                </Button>
-              </form>
-            </Form>
-
-            <p className="text-center text-sm text-muted-foreground">
-              <Link
-                href="/login"
-                className="font-medium text-munchprimary hover:text-munchprimaryDark underline"
-              >
-                Back to Login
-              </Link>
-            </p>
+      {/* ──── Suspense boundary ──── */}
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-screen">
+            <LoaderCircle className="h-10 w-10 animate-spin text-munchprimary" />
           </div>
-        )}
-        {passwordChanged && (
-          <div>
-            <div className="">
-              <h2 className="text-2xl font-bold tracking-tight font-rubik flex gap-3">
-                <span>All Done!</span>
-                <Image
-                  src={"/images/CheckCircleSuccess.svg"}
-                  width={25}
-                  height={25}
-                  alt="success icon"
-                />
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground max-w-96">
-                Your password has been successfully changed. You can now proceed
-                to the login page with your new password.
-              </p>
-            </div>
-            <Link href={"/login"} className="mt-8 block">
-              <Button
-                type="button"
-                className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full"
-              >
-                Back to Login
-              </Button>
-            </Link>
-          </div>
-        )}
-      </div>
+        }
+      >
+        <ResetPasswordContent />
+      </Suspense>
     </div>
   );
 }
