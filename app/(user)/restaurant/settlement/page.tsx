@@ -41,6 +41,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
+import CustomModal from "@/components/layout/CustomModal";
 
 const addSettlementSchema = z.object({
   bankName: z.string().min(1, "Bank name is required"),
@@ -118,11 +119,18 @@ export default function EarningsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(
+    null,
+  );
 
   const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
-    defaultValues: { bankName: "", accountName: "", accountNumber: "" },
+    defaultValues: { bankName: "", accountNumber: "", accountName: "" },
   });
+
+  const selectedBankName = form.watch("bankName");
+  const accountNumber = form.watch("accountNumber");
 
   useEffect(() => {
     const id = getBusinessId();
@@ -156,7 +164,77 @@ export default function EarningsPage() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const verifyAccount = async () => {
+      if (!businessId || !selectedBankName || !accountNumber?.length) {
+        form.setValue("accountName", "");
+        setVerificationError(null);
+        return;
+      }
+
+      const selectedBank = banks.find((b) => b.name === selectedBankName);
+      if (!selectedBank || accountNumber.length !== 10) {
+        return;
+      }
+
+      setIsVerifying(true);
+      setVerificationError(null);
+
+      try {
+        const payload = {
+          accountNumber,
+          bankCode: selectedBank.code,
+        };
+
+        const res = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/financials/verify-account`,
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          },
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          console.log("Verification failed:", err);
+          throw new Error(err.message || "Account verification failed");
+        }
+
+        const json = await res.json();
+
+        // Adjust field name based on your actual API response
+        // Common possibilities: accountName, name, accountHolderName, holderName
+        const nameFromApi =
+          json?.data?.accountName ||
+          json?.data?.name ||
+          json?.data?.accountHolderName ||
+          json?.data?.holderName ||
+          "";
+
+        if (!nameFromApi) {
+          throw new Error("Account name not returned from verification");
+        }
+
+        form.setValue("accountName", nameFromApi);
+        setVerificationError(null);
+      } catch (err: any) {
+        console.error("Verification error:", err);
+        setVerificationError(err.message || "Could not verify account name");
+        form.setValue("accountName", "");
+      } finally {
+        setIsVerifying(false);
+      }
+    };
+
+    // Trigger only when both fields are filled and valid
+    if (selectedBankName && accountNumber?.length === 10) {
+      const timer = setTimeout(verifyAccount, 800); // debounce a bit
+      return () => clearTimeout(timer);
+    }
+  }, [selectedBankName, accountNumber, businessId, banks, form]);
+
   const onSubmit = async (data: AddSettlementType) => {
+    console.log("Form data:", data);
     if (!businessId) {
       toast.error("Business ID is missing");
       return;
@@ -268,7 +346,7 @@ export default function EarningsPage() {
                   No settlement account set up.
                 </h3>
                 <Button
-                  className="bg-munchprimary mt-5 text-white rounded-md"
+                  className="bg-munchprimary hover:bg-munchprimaryDark mt-5 text-white rounded-md"
                   onClick={() => setActiveTab("payout")}
                 >
                   Setup settlement account
@@ -303,134 +381,156 @@ export default function EarningsPage() {
               <div className="flex justify-center">
                 <Button
                   onClick={() => setIsDialogOpen(true)}
-                  variant="ghost"
-                  className="text-gray-600 rounded-md"
+                  className="text-white bg-munchprimary rounded-md hover:bg-munchprimaryDark"
                 >
-                  <Plus className="h-5 w-5 mr-2" /> Add Another Account
+                  <Plus className="h-5 w-5" /> Add Account
                 </Button>
               </div>
             )}
           </div>
         )}
       </div>
+      {/* Dialog */}
+      <CustomModal
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        title="Add Account"
+        maxWidth="sm:max-w-[450px]"
+        footer={
+          <div className="flex justify-end gap-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDialogOpen(false)}
+              className="rounded-md px-6"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
+            >
+              {isSubmitting ? "Saving..." : "Add Account"}
+            </Button>
+          </div>
+        }
+      >
+        {isLoadingBanks ? (
+          <div className="py-8 flex justify-center">
+            <LoaderCircle className="h-8 w-8 animate-spin text-orange-600" />
+          </div>
+        ) : (
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-6 mt-4"
+            >
+              <FormField
+                control={form.control}
+                name="bankName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Bank Name <span className="text-red-600">*</span>
+                    </FormLabel>
+                    <Popover open={bankOpen} onOpenChange={setBankOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-between h-12 rounded-md"
+                          >
+                            {field.value || "Select bank"}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                        <Command>
+                          <CommandInput placeholder="Search bank..." />
+                          <CommandEmpty>No bank found.</CommandEmpty>
+                          <CommandGroup className="max-h-60 overflow-auto">
+                            {banks.map((bank) => (
+                              <CommandItem
+                                key={bank.code}
+                                onSelect={() => {
+                                  form.setValue("bankName", bank.name);
+                                  setBankOpen(false);
+                                }}
+                              >
+                                {bank.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid gap-4">
+                <FormField
+                  control={form.control}
+                  name="accountNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Account Number *</FormLabel>
+                      <FormControl>
+                        <Input
+                          className="h-12 rounded-md"
+                          placeholder="e.g. 0123456789"
+                          maxLength={10}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="accountName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Account Name</FormLabel>
+                      <div className="relative">
+                        <FormControl>
+                          <Input
+                            className="h-12 rounded-md bg-gray-50"
+                            placeholder={
+                              isVerifying
+                                ? "Verifying..."
+                                : "Will be filled automatically"
+                            }
+                            readOnly
+                            disabled
+                            {...field}
+                          />
+                        </FormControl>
+                        {isVerifying && (
+                          <LoaderCircle className="absolute right-3 top-3.5 h-5 w-5 animate-spin text-orange-600" />
+                        )}
+                      </div>
+                      {verificationError && (
+                        <p className="text-sm text-red-600 mt-1">
+                          {verificationError}
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </form>
+          </Form>
+        )}
+      </CustomModal>
 
       {/* Add Account Modal */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md bg-black/40 backdrop-blur-[2px] rounded-2xl border-none p-0 overflow-hidden outline-none">
-          <div className="bg-white m-4 rounded-2xl p-6">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">
-                Add Settlement Account
-              </DialogTitle>
-            </DialogHeader>
-
-            {isLoadingBanks ? (
-              <div className="py-8 flex justify-center">
-                <LoaderCircle className="h-8 w-8 animate-spin text-orange-600" />
-              </div>
-            ) : (
-              <Form {...form}>
-                <form
-                  onSubmit={form.handleSubmit(onSubmit)}
-                  className="space-y-6 mt-4"
-                >
-                  <FormField
-                    control={form.control}
-                    name="bankName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Bank Name <span className="text-red-600">*</span>
-                        </FormLabel>
-                        <Popover open={bankOpen} onOpenChange={setBankOpen}>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                className="w-full justify-between h-12 rounded-md"
-                              >
-                                {field.value || "Select bank"}
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                            <Command>
-                              <CommandInput placeholder="Search bank..." />
-                              <CommandEmpty>No bank found.</CommandEmpty>
-                              <CommandGroup className="max-h-60 overflow-auto">
-                                {banks.map((bank) => (
-                                  <CommandItem
-                                    key={bank.code}
-                                    onSelect={() => {
-                                      form.setValue("bankName", bank.name);
-                                      setBankOpen(false);
-                                    }}
-                                  >
-                                    {bank.name}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="accountNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Account Number *</FormLabel>
-                          <FormControl>
-                            <Input className="h-12 rounded-md" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="accountName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Account Name *</FormLabel>
-                          <FormControl>
-                            <Input className="h-12 rounded-md" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
-                      className="rounded-md px-6"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
-                    >
-                      {isSubmitting ? "Saving..." : "Add Account"}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation Modal */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

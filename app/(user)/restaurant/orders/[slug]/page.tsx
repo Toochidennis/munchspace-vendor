@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,59 +16,230 @@ import {
 import { ShoppingCart, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { toast } from "sonner";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { refreshAccessToken } from "@/app/lib/api";
 
-// Mock data for a single order
-const orderData = {
-  id: "#45DF6",
-  status: "Pending",
-  orderedDate: "6.7.2022",
-  orderDate: "Oct 6, 2022 - 3:25 PM",
-  totalPrice: "N1,252.00",
-  paymentOption: "Cash",
-  orderChannel: "Microsite",
-  processedBy: "John Desmond (#14FDA)",
-  customerName: "John Luke (0801234567)",
-  itemsCount: 4,
-  items: [
-    {
-      quantity: "1x",
-      name: "12 Pcs KFC Bucket",
-      variant: "Crunchy",
-      price: "N600.00",
-    },
-    {
-      quantity: "1x",
-      name: "12 Pcs KFC Bucket",
-      variant: "Crunchy",
-      price: "N600.00",
-    },
-    {
-      quantity: "2x",
-      name: "12 Pcs KFC Bucket",
-      variant: "Crunchy",
-      price: "N600.00",
-    },
-  ],
-  summary: {
-    paperBagCost: "N80.00",
-    deliveryFee: "N350.00",
-    serviceFee: "N30.00",
-    estimatedProduct: "N2,400.00",
-    estimatedTotal: "N14,855.00",
-  },
-  currentOrderIndex: 1,
-  totalOrders: 84,
-  image: "/images/foods/egusi.png",
-};
+// ────────────────────────────────────────────────
+//  Authenticated fetch (assumed to exist in your project)
+// ────────────────────────────────────────────────
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  // Your existing authenticatedFetch implementation
+  // (copied from previous context – make sure it exists in "@/app/lib/auth" or similar)
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key":
+      "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+
+  return response;
+}
 
 export default function OrderDetailsPage() {
-  const [currentOrder, setCurrentOrder] = useState(1); // For "Next Order" functionality
+  const slug = useParams<{ slug: string }>();
+  const orderId = slug?.slug;
+
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [currentOrder, setCurrentOrder] = useState(1); // Keeping your placeholder logic
+
+  useEffect(() => {
+    const BUSINESS_ID = getBusinessId();
+    if (!orderId) return;
+
+    const fetchOrder = async () => {
+      setLoading(true);
+      try {
+        const url = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}`;
+        const response = await authenticatedFetch(url);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch order: ${response.status}`);
+        }
+
+        const json = await response.json();
+
+        if (!json.success || !json.data) {
+          throw new Error("Invalid response format");
+        }
+
+        setOrder(json.data);
+      } catch (err: any) {
+        toast.error("Failed to load order details", {
+          description: err.message || "Please try again later.",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrder();
+  }, [orderId]);
 
   const handleNextOrder = () => {
-    if (currentOrder < orderData.totalOrders) {
+    // Placeholder – in real implementation this would fetch next order
+    if (currentOrder < 84) {
+      // using your mock totalOrders
       setCurrentOrder(currentOrder + 1);
-      // In a real app, fetch next order data here
     }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center p-6">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-5 w-full mt-14 md:mt-0 max-w-3xl opacity-0">
+          <span>Orders</span>
+          <span>/</span>
+          <span className="text-gray-900 font-medium">...</span>
+        </div>
+        <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0 gap-0 animate-pulse">
+          {/* Header skeleton */}
+          <CardHeader className="pb-4 mb-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-gray-200 rounded-lg" />
+              <div className="space-y-2">
+                <div className="h-6 w-24 bg-gray-200 rounded" />
+                <div className="h-7 w-40 bg-gray-200 rounded" />
+                <div className="h-4 w-32 bg-gray-200 rounded" />
+              </div>
+            </div>
+          </CardHeader>
+
+          {/* Accordion skeleton */}
+          <div className="mb-4">
+            <div className="px-6 bg-gray-50 h-12 flex items-center">
+              <div className="h-5 w-40 bg-gray-200 rounded" />
+            </div>
+            <div className="px-6 pt-6 pb-8 space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="h-4 w-24 bg-gray-200 rounded" />
+                    <div className="h-5 w-32 bg-gray-200 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Separator className="mb-4" />
+
+          {/* Customer's Order skeleton */}
+          <div className="p-6 mb-4 space-y-6">
+            <div className="h-7 w-40 bg-gray-200 rounded" />
+            <div className="h-5 w-56 bg-gray-200 rounded" />
+            <div className="space-y-5">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex justify-between items-start">
+                  <div className="space-y-2">
+                    <div className="h-5 w-48 bg-gray-200 rounded" />
+                    <div className="h-4 w-32 bg-gray-200 rounded" />
+                  </div>
+                  <div className="h-5 w-20 bg-gray-200 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <hr className="border-dashed" />
+
+          {/* Summary skeleton */}
+          <div className="p-6 bg-gray-50 py-9 space-y-6">
+            <div className="h-7 w-32 bg-gray-200 rounded" />
+            <div className="space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex justify-between">
+                  <div className="h-5 w-32 bg-gray-200 rounded" />
+                  <div className="h-5 w-24 bg-gray-200 rounded" />
+                </div>
+              ))}
+              <div className="h-px bg-gray-200 my-2" />
+              <div className="flex justify-between">
+                <div className="h-6 w-40 bg-gray-200 rounded" />
+                <div className="h-6 w-28 bg-gray-200 rounded" />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer skeleton */}
+          <div className="rounded-b-3xl px-6 py-4 flex justify-between items-center">
+            <div className="h-5 w-40 bg-gray-200 rounded" />
+            <div className="h-10 w-32 bg-gray-200 rounded" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="min-h-screen flex flex-col items-center p-6">
+        <div className="w-full max-w-3xl text-center py-20 text-gray-500">
+          Order not found
+        </div>
+      </div>
+    );
+  }
+
+  // Map API data to your UI-friendly structure
+  const displayData = {
+    id: order.orderCode,
+    status: order.status.replace(/_/g, " "),
+    orderedDate: new Date(order.placedAt).toLocaleDateString(),
+    orderDate: new Date(order.placedAt).toLocaleString(),
+    totalPrice: `₦${order.totals.total.toLocaleString()}`,
+    paymentOption: order.payment?.channel || "N/A",
+    orderChannel: order.orderChannel || "N/A",
+    processedBy: order.processedBy || "N/A",
+    customerName: `${order.customer?.name || "N/A"}`,
+    itemsCount: order.items.length,
+    items: order.items.map((item: any) => ({
+      quantity: `${item.quantity}x`,
+      name: item.name,
+      variant: "", // API doesn't provide variant – add if available later
+      price: `₦${item.total.toLocaleString()}`,
+      image: item.imageUrl,
+    })),
+    summary: {
+      paperBagCost: "N0.00", // not in API – placeholder
+      deliveryFee: `₦${order.totals.deliveryFee?.toLocaleString() || "0"}`,
+      serviceFee: `₦${order.totals.charges?.toLocaleString() || "0"}`,
+      estimatedProduct: `₦${order.totals.subtotal.toLocaleString()}`,
+      estimatedTotal: `₦${order.totals.total.toLocaleString()}`,
+    },
+    currentOrderIndex: currentOrder,
+    totalOrders: 84, // placeholder – adjust when you have real total
+    image: order.items[0]?.imageUrl || "/images/foods/egusi.png",
   };
 
   return (
@@ -76,47 +248,56 @@ export default function OrderDetailsPage() {
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-5 w-full mt-14 md:mt-0 max-w-3xl">
         <Link href="/restaurant/orders">Orders</Link>
         <span>/</span>
-        <span className="text-gray-900 font-medium">{orderData.id}</span>
+        <span className="text-gray-900 font-medium">{displayData.id}</span>
       </div>
       <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0 gap-0">
         {/* Header */}
         <CardHeader className="pb-4 mb-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
-              <Image
-                src={orderData.image} // Placeholder image
+              <img
+                src={displayData.image}
                 alt="Order item"
                 width={64}
                 height={64}
                 className="object-cover"
+                crossOrigin="anonymous"
               />
             </div>
             <div>
               <Badge
                 className={cn(
                   "rounded px-4 py-1 mb-1",
-                  orderData.status === "Completed" &&
+                  displayData.status.toLowerCase().includes("complete") &&
                     "bg-green-100 text-green-500 border border-green-200",
-                  orderData.status === "Pending" &&
+                  displayData.status.toLowerCase().includes("pending") &&
                     "bg-blue-100 text-blue-500 border border-blue-200",
-                  orderData.status === "Cancelled" &&
-                    "bg-red-100 text-red-400 border border-red-200"
+                  (displayData.status.toLowerCase().includes("cancel") ||
+                    displayData.status.toLowerCase().includes("return")) &&
+                    "bg-red-100 text-red-400 border border-red-200",
+                  displayData.status.toLowerCase().includes("prepar") &&
+                    "bg-yellow-100 text-yellow-700 border border-yellow-200",
                 )}
               >
-                {orderData.status}
+                {displayData.status}
               </Badge>
               <h2 className="text-xl font-bold text-gray-900">
-                Order {orderData.id}
+                Order {displayData.id}
               </h2>
               <p className="text-sm text-gray-500">
-                Ordered on {orderData.orderedDate}
+                Ordered on {displayData.orderedDate}
               </p>
             </div>
           </div>
         </CardHeader>
 
         {/* Order Information Accordion */}
-        <Accordion className="mb-4" type="single" collapsible defaultValue="item-1">
+        <Accordion
+          className="mb-4"
+          type="single"
+          collapsible
+          defaultValue="item-1"
+        >
           <AccordionItem value="item-1">
             <AccordionTrigger className="px-6 bg-gray-50 rounded-none mb-2">
               <div className="flex items-center gap-2">
@@ -129,37 +310,37 @@ export default function OrderDetailsPage() {
                 <div>
                   <p className="text-gray-500">Order Date</p>
                   <p className="font-medium text-gray-900">
-                    {orderData.orderDate}
+                    {displayData.orderDate}
                   </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Total Price</p>
                   <p className="font-medium text-gray-900">
-                    {orderData.totalPrice}
+                    {displayData.totalPrice}
                   </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Payment Option</p>
                   <p className="font-medium text-gray-900">
-                    {orderData.paymentOption}
+                    {displayData.paymentOption}
                   </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Order Channel</p>
                   <p className="font-medium text-gray-900">
-                    {orderData.orderChannel}
+                    {displayData.orderChannel}
                   </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Processed By</p>
                   <p className="font-medium text-gray-900">
-                    {orderData.processedBy}
+                    {displayData.processedBy}
                   </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Customer's Name</p>
                   <p className="font-medium text-gray-900">
-                    {orderData.customerName}
+                    {displayData.customerName}
                   </p>
                 </div>
               </div>
@@ -175,16 +356,19 @@ export default function OrderDetailsPage() {
             Customer's Order
           </h3>
           <p className="text-sm text-gray-600 mb-4">
-            {orderData.itemsCount} product from Store 4
+            {displayData.itemsCount} product
+            {displayData.itemsCount !== 1 ? "s" : ""} from Store
           </p>
           <div className="space-y-4">
-            {orderData.items.map((item, index) => (
+            {displayData.items.map((item: any, index: number) => (
               <div key={index} className="flex justify-between items-start">
                 <div>
                   <p className="font-medium text-gray-900">
                     {item.quantity} {item.name}
                   </p>
-                  <p className="text-sm text-gray-500">{item.variant}</p>
+                  {item.variant && (
+                    <p className="text-sm text-gray-500">{item.variant}</p>
+                  )}
                 </div>
                 <p className="font-medium text-gray-900">{item.price}</p>
               </div>
@@ -198,34 +382,28 @@ export default function OrderDetailsPage() {
           <h3 className="text-lg font-bold text-gray-900 mb-4">Summary</h3>
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-600">Paper bag cost:</span>
+              <span className="text-gray-600">Items subtotal:</span>
               <span className="font-medium text-gray-900">
-                {orderData.summary.paperBagCost}
+                {displayData.summary.estimatedProduct}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Delivery fee:</span>
               <span className="font-medium text-gray-900">
-                {orderData.summary.deliveryFee}
+                {displayData.summary.deliveryFee}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Service fee:</span>
+              <span className="text-gray-600">Packaging Fee:</span>
               <span className="font-medium text-gray-900">
-                {orderData.summary.serviceFee}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Estimated product:</span>
-              <span className="font-medium text-gray-900">
-                {orderData.summary.estimatedProduct}
+                {displayData.summary.serviceFee}
               </span>
             </div>
             <Separator className="my-2" />
             <div className="flex justify-between text-base font-bold">
               <span className="text-gray-900">Estimated total:</span>
               <span className="text-gray-900">
-                {orderData.summary.estimatedTotal}
+                {displayData.summary.estimatedTotal}
               </span>
             </div>
           </div>
@@ -234,9 +412,9 @@ export default function OrderDetailsPage() {
         {/* Footer */}
         <div className="rounded-b-3xl px-6 py-4 flex justify-between items-center">
           <p className="text-sm text-gray-600">
-            Order {currentOrder} of {orderData.totalOrders}
+            Order {displayData.currentOrderIndex} of {displayData.totalOrders}
           </p>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" onClick={handleNextOrder}>
             Next Order
             <ChevronRight className="h-4 w-4" />
           </Button>

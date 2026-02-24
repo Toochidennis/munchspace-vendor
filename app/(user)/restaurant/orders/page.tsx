@@ -1,13 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Settings,
-  Settings2,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -30,88 +24,180 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { toast } from "sonner";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { refreshAccessToken } from "@/app/lib/api";
 
-// Mock data for different periods
-const mockData = {
-  last30: {
-    orders: Array.from({ length: 64 }, (_, i) => ({
-      id: `45DF${String(100 + i).padStart(3, "0")}`,
-      date: `Aug ${21 - Math.floor(i / 10)}, 2024 3:25 PM`,
-      price: Math.floor(Math.random() * 3000 + 500),
-      status: ["Completed", "Pending", "Cancelled"][
-        Math.floor(Math.random() * 3)
-      ] as "Completed" | "Pending" | "Cancelled",
-    })),
-  },
-  last7: {
-    orders: Array.from({ length: 25 }, (_, i) => ({
-      id: `45DF${String(200 + i).padStart(3, "0")}`,
-      date: `Aug ${18 + i}, 2024 2:45 PM`,
-      price: Math.floor(Math.random() * 2500 + 800),
-      status: ["Completed", "Pending", "Cancelled"][
-        Math.floor(Math.random() * 3)
-      ] as "Completed" | "Pending" | "Cancelled",
-    })),
-  },
-  today: {
-    orders: Array.from({ length: 12 }, (_, i) => ({
-      id: `45DF${String(300 + i).padStart(3, "0")}`,
-      date: `Aug 21, 2024 ${11 + i}:00 AM`,
-      price: Math.floor(Math.random() * 2000 + 600),
-      status: ["Completed", "Pending", "Cancelled"][
-        Math.floor(Math.random() * 3)
-      ] as "Completed" | "Pending" | "Cancelled",
-    })),
-  },
+// ────────────────────────────────────────────────
+//  Auth / Fetch utilities (assumed to exist)
+// ────────────────────────────────────────────────
+ // ← replace with real value / context
+
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+
+  return response;
+}
+
+// ────────────────────────────────────────────────
+//  Types
+// ────────────────────────────────────────────────
+type Order = {
+  orderId: string;
+  orderCode: string;
+  placedAt: string;
+  status: string;
+  totalAmount: number;
 };
 
-type StatusFilter = "all" | "pending" | "completed" | "cancelled";
+type StatusFilter = "all" | "pending" | "preparing" | "completed" | "cancelled";
 
-const itemsPerPageOptions = [10, 20, 50];
+const rangeMap: Record<string, string> = {
+  last30: "last_30_days",
+  last7: "last_7_days",
+  today: "today",
+};
 
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
 export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [period, setPeriod] = useState<"last30" | "last7" | "today">("last30");
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showSearchMobile, setShowSearchMobile] = useState(false);
 
-  const currentOrders = mockData[period].orders;
-
-  // Filter by status and search term
-  const filteredOrders = currentOrders.filter((order) => {
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "pending" && order.status === "Pending") ||
-      (statusFilter === "completed" && order.status === "Completed") ||
-      (statusFilter === "cancelled" && order.status === "Cancelled");
-
-    const matchesSearch = order.id
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-
-    return matchesStatus && matchesSearch;
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [counts, setCounts] = useState<Record<StatusFilter | "all", number>>({
+    all: 0,
+    pending: 0,
+    preparing: 0,
+    completed: 0,
+    cancelled: 0,
   });
 
-  // Counts for tabs
-  const counts = {
-    all: currentOrders.length,
-    pending: currentOrders.filter((o) => o.status === "Pending").length,
-    completed: currentOrders.filter((o) => o.status === "Completed").length,
-    cancelled: currentOrders.filter((o) => o.status === "Cancelled").length,
-  };
+  const [loading, setLoading] = useState(true);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedOrders = filteredOrders.slice(
-    startIndex,
-    startIndex + itemsPerPage
-  );
+  useEffect(() => {
+    const BUSINESS_ID = getBusinessId();
+    const fetchOrders = async () => {
+      setLoading(true);
+
+      try {
+        const apiPeriod = rangeMap[period] || "last_30_days";
+
+        let apiGroup: string;
+        switch (statusFilter) {
+          case "all":
+            apiGroup = "all";
+            break;
+          case "pending":
+            apiGroup = "pending";
+            break;
+          case "preparing":
+            apiGroup = "preparing"; // adjust if backend uses different key
+            break;
+          case "completed":
+            apiGroup = "completed";
+            break;
+          case "cancelled":
+            apiGroup = "returned"; // most common naming seen in your example
+            break;
+          default:
+            apiGroup = "all";
+        }
+
+        const query = new URLSearchParams({
+          range: apiPeriod,
+          page: currentPage.toString(),
+          limit: itemsPerPage.toString(),
+          group: apiGroup,
+        });
+
+        const url = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders?${query}`;
+
+        const response = await authenticatedFetch(url);
+
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const json = await response.json();
+
+        if (!json.success || !json.data) {
+          throw new Error("Invalid API response format");
+        }
+
+        const apiData = json.data;
+
+        setOrders(apiData.data || []);
+        setTotalItems(apiData.total || 0);
+
+        const groups = apiData.groups || {};
+        setCounts({
+          all: groups.all || 0,
+          pending: groups.pending || 0,
+          preparing: groups.preparing || 0,
+          completed: groups.completed || 0,
+          cancelled: groups.returned || 0,
+        });
+      } catch (err: any) {
+        toast.error("Failed to load orders", {
+          description: err.message || "Please try again later.",
+        });
+        setOrders([]);
+        setTotalItems(0);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, [period, statusFilter, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
   };
 
   const handleItemsPerPageChange = (value: string) => {
@@ -127,46 +213,84 @@ export default function OrdersPage() {
     const pages: (number | string)[] = [];
 
     if (currentPage <= 5) {
-      for (let i = 1; i <= 5; i++) {
-        pages.push(i);
-      }
+      for (let i = 1; i <= 5; i++) pages.push(i);
       if (totalPages > 5) {
         pages.push("...");
         pages.push(totalPages);
       }
     } else if (currentPage > 5 && currentPage < totalPages) {
-      pages.push(1);
-      pages.push("...");
-      pages.push(currentPage - 1, currentPage, currentPage + 1);
-      pages.push("...");
-      pages.push(totalPages);
+      pages.push(
+        1,
+        "...",
+        currentPage - 1,
+        currentPage,
+        currentPage + 1,
+        "...",
+        totalPages,
+      );
     } else {
-      for (let i = 1; i <= 5; i++) {
-        pages.push(i);
+      for (let i = totalPages - 4; i <= totalPages; i++) {
+        if (i > 0) pages.push(i);
       }
-      pages.push("...");
-      pages.push(totalPages);
+      if (totalPages > 5) {
+        pages.unshift("...");
+        pages.unshift(1);
+      }
     }
 
     return pages;
   };
 
+  // Skeleton row for desktop table
+  const SkeletonRow = () => (
+    <TableRow>
+      <TableCell className="ps-4 py-8">
+        <div className="h-5 w-28 bg-gray-200 rounded animate-pulse" />
+      </TableCell>
+      <TableCell className="py-8">
+        <div className="h-5 w-40 bg-gray-200 rounded animate-pulse" />
+      </TableCell>
+      <TableCell className="py-8">
+        <div className="h-5 w-20 bg-gray-200 rounded animate-pulse" />
+      </TableCell>
+      <TableCell className="py-8">
+        <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" />
+      </TableCell>
+      <TableCell className="text-right py-8">
+        <div className="h-9 w-28 bg-gray-200 rounded animate-pulse ml-auto" />
+      </TableCell>
+    </TableRow>
+  );
+
+  // Skeleton card for mobile view
+  const SkeletonMobileCard = () => (
+    <div className="border-b border-gray-100 p-4 px-0 flex justify-between items-center">
+      <div className="flex flex-col mb-2 gap-2">
+        <div className="h-5 w-16 bg-gray-200 rounded animate-pulse" />
+        <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" />
+      </div>
+      <div className="text-right space-y-2">
+        <div className="h-4 w-32 bg-gray-200 rounded animate-pulse ml-auto" />
+        <div className="h-7 w-20 bg-gray-200 rounded animate-pulse ml-auto" />
+        <div className="h-4 w-24 bg-gray-200 rounded animate-pulse ml-auto" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header + filters */}
         <div className="flex justify-between items-center mb-8 md:mb-15">
           <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
-          {/* Search and Period Filter */}
-          <div className="md:flex items-center hidden  gap-6">
+
+          <div className="md:flex items-center hidden gap-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <Input
                 placeholder="Search by Order ID"
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-80"
               />
             </div>
@@ -188,16 +312,18 @@ export default function OrdersPage() {
               </SelectContent>
             </Select>
           </div>
+
           <div
             onClick={() => setShowSearchMobile(!showSearchMobile)}
             className={cn(
               "border border-gray-300 items-center md:hidden rounded-lg p-2 w-15 h-12 text-slate-800 flex justify-center",
-              showSearchMobile && "bg-munchprimary text-white"
+              showSearchMobile && "bg-munchprimary text-white",
             )}
           >
-            <Settings2 className="" />
+            <Settings2 />
           </div>
         </div>
+
         {showSearchMobile && (
           <div className="flex flex-col items-center gap-3">
             <div className="relative flex-1 w-full">
@@ -205,10 +331,7 @@ export default function OrdersPage() {
               <Input
                 placeholder="Search by Order ID"
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full h-12"
               />
             </div>
@@ -231,18 +354,19 @@ export default function OrdersPage() {
             </Select>
           </div>
         )}
+
         {/* Tabs */}
-        <div className="flex items-center gap-8 border-b border-gray-200">
+        <div className="flex items-center gap-8 border-b border-gray-200 overflow-x-auto pb-1">
           <button
             onClick={() => {
               setStatusFilter("all");
               setCurrentPage(1);
             }}
             className={cn(
-              "pb-2 border-b-4 transition-colors",
+              "pb-2 border-b-4 transition-colors whitespace-nowrap",
               statusFilter === "all"
                 ? "text-orange-600 border-orange-600"
-                : "text-gray-600 border-transparent hover:text-gray-900"
+                : "text-gray-600 border-transparent hover:text-gray-900",
             )}
           >
             All Orders ({counts.all})
@@ -253,13 +377,27 @@ export default function OrdersPage() {
               setCurrentPage(1);
             }}
             className={cn(
-              "pb-2 border-b-4 transition-colors",
+              "pb-2 border-b-4 transition-colors whitespace-nowrap",
               statusFilter === "pending"
                 ? "text-orange-600 border-orange-600"
-                : "text-gray-600 border-transparent hover:text-gray-900"
+                : "text-gray-600 border-transparent hover:text-gray-900",
             )}
           >
             Pending ({counts.pending})
+          </button>
+          <button
+            onClick={() => {
+              setStatusFilter("preparing");
+              setCurrentPage(1);
+            }}
+            className={cn(
+              "pb-2 border-b-4 transition-colors whitespace-nowrap",
+              statusFilter === "preparing"
+                ? "text-orange-600 border-orange-600"
+                : "text-gray-600 border-transparent hover:text-gray-900",
+            )}
+          >
+            Preparing ({counts.preparing})
           </button>
           <button
             onClick={() => {
@@ -267,10 +405,10 @@ export default function OrdersPage() {
               setCurrentPage(1);
             }}
             className={cn(
-              "pb-2 border-b-4 transition-colors",
+              "pb-2 border-b-4 transition-colors whitespace-nowrap",
               statusFilter === "completed"
                 ? "text-orange-600 border-orange-600"
-                : "text-gray-600 border-transparent hover:text-gray-900"
+                : "text-gray-600 border-transparent hover:text-gray-900",
             )}
           >
             Completed ({counts.completed})
@@ -281,145 +419,226 @@ export default function OrdersPage() {
               setCurrentPage(1);
             }}
             className={cn(
-              "pb-2 border-b-4 transition-colors",
+              "pb-2 border-b-4 transition-colors whitespace-nowrap",
               statusFilter === "cancelled"
                 ? "text-orange-600 border-orange-600"
-                : "text-gray-600 border-transparent hover:text-gray-900"
+                : "text-gray-600 border-transparent hover:text-gray-900",
             )}
           >
             Cancelled ({counts.cancelled})
           </button>
         </div>
 
-        {/* Table */}
+        {/* Table / List */}
         <Card className="border-0 shadow-none p-0">
-          <div className="hidden md:block w-full">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-100">
-                  <TableHead
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                    className="text-gray-700 font-medium ps-4"
-                  >
-                    Order ID
-                  </TableHead>
-                  <TableHead
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                    className="text-gray-700 font-medium"
-                  >
-                    Order Date
-                  </TableHead>
-                  <TableHead
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                    className="text-gray-700 font-medium"
-                  >
-                    ₦ Total Price
-                  </TableHead>
-                  <TableHead
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                    className="text-gray-700 font-medium"
-                  >
-                    Status
-                  </TableHead>
-                  <TableHead
-                    style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                    className="text-gray-700 font-medium"
-                  ></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedOrders.map((order) => (
-                  <TableRow
-                    key={order.id}
-                    style={{ paddingTop: "10px", paddingBottom: "10px" }}
-                    className="font-medium border-gray-100 text-base hover:bg-white"
-                  >
-                    <TableCell
-                      className="ps-4"
-                      style={{ paddingTop: "25px", paddingBottom: "25px" }}
-                    >
-                      #{order.id}
-                    </TableCell>
-                    <TableCell
-                      style={{ paddingTop: "25px", paddingBottom: "25px" }}
-                    >
-                      {order.date}
-                    </TableCell>
-                    <TableCell
-                      style={{ paddingTop: "25px", paddingBottom: "25px" }}
-                    >
-                      ₦{order.price}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={cn(
-                          "rounded px-4 py-1.5",
-                          order.status === "Completed" &&
-                            "bg-green-100 text-green-500 border border-green-200",
-                          order.status === "Pending" &&
-                            "bg-blue-100 text-blue-500 border border-blue-200",
-                          order.status === "Cancelled" &&
-                            "bg-red-100 text-red-400 border border-red-200"
-                        )}
+          {loading ? (
+            <>
+              {/* Desktop skeleton */}
+              <div className="hidden md:block w-full">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-100">
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium ps-4"
                       >
-                        {order.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/restaurant/orders/${order.id}`}>
-                        <Button variant="outline" className="border-gray-200">
-                          View Details
-                        </Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                        Order ID
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      >
+                        Order Date
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      >
+                        ₦ Total Price
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      >
+                        Status
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <SkeletonRow key={i} />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
-          {/* Mobile View */}
-          <div className="md:hidden border p-1 px-2 rounded">
-            {paginatedOrders.map((order, index) => (
-              <Link key={order.id} href={`/restaurant/orders/${order.id}`}>
-                <div
-                  className={cn(
-                    "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50", paginatedOrders.length - 1 === index && "border-0"
-                  )}
-                >
-                  <div className="flex flex-col mb-2">
-                    <span
+              {/* Mobile skeleton */}
+              <div className="md:hidden border p-1 px-2 rounded space-y-0">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <SkeletonMobileCard key={i} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Desktop view */}
+              <div className="hidden md:block w-full">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-100">
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium ps-4"
+                      >
+                        Order ID
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      >
+                        Order Date
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      >
+                        ₦ Total Price
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      >
+                        Status
+                      </TableHead>
+                      <TableHead
+                        style={{ paddingTop: "15px", paddingBottom: "15px" }}
+                        className="text-gray-700 font-medium"
+                      />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orders.map((order) => (
+                      <TableRow
+                        key={order.orderId}
+                        style={{ paddingTop: "10px", paddingBottom: "10px" }}
+                        className="font-medium border-gray-100 text-base hover:bg-white"
+                      >
+                        <TableCell
+                          className="ps-4"
+                          style={{ paddingTop: "25px", paddingBottom: "25px" }}
+                        >
+                          {order.orderCode}
+                        </TableCell>
+                        <TableCell
+                          style={{ paddingTop: "25px", paddingBottom: "25px" }}
+                        >
+                          {new Date(order.placedAt).toLocaleString()}
+                        </TableCell>
+                        <TableCell
+                          style={{ paddingTop: "25px", paddingBottom: "25px" }}
+                        >
+                          ₦{order.totalAmount.toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={cn(
+                              "rounded px-4 py-1.5",
+                              order.status.toLowerCase().includes("pending") &&
+                                "bg-blue-100 text-blue-500 border border-blue-200",
+                              order.status
+                                .toLowerCase()
+                                .includes("preparing") &&
+                                "bg-yellow-100 text-yellow-700 border border-yellow-200",
+                              order.status
+                                .toLowerCase()
+                                .includes("completed") &&
+                                "bg-green-100 text-green-500 border border-green-200",
+                              (order.status.toLowerCase().includes("cancel") ||
+                                order.status
+                                  .toLowerCase()
+                                  .includes("return")) &&
+                                "bg-red-100 text-red-400 border border-red-200",
+                            )}
+                          >
+                            {order.status.replace(/_/g, " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/restaurant/orders/${order.orderId}`}>
+                            <Button
+                              variant="outline"
+                              className="border-gray-200"
+                            >
+                              View Details
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile view */}
+              <div className="md:hidden border p-1 px-2 rounded">
+                {orders.map((order, index) => (
+                  <Link
+                    key={order.orderId}
+                    href={`/restaurant/orders/${order.orderId}`}
+                  >
+                    <div
                       className={cn(
-                        "py-1.5",
-                        order.status === "Completed" && "text-green-500",
-                        order.status === "Pending" && "text-blue-500",
-                        order.status === "Cancelled" && "text-red-400"
+                        "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50",
+                        orders.length - 1 === index && "border-0",
                       )}
                     >
-                      {order.status}
-                    </span>
-                    <span className="font-medium">#{order.id}</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-gray-600 mb-2 text-sm">{order.date}</p>
-                    <p className="text-gray-900 font-semibold text-xl mb-2">
-                      N{order.price}
-                    </p>
-                    <p className="text-gray-600 mb-2 text-xs">
-                      order channel: Store
-                    </p>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                      <div className="flex flex-col mb-2">
+                        <span
+                          className={cn(
+                            "py-1.5 font-medium",
+                            order.status.toLowerCase().includes("pending") &&
+                              "text-blue-500",
+                            order.status.toLowerCase().includes("preparing") &&
+                              "text-yellow-600",
+                            order.status.toLowerCase().includes("completed") &&
+                              "text-green-500",
+                            (order.status.toLowerCase().includes("cancel") ||
+                              order.status.toLowerCase().includes("return")) &&
+                              "text-red-400",
+                          )}
+                        >
+                          {order.status.replace(/_/g, " ")}
+                        </span>
+                        <span className="font-medium">{order.orderCode}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-gray-600 mb-2 text-sm">
+                          {new Date(order.placedAt).toLocaleString()}
+                        </p>
+                        <p className="text-gray-900 font-semibold text-xl mb-2">
+                          ₦{order.totalAmount.toLocaleString()}
+                        </p>
+                        <p className="text-gray-600 mb-2 text-xs">
+                          order channel: Store
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </Card>
 
         {/* Pagination */}
-        {paginatedOrders.length > 0 && (
+        {totalItems > 0 && !loading && (
           <div className="flex items-center justify-center mx-2 gap-5 text-sm">
             <p className="text-gray-600 hidden md:block">
-              Total <span>{filteredOrders.length}</span> items
+              Total <span>{totalItems}</span> items
             </p>
 
             <div className="flex items-center gap-2 md:gap-4">
@@ -448,7 +667,7 @@ export default function OrdersPage() {
                         className={cn(
                           "min-w-8 md:min-w-10",
                           currentPage === page &&
-                            "bg-orange-500 hover:bg-orange-600 text-white"
+                            "bg-orange-500 hover:bg-orange-600 text-white",
                         )}
                       >
                         {page}

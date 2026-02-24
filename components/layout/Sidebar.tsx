@@ -36,7 +36,7 @@ const API_KEY =
   "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 
 export default function RestaurantSidebar() {
-  const { storeImage, address } = useStore();
+  const { storeImage, address, isPublished, isPublishLoading } = useStore();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileCollapsed, setMobileCollapsed] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
@@ -49,12 +49,6 @@ export default function RestaurantSidebar() {
   const pathname = usePathname();
 
   const managementItems = [
-    {
-      icon: BellRing,
-      label: "Setup Guides",
-      href: "/restaurant/setup-guides",
-      active: pathname.startsWith("/restaurant/setup-guides"),
-    },
     {
       icon: LayoutDashboard,
       label: "Dashboard",
@@ -175,6 +169,28 @@ export default function RestaurantSidebar() {
             </p>
           )}
           <ul className="space-y-1">
+            {!isPublishLoading && !isPublished && (
+              <Link
+                href="/restaurant/setup-guides"
+                className="block"
+                key="Setup Guides"
+              >
+                <button
+                  className={cn(
+                    "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3 cursor-pointer",
+                    collapsed && "justify-center px-0",
+                    pathname.startsWith("/restaurant/setup-guides")
+                      ? "bg-black/13"
+                      : "hover:bg-black/10",
+                  )}
+                >
+                  <BellRing className="h-5 w-5 shrink-0" />
+                  {!collapsed && (
+                    <span className="text-sm">"Setup Guides"</span>
+                  )}
+                </button>
+              </Link>
+            )}
             {managementItems.map((item) => (
               <Link href={item.href} className="block" key={item.label}>
                 <button
