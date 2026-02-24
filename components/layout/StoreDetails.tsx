@@ -609,8 +609,6 @@ const StoreDetails = () => {
       toast.error("Could not save changes");
     }
   };
-  const tokennn = getBusinessId();
-  console.log("Access Token in StoreDetails:", tokennn);
 
 
   const onAddressSubmit = async (data: AddressEditValues) => {

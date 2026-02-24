@@ -9,6 +9,7 @@ import {
   Search,
   Wifi,
   Workflow,
+  Loader2,
 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -102,6 +103,9 @@ export default function StorePreview() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("All");
 
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [isSavingImage, setIsSavingImage] = useState(false);
+
   // Fetch preview data on mount
   useEffect(() => {
     const fetchPreview = async () => {
@@ -123,6 +127,7 @@ export default function StorePreview() {
 
         setPreviewData(json.data);
 
+        // Initialize local state with server values
         setStoreName(json.data.business.displayName || "");
         setStoreImage(json.data.business.coverImage || null);
       } catch (err: any) {
@@ -137,6 +142,28 @@ export default function StorePreview() {
     fetchPreview();
   }, []);
 
+  const refreshPreview = async () => {
+    const businessId = getBusinessId();
+    if (!businessId) return;
+
+    try {
+      const url = `${API_BASE}/vendors/me/businesses/${businessId}/preview`;
+      const res = await authenticatedFetch(url);
+      if (!res.ok) return;
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        setPreviewData(json.data);
+        // Update local preview fields only if not currently editing
+        if (!isSavingName) setStoreName(json.data.business.displayName || "");
+        if (!isSavingImage)
+          setStoreImage(json.data.business.coverImage || null);
+      }
+    } catch (err) {
+      // silent fail - don't interrupt user
+    }
+  };
+
   const saveStoreName = async () => {
     if (storeName.trim().length < 3) {
       setNameError("Store name must be at least 3 characters long.");
@@ -148,6 +175,7 @@ export default function StorePreview() {
     const businessId = getBusinessId();
     if (!businessId) return toast.error("Business ID not found");
 
+    setIsSavingName(true);
     try {
       const formData = new FormData();
       formData.append("displayName", storeName.trim());
@@ -157,18 +185,19 @@ export default function StorePreview() {
         { method: "PATCH", body: formData },
       );
 
-      const resData = await res.json();
-      console.log("Update response:", resData);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.message || `HTTP ${res.status}`);
       }
 
       toast.success("Store name updated successfully");
+      await refreshPreview(); // ← reflect real saved value
     } catch (err: any) {
       toast.error("Failed to update store name", {
         description: err.message || "Please try again.",
       });
+    } finally {
+      setIsSavingName(false);
     }
   };
 
@@ -183,11 +212,13 @@ export default function StorePreview() {
     const businessId = getBusinessId();
     if (!businessId) return toast.error("Business ID not found");
 
+    setIsSavingImage(true);
     try {
       const blob = await fetch(storeImage).then((r) => r.blob());
       const file = new File([blob], "cover.jpg", { type: "image/jpeg" });
 
       const formData = new FormData();
+      formData.append("displayName", storeName.trim()); // required by API
       formData.append("coverImage", file);
 
       const res = await authenticatedFetch(
@@ -201,10 +232,13 @@ export default function StorePreview() {
       }
 
       toast.success("Store image updated successfully");
+      await refreshPreview(); // ← reflect real saved value + new URL
     } catch (err: any) {
       toast.error("Failed to update store image", {
         description: err.message || "Please try again.",
       });
+    } finally {
+      setIsSavingImage(false);
     }
   };
 
@@ -349,9 +383,14 @@ export default function StorePreview() {
                 />
                 <Button
                   onClick={saveStoreName}
-                  className="bg-munchprimary text-white hover:bg-munchprimaryDark px-8 h-10"
+                  disabled={isSavingName}
+                  className="bg-munchprimary text-white hover:bg-munchprimaryDark px-8 h-10 w-23"
                 >
-                  Save
+                  {isSavingName ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
                 </Button>
               </div>
               {nameError && (
@@ -377,7 +416,7 @@ export default function StorePreview() {
                       src={storeImage}
                       alt="Store preview"
                       crossOrigin="anonymous"
-                      className="object-cover w-full"
+                      className="object-cover w-full h-full object-center"
                     />
                   ) : (
                     <div className="text-center text-white">
@@ -398,9 +437,14 @@ export default function StorePreview() {
               <div className="flex justify-end mt-4">
                 <Button
                   onClick={saveStoreImage}
-                  className="bg-munchprimary text-white hover:bg-munchprimaryDark px-8 h-10"
+                  disabled={isSavingImage}
+                  className="bg-munchprimary text-white hover:bg-munchprimaryDark px-8 h-10 w-23"
                 >
-                  Save
+                  {isSavingImage ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
                 </Button>
               </div>
             </div>
@@ -433,18 +477,18 @@ export default function StorePreview() {
                     <MoveLeft className="w-4 h-4" />
                   </div>
                   <h1 className="font-bold">
-                    {previewData?.business.displayName || "Your Store Name"}
+                    {storeName || "Your Store Name"} {/* ← live name preview */}
                   </h1>
                   <div className="bg-orange-100 rounded-full p-2">
                     <Search className="w-4 h-4" />
                   </div>
                 </div>
 
-                {/* Store Cover */}
+                {/* Store Cover – live image preview */}
                 <div className="relative h-38 overflow-hidden">
-                  {previewData?.business.coverImage || storeImage ? (
+                  {storeImage || previewData?.business.coverImage ? (
                     <img
-                      src={previewData?.business.coverImage || storeImage || ""}
+                      src={storeImage || previewData?.business.coverImage || ""}
                       alt="Store banner"
                       className="object-cover w-full h-full object-center"
                       crossOrigin="anonymous"
