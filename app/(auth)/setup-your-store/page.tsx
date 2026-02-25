@@ -47,7 +47,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
-import { getAccessToken, setBusinessId } from "@/app/lib/auth";
+import { getAccessToken, hasBusiness, setBusinessId } from "@/app/lib/auth";
 
 const setupSchema = z.object({
   storeImage: z.any().optional(), // not used in form, just for type safety
@@ -115,7 +115,6 @@ export default function SetupStorePage() {
 
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
   const [brandTypeOpen, setBrandTypeOpen] = useState(false);
-  const [serviceOperationOpen, setServiceOperationOpen] = useState(false);
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
   const [businessTypes, setBusinessTypes] = useState<Option[]>([]);
@@ -123,6 +122,18 @@ export default function SetupStorePage() {
   const [serviceOperations, setServiceOperations] = useState<Option[]>([]);
   const [metaLoading, setMetaLoading] = useState(true);
   const [metaError, setMetaError] = useState("");
+  const [nigeriaData, setNigeriaData] = useState<{
+    country: { id: string; code: string; name: string };
+    states: { id: string; code: string; name: string }[];
+  } | null>(null);
+  const [statesLoading, setStatesLoading] = useState(true);
+  const [statesError, setStatesError] = useState("");
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [stateOpen, setStateOpen] = useState(false);
+  const [lgas, setLgas] = useState<Option[]>([]);
+  const [lgasLoading, setLgasLoading] = useState(false);
+  const [lgasError, setLgasError] = useState("");
+  const [lgaOpen, setLgaOpen] = useState(false);
 
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [marker, setMarker] = useState<google.maps.Marker | null>(null);
@@ -146,7 +157,7 @@ export default function SetupStorePage() {
       phoneNumber: "",
       description: "",
       socialLink: "", // ← Critical fix: always string, never undefined
-      country: "",
+      country: "Nigeria",
       state: "",
       lga: "",
       streetName: "",
@@ -174,7 +185,7 @@ export default function SetupStorePage() {
       setMetaLoading(true);
       setMetaError("");
       try {
-        const [btRes, brRes, soRes] = await Promise.all([
+        const [btRes, brRes, soRes, nigeriaRes] = await Promise.all([
           fetch(`${API_BASE}/meta/business-types`, {
             headers: { "x-api-key": API_KEY },
           }),
@@ -184,11 +195,15 @@ export default function SetupStorePage() {
           fetch(`${API_BASE}/meta/service-operations`, {
             headers: { "x-api-key": API_KEY },
           }),
+          fetch(`${API_BASE}/meta/nigeria-states`, {
+            headers: { "x-api-key": API_KEY },
+          }),
         ]);
 
         let btData: any = [];
         let brData: any = [];
         let soData: any = [];
+        let nigeriaJson: any = null;
 
         if (btRes.ok) {
           const json = await btRes.json();
@@ -205,6 +220,12 @@ export default function SetupStorePage() {
           soData = Array.isArray(json) ? json : json.data || json.items || [];
         }
 
+        if (nigeriaRes.ok) {
+          const nigeriaR = await nigeriaRes.json();
+          nigeriaJson = nigeriaR.data;
+          console.log("Nigeria data:", nigeriaJson);
+        }
+
         const normalize = (arr: any[]) =>
           arr.map((item) => ({
             value: String(item.id),
@@ -214,18 +235,102 @@ export default function SetupStorePage() {
         setBusinessTypes(normalize(btData));
         setBrandTypes(normalize(brData));
         setServiceOperations(normalize(soData));
+
+        if (nigeriaJson?.country && Array.isArray(nigeriaJson.states)) {
+          setNigeriaData(nigeriaJson);
+        } else {
+          setStatesError("Failed to load Nigerian states.");
+        }
       } catch (err: any) {
         console.error("Meta fetch error:", err);
         setMetaError(
           "Failed to load business types, brand types or service operations.",
         );
+        setStatesError("Failed to load Nigerian states.");
       } finally {
         setMetaLoading(false);
+        setStatesLoading(false);
       }
     }
 
     fetchMeta();
   }, []);
+
+  useEffect(() => {
+    const selectedStateId = form.watch("state");
+
+    // Immediately reset everything when state changes
+    form.setValue("lga", "");
+    setLgas([]);
+    setLgasError("");
+    setLgasLoading(true); // show loading right away
+
+    if (!selectedStateId || !nigeriaData?.states) {
+      setLgasLoading(false);
+      return;
+    }
+
+    // We'll use this to detect if this is still the relevant fetch
+    let isCurrent = true;
+
+    async function loadLgas() {
+      try {
+        const selectedState = nigeriaData?.states.find(
+          (s) => s.id === selectedStateId,
+        );
+        if (!selectedState) throw new Error("State not found");
+
+        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(selectedState.id)}&stateCode=${encodeURIComponent(selectedState.code)}`;
+
+        const response = await fetch(url, {
+          headers: { "x-api-key": API_KEY },
+        });
+
+        if (!isCurrent) return; // ← prevent stale update
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const json = await response.json();
+
+        const rawArray = Array.isArray(json)
+          ? json
+          : (json.data ?? json.lgas ?? json.items ?? []);
+
+        const normalized = rawArray
+          .map((item: any) => ({
+            value: String(item.id || item.lgaId || item.code || ""),
+            label: item.name || item.lgaName || item.label || String(item),
+          }))
+          .filter((opt:any) => opt.value && opt.label.trim());
+
+        if (!isCurrent) return;
+
+        setLgas(normalized);
+        setLgasError(""); // explicitly clear on success
+
+        if (normalized.length === 1) {
+          form.setValue("lga", normalized[0].value);
+        }
+      } catch (err) {
+        if (!isCurrent) return;
+        console.error("LGA fetch failed:", err);
+        setLgasError("Could not load LGAs for the selected state.");
+      } finally {
+        if (isCurrent) {
+          setLgasLoading(false);
+        }
+      }
+    }
+
+    loadLgas();
+
+    // Cleanup: mark previous fetches as stale
+    return () => {
+      isCurrent = false;
+    };
+  }, [form.watch("state"), nigeriaData]);
 
   useEffect(() => {
     if (step !== 4) return;
@@ -397,9 +502,9 @@ export default function SetupStorePage() {
         });
 
         const addressObj = {
-          country: values.country,
-          state: values.state,
-          lga: values.lga,
+          countryId: nigeriaData?.country?.id || "",
+          stateId: values.state,
+          lgaId: values.lga,
           streetName: values.streetName,
           city: values.city,
           postalCode: values.postalCode || null,
@@ -427,6 +532,7 @@ export default function SetupStorePage() {
 
         if (response.ok) {
           setBusinessId(feedback.data.businessId)
+          hasBusiness(true);
           toast.success("Store created successfully!", {
             description: "Redirecting to dashboard...",
             duration: 3000,
@@ -950,10 +1056,7 @@ export default function SetupStorePage() {
                               Service Operation{" "}
                               <span className="text-munchred">*</span>
                             </FormLabel>
-                            <Popover
-                              open={serviceOperationOpen}
-                              onOpenChange={setServiceOperationOpen}
-                            >
+                            <Popover>
                               <PopoverTrigger asChild>
                                 <FormControl>
                                   <Button
@@ -1008,7 +1111,7 @@ export default function SetupStorePage() {
                                               option.value,
                                             ]);
                                           }
-                                          setServiceOperationOpen(false);
+                                          // setServiceOperationOpen(false);
                                         }}
                                       >
                                         <Check
@@ -1194,64 +1297,201 @@ export default function SetupStorePage() {
 
                   <div id="map" className="h-64 w-full rounded-lg border"></div>
 
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <FormField
-                      control={form.control}
-                      name="country"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-normal text-slate-500">
-                            Country <span className="text-munchred">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Nigeria"
-                              className="h-12 placeholder:text-slate-400"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <FormField
+                    control={form.control}
+                    name="country"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-normal text-slate-500">
+                          Country <span className="text-munchred">*</span>
+                        </FormLabel>
+                        <Popover
+                          open={countryOpen}
+                          onOpenChange={setCountryOpen}
+                        >
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className="w-full justify-between h-12 font-normal"
+                                disabled={true} // or remove disabled if you want to allow change later
+                              >
+                                {nigeriaData?.country.name || "Nigeria"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                        </Popover>
+                        {/* Hidden input to satisfy form */}
+                        <input
+                          type="hidden"
+                          {...field}
+                          value={nigeriaData?.country.name || "Nigeria"}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                    <FormField
-                      control={form.control}
-                      name="state"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-normal text-slate-500">
-                            State <span className="text-munchred">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Lagos"
-                              className="h-12 placeholder:text-slate-400"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  <FormField
+                    control={form.control}
+                    name="state"
+                    render={() => (
+                      <FormItem>
+                        <FormLabel className="font-normal text-slate-500">
+                          State <span className="text-munchred">*</span>
+                        </FormLabel>
+                        <Popover open={stateOpen} onOpenChange={setStateOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className="w-full justify-between h-12 font-normal"
+                                disabled={
+                                  statesLoading || !nigeriaData?.states?.length
+                                }
+                              >
+                                <span className="truncate">
+                                  {form.watch("state")
+                                    ? nigeriaData?.states.find(
+                                        (s) => s.id === form.watch("state"),
+                                      )?.name || "Select state"
+                                    : statesLoading
+                                      ? "Loading states..."
+                                      : "Select state"}
+                                </span>
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0" align="start">
+                            <Command className="max-h-72 overflow-hidden">
+                              <CommandInput placeholder="Search state..." />
+                              <CommandEmpty>No state found.</CommandEmpty>
+                              <CommandGroup className="max-h-80 overflow-y-auto overscroll-contain p-1">
+                                {nigeriaData?.states?.map((s) => (
+                                  <CommandItem
+                                    key={s.id}
+                                    value={s.name}
+                                    onSelect={() => {
+                                      form.setValue("state", s.id);
+                                      form.clearErrors("state");
+                                      setStateOpen(false);
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        form.watch("state") === s.id
+                                          ? "opacity-100"
+                                          : "opacity-0",
+                                      )}
+                                    />
+                                    {s.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        {statesError && (
+                          <p className="text-sm text-red-500 mt-1">
+                            {statesError}
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <div className="grid md:grid-cols-2 gap-6">
                     <FormField
                       control={form.control}
                       name="lga"
-                      render={({ field }) => (
+                      render={() => (
                         <FormItem>
                           <FormLabel className="font-normal text-slate-500">
                             LGA <span className="text-munchred">*</span>
                           </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Select local government area"
-                              className="h-12 placeholder:text-slate-400"
-                              {...field}
-                            />
-                          </FormControl>
+
+                          <Popover open={lgaOpen} onOpenChange={setLgaOpen}>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className="w-full justify-between h-12 font-normal"
+                                  disabled={
+                                    !form.watch("state") ||
+                                    lgasLoading ||
+                                    lgas.length === 0 ||
+                                    statesLoading
+                                  }
+                                >
+                                  <span className="truncate">
+                                    {lgasLoading
+                                      ? "Loading LGAs..."
+                                      : form.watch("lga") &&
+                                          lgas.some(
+                                            (opt) =>
+                                              opt.value === form.watch("lga"),
+                                          )
+                                        ? lgas.find(
+                                            (opt) =>
+                                              opt.value === form.watch("lga"),
+                                          )!.label
+                                        : "Select LGA"}
+                                  </span>
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+
+                            <PopoverContent
+                              className="w-full p-0 max-h-[min(400px,80vh)] overflow-hidden"
+                              align="start"
+                            >
+                              <Command className="overflow-hidden rounded-lg">
+                                <CommandInput placeholder="Search LGA..." />
+                                <CommandEmpty>
+                                  {lgas.length === 0 && !lgasLoading
+                                    ? "No LGAs found for this state"
+                                    : "Searching..."}
+                                </CommandEmpty>
+                                <CommandGroup className="max-h-80 overflow-y-auto overscroll-contain p-1">
+                                  {lgas.map((option) => (
+                                    <CommandItem
+                                      key={option.value}
+                                      value={option.label}
+                                      onSelect={() => {
+                                        form.setValue("lga", option.value);
+                                        form.clearErrors("lga");
+                                        setLgaOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          form.watch("lga") === option.value
+                                            ? "opacity-100"
+                                            : "opacity-0",
+                                        )}
+                                      />
+                                      {option.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+
+                          {lgasError && (
+                            <p className="text-sm text-red-500 mt-1">
+                              {lgasError}
+                            </p>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )}

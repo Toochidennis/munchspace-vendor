@@ -1,3 +1,5 @@
+import Cookies from "js-cookie";
+
 export function setBusinessId(id: string | null) {
   if (id) {
     const item = {
@@ -8,6 +10,31 @@ export function setBusinessId(id: string | null) {
   } else {
     localStorage.removeItem("businessId");
   }
+}
+
+const COOKIE_EXPIRY_DAYS = 1388;
+
+export function hasBusiness(value: boolean | null) {
+  if (value !== null) {
+    // Cookies handles the stringification and expiry natively
+    Cookies.set("hasBusiness", value.toString(), {
+      expires: COOKIE_EXPIRY_DAYS,
+      path: "/",
+      sameSite: "lax",
+    });
+  } else {
+    Cookies.remove("hasBusiness");
+  }
+}
+
+export function getHasBusiness(): string | null {
+  const value = Cookies.get("hasBusiness");
+
+  if (!value) return null;
+
+  // Browser cookies automatically handle expiration,
+  // so we don't need the manual Date.now() check here.
+  return value;
 }
 
 export function getBusinessId(): string | null {

@@ -397,7 +397,7 @@ export default function CreateMenuPage() {
 
       if (res.ok) {
         toast.success("Menu item created successfully");
-        // router.push("/restaurant/menu");
+        router.push("/restaurant/menu");
       } else {
         toast.error(responseData?.message || "Failed to create menu item");
       }

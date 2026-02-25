@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { setAccessToken, setBusinessId } from "@/app/lib/auth";
+import { hasBusiness, setAccessToken, setBusinessId } from "@/app/lib/auth";
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
@@ -31,7 +31,7 @@ const loginSchema = z.object({
   }),
   password: z
     .string()
-    .min(6, { message: "Password must be at least 6 characters." }),
+    .min(8, { message: "Password must be at least 8 characters." }),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
@@ -210,8 +210,13 @@ export default function LoginPage() {
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
+        console.log("data is:", res.data);
         // Save business id in memory
         setBusinessId(res.data.vendor.businessId);
+        // Save hasBusiness in memory
+        res.data.vendor.hasBusiness
+          ? hasBusiness(true)
+          : hasBusiness(null);
         // Save tokens only after successful OTP verification
         setAccessToken(accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
