@@ -11,8 +11,15 @@ import {
   AccordionTrigger,
 } from "../ui/accordion";
 import { Switch } from "../ui/switch";
-import { BrushCleaning, ChevronsUpDown, Check, X, EyeOff, Eye } from "lucide-react";
-import { useForm } from "react-hook-form";
+import {
+  BrushCleaning,
+  ChevronsUpDown,
+  Check,
+  X,
+  EyeOff,
+  Eye,
+} from "lucide-react";
+import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
@@ -116,7 +123,7 @@ const addressEditSchema = z.object({
   lga: z.string().min(1, "LGA is required."),
   streetName: z.string().min(1, "Street name is required."),
   city: z.string().min(1, "City is required."),
-  postalCode: z.string().optional(),
+  postalCode: z.number().optional(),
   latitude: z.number(),
   longitude: z.number(),
 });
@@ -153,6 +160,12 @@ type StoreInfoDisplayValues = {
   longitude?: number;
 };
 
+type Option = { value: string; label: string };
+
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_KEY =
+  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+
 const StoreDetails = () => {
   const { storeImage, setStoreImage, setAddress } = useStore();
   const [previousLogoUrl, setPreviousLogoUrl] = useState<string | null>(null);
@@ -179,6 +192,20 @@ const StoreDetails = () => {
   const [serviceOperationOptions, setServiceOperationOptions] = useState<
     MetaItem[]
   >([]);
+
+  // Nigeria address meta
+  const [nigeriaData, setNigeriaData] = useState<{
+    country: { id: string; code: string; name: string };
+    states: { id: string; code: string; name: string }[];
+  } | null>(null);
+  const [statesError, setStatesError] = useState("");
+  const [statesLoading, setStatesLoading] = useState(true);
+  const [lgas, setLgas] = useState<Option[]>([]);
+  const [lgasLoading, setLgasLoading] = useState(false);
+  const [lgasError, setLgasError] = useState("");
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [stateOpen, setStateOpen] = useState(false);
+  const [lgaOpen, setLgaOpen] = useState(false);
 
   const [storeInfo, setStoreInfo] = useState<StoreInfoDisplayValues>({
     storeName: "",
@@ -241,7 +268,7 @@ const StoreDetails = () => {
       lga: "",
       streetName: "",
       city: "",
-      postalCode: "",
+      postalCode: 0,
       latitude: 0,
       longitude: 0,
     },
@@ -341,28 +368,33 @@ const StoreDetails = () => {
           "x-api-key": X_API_KEY,
         };
 
-        const [btRes, brRes, soRes, businessRes] = await Promise.all([
-          fetch("https://dev.api.munchspace.io/api/v1/meta/business-types", {
-            headers,
-          }),
-          fetch("https://dev.api.munchspace.io/api/v1/meta/brand-types", {
-            headers,
-          }),
-          fetch(
-            "https://dev.api.munchspace.io/api/v1/meta/service-operations",
-            {
+        const [btRes, brRes, soRes, businessRes, nigeriaRes] =
+          await Promise.all([
+            fetch("https://dev.api.munchspace.io/api/v1/meta/business-types", {
               headers,
-            },
-          ),
-          fetch(
-            `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
-            { headers },
-          ),
-        ]);
+            }),
+            fetch("https://dev.api.munchspace.io/api/v1/meta/brand-types", {
+              headers,
+            }),
+            fetch(
+              "https://dev.api.munchspace.io/api/v1/meta/service-operations",
+              {
+                headers,
+              },
+            ),
+            fetch(
+              `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+              { headers },
+            ),
+            fetch(`https://dev.api.munchspace.io/api/v1/meta/nigeria-states`, {
+              headers,
+            }),
+          ]);
 
         let btData = btRes.ok ? (await btRes.json()).data || [] : [];
         let brData = brRes.ok ? (await brRes.json()).data || [] : [];
         let soData = soRes.ok ? (await soRes.json()).data || [] : [];
+        let nigeriaJson: any = null;
 
         setBusinessTypeOptions(btData);
         setBrandTypeOptions(brData);
@@ -373,6 +405,21 @@ const StoreDetails = () => {
         }
 
         const { data } = await businessRes.json();
+
+        // console.log("Nigeria res is:", await nigeriaRes.json())
+
+        if (nigeriaRes.ok) {
+          const nigeriaR = await nigeriaRes.json();
+          nigeriaJson = nigeriaR.data;
+          console.log("Nig JSON:", nigeriaJson);
+        }
+
+        if (nigeriaJson?.country && Array.isArray(nigeriaJson.states)) {
+          setNigeriaData(nigeriaJson);
+          setStatesLoading(false);
+        } else {
+          setStatesError("Failed to load Nigerian states.");
+        }
 
         const workingHours: Record<string, any> = {};
         daysOfWeek.forEach((uiDay) => {
@@ -386,6 +433,30 @@ const StoreDetails = () => {
         });
         form.reset({ workingHours });
 
+        const transformAddress = (apiAddr: any) => {
+          if (!apiAddr) {
+            return {
+              country: "",
+              state: "",
+              lga: "",
+              streetName: "",
+              city: "",
+              postalCode: undefined,
+            };
+          }
+
+          return {
+            country: apiAddr.country?.name || "",
+            state: apiAddr.state?.name || "",
+            lga: apiAddr.lga?.name || "",
+            streetName: apiAddr.streetName || "",
+            city: apiAddr.city || "",
+            postalCode: apiAddr.postalCode || undefined,
+            latitude: apiAddr.latitude,
+            longitude: apiAddr.longitude,
+          };
+        };
+
         setStoreInfo({
           storeName: data.displayName || data.legalName || "",
           email: data.email || "",
@@ -398,7 +469,7 @@ const StoreDetails = () => {
           serviceOperations: data.serviceOperations || [],
           businessStatus: data.isActive ? "Operational" : "Inactive",
           website: data.website || "N/A",
-          address: data.address || {},
+          address: transformAddress(data.address),
           latitude: data.address?.latitude,
           longitude: data.address?.longitude,
         });
@@ -417,7 +488,7 @@ const StoreDetails = () => {
         });
 
         addressForm.reset({
-          country: data.address?.country || "",
+          country: "Nigeria",
           state: data.address?.state || "",
           lga: data.address?.lga || "",
           streetName: data.address?.streetName || "",
@@ -440,6 +511,82 @@ const StoreDetails = () => {
 
     fetchAllData();
   }, [form, storeForm, addressForm]);
+
+  useEffect(() => {
+    const selectedStateId = addressForm.watch("state");
+
+    // Immediately reset everything when state changes
+    addressForm.setValue("lga", "");
+    setLgas([]);
+    setLgasError("");
+    setLgasLoading(true); // show loading right away
+
+    if (!selectedStateId || !nigeriaData?.states) {
+      setLgasLoading(false);
+      return;
+    }
+
+    // We'll use this to detect if this is still the relevant fetch
+    let isCurrent = true;
+
+    async function loadLgas() {
+      try {
+        const selectedState = nigeriaData?.states.find(
+          (s) => s.id === selectedStateId,
+        );
+        if (!selectedState) throw new Error("State not found");
+
+        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(selectedState.id)}&stateCode=${encodeURIComponent(selectedState.code)}`;
+
+        const response = await fetch(url, {
+          headers: { "x-api-key": API_KEY },
+        });
+
+        if (!isCurrent) return; // ← prevent stale update
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const json = await response.json();
+
+        const rawArray = Array.isArray(json)
+          ? json
+          : (json.data ?? json.lgas ?? json.items ?? []);
+
+        const normalized = rawArray
+          .map((item: any) => ({
+            value: String(item.id || item.lgaId || item.code || ""),
+            label: item.name || item.lgaName || item.label || String(item),
+          }))
+          .filter((opt: any) => opt.value && opt.label.trim());
+
+        if (!isCurrent) return;
+
+        setLgas(normalized);
+        setLgasError(""); // explicitly clear on success
+
+        if (normalized.length === 1) {
+          addressForm.setValue("lga", normalized[0].value);
+        }
+      } catch (err) {
+        if (!isCurrent) return;
+        console.error("LGA fetch failed:", err);
+        // setLgasError("Could not load LGAs for the selected state.");
+      } finally {
+        if (isCurrent) {
+          setLgasLoading(false);
+        }
+      }
+    }
+
+    loadLgas();
+
+    // Cleanup: mark previous fetches as stale
+    return () => {
+      isCurrent = false;
+    };
+  }, [addressForm.watch("state"), nigeriaData]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -610,8 +757,7 @@ const StoreDetails = () => {
     }
   };
 
-
-  const onAddressSubmit = async (data: AddressEditValues) => {
+  const onAddressSubmit: SubmitHandler<AddressEditValues> = async (data) => {
     try {
       const token = getAccessToken();
       if (!token) return toast.error("Authentication required");
@@ -621,13 +767,13 @@ const StoreDetails = () => {
 
       const formData = new FormData();
 
-      formData.append("address[country]", data.country);
-      formData.append("address[state]", data.state);
-      formData.append("address[lga]", data.lga);
+      formData.append("address[countryId]", "cmlzf6q8v004z01poe6yusjpr");
+      formData.append("address[stateId]", data.state);
+      formData.append("address[lgaId]", data.lga);
       formData.append("address[streetName]", data.streetName);
       formData.append("address[city]", data.city);
       if (data.postalCode)
-        formData.append("address[postalCode]", data.postalCode);
+        formData.append("address[postalCode]", data.postalCode.toString());
 
       formData.append("address[latitude]", data.latitude.toString());
       formData.append("address[longitude]", data.longitude.toString());
@@ -644,24 +790,32 @@ const StoreDetails = () => {
         },
       );
 
+      const resData = await res.json();
+      console.log("Address update response:", resData);
+
       if (!res.ok) throw new Error("Address update failed");
-      const formattedAddress = `${data.streetName}, ${data.city}, ${data.state}`;
+
+      const stateName =
+        nigeriaData?.states.find((s) => s.id === data.state)?.name || "";
+      const lgaName = lgas?.find((s) => s.value === data.lga)?.label || "";
+      const formattedAddress = `${data.streetName}, ${data.city}, ${stateName}`;
       setAddress(formattedAddress);
-      toast.success("Address updated successfully");
 
       setStoreInfo((prev) => ({
         ...prev,
         address: {
-          country: data.country,
-          state: data.state,
-          lga: data.lga,
+          country: "Nigeria",
+          state: stateName,
+          lga: lgaName,
           streetName: data.streetName,
           city: data.city,
-          postalCode: data.postalCode,
+          postalCode:
+            data.postalCode != null ? String(data.postalCode) : undefined,
         },
         latitude: data.latitude,
         longitude: data.longitude,
       }));
+      toast.success("Address updated successfully");
 
       addressForm.reset(data);
       setIsAddressModalOpen(false);
@@ -1640,33 +1794,99 @@ const StoreDetails = () => {
                       <FormLabel className="font-normal text-slate-500">
                         Country <span className="text-munchred">*</span>
                       </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Nigeria"
-                          className="h-12 placeholder:text-slate-400"
-                          {...field}
-                        />
-                      </FormControl>
+                      <Popover open={countryOpen} onOpenChange={setCountryOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className="w-full justify-between h-12 font-normal"
+                              disabled={true} // or remove disabled if you want to allow change later
+                            >
+                              {nigeriaData?.country.name || "Nigeria"}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                      </Popover>
+                      {/* Hidden input to satisfy form */}
+                      <input
+                        type="hidden"
+                        {...field}
+                        value={nigeriaData?.country.name || "Nigeria"}
+                      />
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={addressForm.control}
                   name="state"
-                  render={({ field }) => (
+                  render={() => (
                     <FormItem>
                       <FormLabel className="font-normal text-slate-500">
                         State <span className="text-munchred">*</span>
                       </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Lagos"
-                          className="h-12 placeholder:text-slate-400"
-                          {...field}
-                        />
-                      </FormControl>
+                      <Popover open={stateOpen} onOpenChange={setStateOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className="w-full justify-between h-12 font-normal"
+                              disabled={
+                                statesLoading || !nigeriaData?.states?.length
+                              }
+                            >
+                              <span className="truncate">
+                                {addressForm.watch("state")
+                                  ? nigeriaData?.states.find(
+                                      (s) =>
+                                        s.id === addressForm.watch("state"),
+                                    )?.name || "Select state"
+                                  : statesLoading
+                                    ? "Loading states..."
+                                    : "Select state"}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start">
+                          <Command className="max-h-72 overflow-hidden">
+                            <CommandInput placeholder="Search state..." />
+                            <CommandEmpty>No state found.</CommandEmpty>
+                            <CommandGroup className="max-h-80 overflow-y-auto overscroll-contain p-1">
+                              {nigeriaData?.states?.map((s) => (
+                                <CommandItem
+                                  key={s.id}
+                                  value={s.name}
+                                  onSelect={() => {
+                                    addressForm.setValue("state", s.id);
+                                    addressForm.clearErrors("state");
+                                    setStateOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      addressForm.watch("state") === s.id
+                                        ? "opacity-100"
+                                        : "opacity-0",
+                                    )}
+                                  />
+                                  {s.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {statesError && (
+                        <p className="text-sm text-red-500 mt-1">
+                          {statesError}
+                        </p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1677,18 +1897,88 @@ const StoreDetails = () => {
                 <FormField
                   control={addressForm.control}
                   name="lga"
-                  render={({ field }) => (
+                  render={() => (
                     <FormItem>
                       <FormLabel className="font-normal text-slate-500">
                         LGA <span className="text-munchred">*</span>
                       </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Select local government area"
-                          className="h-12 placeholder:text-slate-400"
-                          {...field}
-                        />
-                      </FormControl>
+
+                      <Popover open={lgaOpen} onOpenChange={setLgaOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className="w-full justify-between h-12 font-normal"
+                              disabled={
+                                !addressForm.watch("state") ||
+                                lgasLoading ||
+                                lgas.length === 0 ||
+                                statesLoading
+                              }
+                            >
+                              <span className="truncate">
+                                {lgasLoading
+                                  ? "Loading LGAs..."
+                                  : addressForm.watch("lga") &&
+                                      lgas.some(
+                                        (opt) =>
+                                          opt.value ===
+                                          addressForm.watch("lga"),
+                                      )
+                                    ? lgas.find(
+                                        (opt) =>
+                                          opt.value ===
+                                          addressForm.watch("lga"),
+                                      )!.label
+                                    : "Select LGA"}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+
+                        <PopoverContent
+                          className="w-full p-0 max-h-[min(400px,80vh)] overflow-hidden"
+                          align="start"
+                        >
+                          <Command className="overflow-hidden rounded-lg">
+                            <CommandInput placeholder="Search LGA..." />
+                            <CommandEmpty>
+                              {lgas.length === 0 && !lgasLoading
+                                ? "No LGAs found for this state"
+                                : "Searching..."}
+                            </CommandEmpty>
+                            <CommandGroup className="max-h-80 overflow-y-auto overscroll-contain p-1">
+                              {lgas.map((option) => (
+                                <CommandItem
+                                  key={option.value}
+                                  value={option.label}
+                                  onSelect={() => {
+                                    addressForm.setValue("lga", option.value);
+                                    addressForm.clearErrors("lga");
+                                    setLgaOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      addressForm.watch("lga") === option.value
+                                        ? "opacity-100"
+                                        : "opacity-0",
+                                    )}
+                                  />
+                                  {option.label}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+
+                      {lgasError && (
+                        <p className="text-sm text-red-500 mt-1">{lgasError}</p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1745,10 +2035,9 @@ const StoreDetails = () => {
                       City <span className="text-munchred">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Textarea
+                      <Input
                         placeholder="Enter city name"
-                        className="h-25 placeholder:text-slate-400"
-                        rows={3}
+                        className="h-12 placeholder:text-slate-400"
                         {...field}
                       />
                     </FormControl>
@@ -1779,10 +2068,9 @@ const StoreDetails = () => {
       </Dialog>
     </div>
   );
-}
+};
 
 export default StoreDetails;
-
 
 const StoreSkeleton = () => {
   return (

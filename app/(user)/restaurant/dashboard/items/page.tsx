@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -24,68 +24,129 @@ import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { toast } from "sonner";
+import { refreshAccessToken } from "@/app/lib/api";
 
-// Mock data for different periods
-const mockData = {
-  last30: {
-    items: Array.from({ length: 85 }, (_, i) => ({
-      id: i + 1,
-      name: "Pounded Yam With Egusi",
-      image: "/images/foods/egusi.png",
-      description:
-        "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      orders: Math.floor(Math.random() * 300) + 100,
-      category: ["Rice", "Swallow", "Side dish"][Math.floor(Math.random() * 3)],
-    })).sort((a, b) => b.orders - a.orders),
-  },
-  last7: {
-    items: Array.from({ length: 35 }, (_, i) => ({
-      id: i + 1,
-      name: "Pounded Yam With Egusi",
-      image: "/images/foods/egusi.png",
-      description:
-        "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      orders: Math.floor(Math.random() * 150) + 50,
-      category: ["Rice", "Swallow", "Side dish"][Math.floor(Math.random() * 3)],
-    })).sort((a, b) => b.orders - a.orders),
-  },
-  today: {
-    items: Array.from({ length: 12 }, (_, i) => ({
-      id: i + 1,
-      name: "Pounded Yam With Egusi",
-      image: "/images/foods/egusi.png",
-      description:
-        "a delightful blend of velvety pounded yam and flavorful Egusi soup.",
-      orders: Math.floor(Math.random() * 50) + 10,
-      category: ["Rice", "Swallow", "Side dish"][Math.floor(Math.random() * 3)],
-    })).sort((a, b) => b.orders - a.orders),
-  },
-};
+// ────────────────────────────────────────────────
+//  Authenticated fetch (exact same style as your other pages)
+// ────────────────────────────────────────────────
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key":
+      "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+
+  return response;
+}
 
 export default function BestSellingItemsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [period, setPeriod] = useState<"last30" | "last7" | "today">("last30");
+  const [period, setPeriod] = useState<
+    | "today"
+    | "last_7_days"
+    | "last_30_days"
+    | "last_6_months"
+    | "this_month"
+    | "last_month"
+    | "this_year"
+  >("last_30_days");
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  const currentItems = mockData[period].items;
+  const [items, setItems] = useState<any[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const filteredItems = currentItems.filter(
-    (item) =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchTerm.toLowerCase())
+  useEffect(() => {
+    const fetchBestSelling = async () => {
+      setLoading(true);
+
+      const businessId = getBusinessId();
+      if (!businessId) {
+        toast.error("Business ID not found");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const url = `${API_BASE}/vendors/me/businesses/${businessId}/analytics/best-selling?range=${period}&page=${currentPage}&limit=${itemsPerPage}`;
+        const res = await authenticatedFetch(url);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const json = await res.json();
+        if (!json.success || !json.data) throw new Error("Invalid response");
+
+        setItems(json.data.data || []);
+        setTotalItems(json.data.total || 0);
+      } catch (err: any) {
+        toast.error("Failed to load best selling items", {
+          description: err.message || "Please try again later.",
+        });
+        setItems([]);
+        setTotalItems(0);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBestSelling();
+  }, [period, currentPage, itemsPerPage]);
+
+  // ────────────────────────────────────────────────
+  //  Improved search: safe, checks actual fields, future-proof for name
+  // ────────────────────────────────────────────────
+  const filteredItems = items.filter((item) =>
+    [
+      (item.description || "").toLowerCase(),
+      (item.categoryType?.label || "").toLowerCase(),
+      (item.name || "").toLowerCase(), // safe fallback — will be "" until API adds it
+    ].some((text) => text.includes(searchTerm.toLowerCase())),
   );
 
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedItems = filteredItems.slice(
     startIndex,
-    startIndex + itemsPerPage
+    startIndex + itemsPerPage,
   );
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
   };
 
   const handleItemsPerPageChange = (value: string) => {
@@ -93,7 +154,6 @@ export default function BestSellingItemsPage() {
     setCurrentPage(1);
   };
 
-  // Pagination logic as previously implemented (matching your last accepted version)
   const getPageNumbers = () => {
     if (totalPages <= 5) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -125,6 +185,32 @@ export default function BestSellingItemsPage() {
 
     return pages;
   };
+
+  // Skeleton row
+  const SkeletonRow = () => (
+    <TableRow>
+      <TableCell className="py-4 ps-4">
+        <div className="flex items-center gap-4">
+          <div className="w-20 h-20 bg-gray-200 rounded-lg" />
+          <div className="space-y-2">
+            <div className="h-5 w-48 bg-gray-200 rounded" />
+            <div className="h-4 w-64 bg-gray-200 rounded" />
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="h-5 w-12 bg-gray-200 rounded" />
+      </TableCell>
+      <TableCell>
+        <div className="h-5 w-20 bg-gray-200 rounded" />
+      </TableCell>
+    </TableRow>
+  );
+
+  // Determine if pagination should be shown:
+  // - Not during loading
+  // - Only when there are items after filtering
+  const showPagination = !loading && filteredItems.length > 0;
 
   return (
     <div className="min-h-screen bg-white text-gray-900 mt-10 md:mt-0">
@@ -162,15 +248,19 @@ export default function BestSellingItemsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="last30">Last 30 days</SelectItem>
-              <SelectItem value="last7">Last 7 days</SelectItem>
               <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="last_7_days">Last 7 days</SelectItem>
+              <SelectItem value="last_30_days">Last 30 days</SelectItem>
+              <SelectItem value="last_6_months">Last 6 months</SelectItem>
+              <SelectItem value="this_month">This month</SelectItem>
+              <SelectItem value="last_month">Last month</SelectItem>
+              <SelectItem value="this_year">This year</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {/* Table */}
-        <Card className="p-0 border border-gray-100 shadow-sm">
+        <Card className="p-0 border border-gray-100 shadow-none min-h-[calc(100vh-240px)]">
           <Table>
             <TableHeader className="bg-gray-100 h-13">
               <TableRow className="border-b border-gray-200">
@@ -182,47 +272,52 @@ export default function BestSellingItemsPage() {
               </TableRow>
             </TableHeader>
 
-            {paginatedItems.length > 0 && (
+            {loading ? (
+              <TableBody>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <SkeletonRow key={i} />
+                ))}
+              </TableBody>
+            ) : paginatedItems.length > 0 ? (
               <TableBody>
                 {paginatedItems.map((item) => (
                   <TableRow
-                    key={item.id}
+                    key={item.menuItemId}
                     className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <TableCell className="py-4 ps-4">
                       <div className="flex items-center gap-4 w-fit">
                         <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
-                          <Image
+                          <img
                             src={item.image}
-                            alt={item.name}
+                            alt={item.description}
                             width={80}
                             height={80}
                             className="object-cover w-full h-full"
+                            crossOrigin="anonymous"
                           />
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">
-                            {item.name}
-                          </p>
-                          <p className="text-sm text-gray-500 mt-1">
                             {item.description}
                           </p>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-gray-900 min-w-20 ps-5 md:ps-0 md:min-w-30 font-medium">
-                      {item.orders}
+                      {item.totalOrders}
                     </TableCell>
                     <TableCell className="text-gray-600 min-w-20 md:min-w-30">
-                      {item.category}
+                      {item.categoryType?.label || "—"}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
-            )}
+            ) : null}
           </Table>
-          {paginatedItems.length === 0 && (
-            <div className="w-full flex-1">
+
+          {!loading && paginatedItems.length === 0 && (
+            <div className="w-full flex-1 mt-10">
               <Image
                 src={"/images/empty.png"}
                 width={900}
@@ -237,8 +332,8 @@ export default function BestSellingItemsPage() {
           )}
         </Card>
 
-        {/* Pagination */}
-        {paginatedItems.length > 0 && (
+        {/* Pagination - only shown when there are items after filtering */}
+        {showPagination && (
           <div className="flex items-center justify-center mx-2 gap-5 text-sm">
             <p className="text-gray-600 hidden md:block">
               Total <span>{filteredItems.length}</span> items
@@ -270,7 +365,7 @@ export default function BestSellingItemsPage() {
                         className={cn(
                           "min-w-8 md:min-w-10",
                           currentPage === page &&
-                            "bg-orange-500 hover:bg-orange-600 text-white"
+                            "bg-orange-500 hover:bg-orange-600 text-white",
                         )}
                       >
                         {page}
