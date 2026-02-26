@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -46,174 +46,235 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { toast } from "sonner";
+import { refreshAccessToken } from "@/app/lib/api";
 
-// Mock data for different periods
-const mockData = {
-  last30: {
-    traffic: [
-      { time: "08:00am", customers: 45 },
-      { time: "10:00am", customers: 180 },
-      { time: "12:00pm", customers: 120 },
-      { time: "02:00pm", customers: 85 },
-      { time: "04:00pm", customers: 150 },
-      { time: "06:00pm", customers: 110 },
-    ],
-    bestSelling: [
-      { name: "Jollof Rice", sales: 281 },
-      { name: "Fried Chicken", sales: 240 },
-      { name: "Pounded Yam & Egusi", sales: 151 },
-      { name: "Suya", sales: 225 },
-      { name: "Plantain & Beans", sales: 171 },
-      { name: "Eba & Soup", sales: 130 },
-      { name: "Pizza", sales: 98 },
-      { name: "Burger", sales: 87 },
-    ],
-    recentOrders: [
-      {
-        id: "45DF65",
-        date: "Aug 21, 2024 3:25 PM",
-        price: 1250,
-        status: "Cancelled",
-      },
-      {
-        id: "45DF66",
-        date: "Aug 21, 2024 2:45 PM",
-        price: 2800,
-        status: "Completed",
-      },
-      {
-        id: "45DF67",
-        date: "Aug 21, 2024 1:10 PM",
-        price: 1500,
-        status: "Completed",
-      },
-      {
-        id: "45DF68",
-        date: "Aug 20, 2024 7:30 PM",
-        price: 3200,
-        status: "Pending",
-      },
-      {
-        id: "45DF69",
-        date: "Aug 20, 2024 5:15 PM",
-        price: 900,
-        status: "Completed",
-      },
-    ],
-    kpis: {
-      totalOrders: 21378,
-      totalOrdersTrend: -2.53,
-      totalReturns: 105,
-      totalReturnsTrend: -2.53,
-      newCustomers: 132,
-      newCustomersTrend: 5.53,
-      totalDiscount: 504,
-      totalDiscountTrend: -5.53,
-    },
-  },
-  last7: {
-    traffic: [
-      { time: "08:00am", customers: 30 },
-      { time: "10:00am", customers: 120 },
-      { time: "12:00pm", customers: 90 },
-      { time: "02:00pm", customers: 60 },
-      { time: "04:00pm", customers: 100 },
-      { time: "06:00pm", customers: 75 },
-    ],
-    bestSelling: [
-      { name: "Jollof Rice", sales: 98 },
-      { name: "Fried Chicken", sales: 85 },
-      { name: "Suya", sales: 72 },
-      { name: "Pounded Yam & Egusi", sales: 65 },
-      { name: "Burger", sales: 55 },
-    ],
-    recentOrders: [
-      {
-        id: "45DF70",
-        date: "Aug 17, 2024 4:10 PM",
-        price: 1800,
-        status: "Completed",
-      },
-      {
-        id: "45DF71",
-        date: "Aug 17, 2024 2:30 PM",
-        price: "950",
-        status: "Pending",
-      },
-      {
-        id: "45DF72",
-        date: "Aug 16, 2024 6:45 PM",
-        price: 2200,
-        status: "Completed",
-      },
-    ],
-    kpis: {
-      totalOrders: 5421,
-      totalOrdersTrend: 8.12,
-      totalReturns: 32,
-      totalReturnsTrend: -12.4,
-      newCustomers: 45,
-      newCustomersTrend: 15.2,
-      totalDiscount: 189,
-      totalDiscountTrend: 3.8,
-    },
-  },
-  today: {
-    traffic: [
-      { time: "08:00am", customers: 15 },
-      { time: "10:00am", customers: 60 },
-      { time: "12:00pm", customers: 45 },
-      { time: "02:00pm", customers: 30 },
-      { time: "04:00pm", customers: 50 },
-      { time: "06:00pm", customers: 40 },
-    ],
-    bestSelling: [
-      { name: "Jollof Rice", sales: 32 },
-      { name: "Fried Chicken", sales: 28 },
-      { name: "Suya", sales: 20 },
-    ],
-    recentOrders: [
-      {
-        id: "45DF73",
-        date: "Aug 21, 2024 11:20 AM",
-        price: 1100,
-        status: "Completed",
-      },
-      {
-        id: "45DF74",
-        date: "Aug 21, 2024 10:05 AM",
-        price: 750,
-        status: "Pending",
-      },
-    ],
-    kpis: {
-      totalOrders: 240,
-      totalOrdersTrend: 12.5,
-      totalReturns: 5,
-      totalReturnsTrend: -20,
-      newCustomers: 18,
-      newCustomersTrend: 28.6,
-      totalDiscount: 42,
-      totalDiscountTrend: 10.5,
-    },
-  },
-};
+// ────────────────────────────────────────────────
+//  Authenticated fetch (exact same style as your other pages)
+// ────────────────────────────────────────────────
+const API_BASE = "https://dev.api.munchspace.io/api/v1";
 
-const colorPalette = [
-  "bg-blue-500",
-  "bg-green-500",
-  "bg-purple-500",
-  "bg-orange-500",
-  "bg-red-500",
-];
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key":
+      "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+
+  return response;
+}
 
 export default function DashboardPage() {
-  const [period, setPeriod] = useState<"last30" | "last7" | "today">("last30");
+  const [period, setPeriod] = useState<
+    | "today"
+    | "last_7_days"
+    | "last_30_days"
+    | "last_6_months"
+    | "this_month"
+    | "last_month"
+    | "this_year"
+  >("last_30_days");
 
-  const data = mockData[period];
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      setLoading(true);
+
+      const businessId = getBusinessId();
+      if (!businessId) {
+        toast.error("Business ID not found");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const url = `${API_BASE}/vendors/me/businesses/${businessId}/analytics/dashboard?range=${period}`;
+        const res = await authenticatedFetch(url);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const json = await res.json();
+        if (!json.success || !json.data) throw new Error("Invalid response");
+
+        const api = json.data;
+
+        const transformed = {
+          traffic: api.traffic || [],
+          bestSelling: (api.bestSelling || []).map((item: any) => ({
+            name: item.name || item.productName || "Unknown Item",
+            sales: item.sales || item.quantity || item.totalSold || 0,
+          })),
+          recentOrders: (api.recentOrders?.data || []).map((o: any) => ({
+            id: o.orderId,
+            code: o.code || o.orderId,
+            date: new Date(o.placedAt).toLocaleString(),
+            price: o.total,
+            status: o.status,
+          })),
+          kpis: {
+            totalOrders: api.totals?.orders?.total?.value || 0,
+            totalOrdersTrend: api.totals?.orders?.total?.trend || 0,
+            totalReturns: api.totals?.returns?.total?.value || 0,
+            totalReturnsTrend: api.totals?.returns?.total?.trend || 0,
+            newCustomers: api.totals?.newCustomers?.value || 0,
+            newCustomersTrend: api.totals?.newCustomers?.trend || 0,
+            totalDiscount: api.totals?.discounts?.total?.value || 0,
+            totalDiscountTrend: api.totals?.discounts?.total?.trend || 0,
+          },
+        };
+
+        setData(transformed);
+      } catch (err: any) {
+        toast.error("Failed to load dashboard", {
+          description: err.message || "Please try again later.",
+        });
+        setData({
+          traffic: [],
+          bestSelling: [],
+          recentOrders: [],
+          kpis: {
+            totalOrders: 0,
+            totalOrdersTrend: 0,
+            totalReturns: 0,
+            totalReturnsTrend: 0,
+            newCustomers: 0,
+            newCustomersTrend: 0,
+            totalDiscount: 0,
+            totalDiscountTrend: 0,
+          },
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, [period]);
+
+  // Color palette for best selling progress bar (exactly as in your original code)
+  const colorPalette = [
+    "bg-blue-500",
+    "bg-green-500",
+    "bg-purple-500",
+    "bg-orange-500",
+    "bg-red-500",
+  ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
+        <div className="max-w-7xl mx-auto space-y-8 animate-pulse">
+          <div className="flex justify-between items-start">
+            <div className="space-y-2">
+              <div className="h-10 w-48 bg-gray-200 rounded" />
+              <div className="h-5 w-64 bg-gray-200 rounded" />
+            </div>
+            <div className="h-10 w-40 bg-gray-200 rounded" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            <div className="lg:col-span-3">
+              <div className="h-80 bg-gray-200 rounded-lg" />
+            </div>
+            <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-4">
+                  <div className="h-6 w-40 bg-gray-200 rounded" />
+                  <div className="h-10 w-32 bg-gray-200 rounded" />
+                  <div className="h-2 w-full bg-gray-200 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Card className="border-gray-100 shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="space-y-2">
+                <div className="h-7 w-48 bg-gray-200 rounded" />
+                <div className="h-5 w-80 bg-gray-200 rounded" />
+              </div>
+              <div className="h-10 w-32 bg-gray-200 rounded" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="h-2 w-full bg-gray-200 rounded-full" />
+                <div className="flex gap-6">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="h-5 w-20 bg-gray-200 rounded" />
+                      <div className="h-4 w-32 bg-gray-200 rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-100 shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="space-y-2">
+                <div className="h-7 w-40 bg-gray-200 rounded" />
+                <div className="h-5 w-64 bg-gray-200 rounded" />
+              </div>
+              <div className="h-10 w-32 bg-gray-200 rounded" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6 md:space-y-0 md:grid md:grid-cols-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 py-4 border-b last:border-0"
+                  >
+                    <div className="space-y-2 w-full md:w-auto">
+                      <div className="h-5 w-32 bg-gray-200 rounded" />
+                      <div className="h-4 w-48 bg-gray-200 rounded" />
+                    </div>
+                    <div className="h-6 w-24 bg-gray-200 rounded" />
+                    <div className="h-10 w-36 bg-gray-200 rounded" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const top5Items = data.bestSelling.slice(0, 5);
-  const totalSales = top5Items.reduce((sum, item) => sum + item.sales, 0);
+  const totalSales = top5Items.reduce(
+    (sum: number, item: any) => sum + item.sales,
+    0,
+  );
 
   return (
     <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
@@ -226,15 +287,19 @@ export default function DashboardPage() {
           </div>
           <Select
             value={period}
-            onValueChange={(value) => setPeriod(value as typeof period)}
+            onValueChange={(value) => setPeriod(value as any)}
           >
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="last30">Last 30 days</SelectItem>
-              <SelectItem value="last7">Last 7 days</SelectItem>
               <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="last_7_days">Last 7 days</SelectItem>
+              <SelectItem value="last_30_days">Last 30 days</SelectItem>
+              <SelectItem value="last_6_months">Last 6 months</SelectItem>
+              <SelectItem value="this_month">This month</SelectItem>
+              <SelectItem value="last_month">Last month</SelectItem>
+              <SelectItem value="this_year">This year</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -288,7 +353,7 @@ export default function DashboardPage() {
                       "text-sm flex items-center gap-1 justify-center",
                       data.kpis.totalOrdersTrend > 0
                         ? "text-green-600"
-                        : "text-red-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.totalOrdersTrend > 0 ? "+" : ""}
@@ -319,7 +384,7 @@ export default function DashboardPage() {
                       "text-sm flex items-center gap-1 justify-center",
                       data.kpis.totalReturnsTrend > 0
                         ? "text-green-600"
-                        : "text-red-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.totalReturnsTrend > 0 ? "+" : ""}
@@ -348,7 +413,7 @@ export default function DashboardPage() {
                       "text-sm flex items-center gap-1 justify-center",
                       data.kpis.newCustomersTrend > 0
                         ? "text-green-600"
-                        : "text-red-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.newCustomersTrend > 0 ? "+" : ""}
@@ -377,7 +442,7 @@ export default function DashboardPage() {
                       "text-sm flex items-center gap-1 justify-center",
                       data.kpis.totalDiscountTrend > 0
                         ? "text-green-600"
-                        : "text-red-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.totalDiscountTrend > 0 ? "+" : ""}
@@ -421,15 +486,16 @@ export default function DashboardPage() {
               {/* Single Progress Bar with Stacked Segments */}
               <div className="w-full bg-gray-200 h-2">
                 <div className="flex h-full">
-                  {top5Items.map((item, index) => {
-                    const percentage = (item.sales / totalSales) * 100;
+                  {top5Items.map((item: any, index: number) => {
+                    const percentage =
+                      totalSales > 0 ? (item.sales / totalSales) * 100 : 0;
                     const color = colorPalette[index % colorPalette.length];
                     return (
                       <div
                         key={item.name}
                         className={cn(
                           "h-full flex items-center justify-center text-white text-xs font-medium",
-                          color
+                          color,
                         )}
                         style={{ width: `${percentage}%` }}
                       />
@@ -439,7 +505,7 @@ export default function DashboardPage() {
               </div>
               <div className="w-full whitespace-nowrap overflow-x-auto pb-2">
                 <div className="flex h-full gap-5">
-                  {top5Items.map((item, index) => {
+                  {top5Items.map((item: any, index: number) => {
                     const color = colorPalette[index % colorPalette.length];
                     return (
                       <div
@@ -496,9 +562,9 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.recentOrders.map((order) => (
+                  {data.recentOrders.map((order: any) => (
                     <TableRow
-                      key={order.id}
+                      key={order.code}
                       style={{ paddingTop: "10px", paddingBottom: "10px" }}
                       className="font-medium border-gray-100 text-base hover:bg-white"
                     >
@@ -506,7 +572,7 @@ export default function DashboardPage() {
                         className="ps-4"
                         style={{ paddingTop: "25px", paddingBottom: "25px" }}
                       >
-                        #{order.id}
+                        {order.code}
                       </TableCell>
                       <TableCell
                         style={{ paddingTop: "25px", paddingBottom: "25px" }}
@@ -527,7 +593,7 @@ export default function DashboardPage() {
                             order.status === "Pending" &&
                               "bg-blue-100 text-blue-500 border border-blue-200",
                             order.status === "Cancelled" &&
-                              "bg-red-100 text-red-400 border border-red-200"
+                              "bg-red-100 text-red-400 border border-red-200",
                           )}
                         >
                           {order.status}
@@ -547,12 +613,15 @@ export default function DashboardPage() {
             </div>
             {/* Mobile view */}
             <div className="md:hidden">
-              {data.recentOrders.map((order, index) => (
-                <Link key={order.id} href={`/restaurant/orders/${order.id}`}>
+              {data.recentOrders.map((order: any, index: number) => (
+                <Link
+                  key={order.code}
+                  href={`/restaurant/orders/${order.code}`}
+                >
                   <div
                     className={cn(
                       "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50",
-                      data.recentOrders.length - 1 === index && "border-0"
+                      data.recentOrders.length - 1 === index && "border-0",
                     )}
                   >
                     <div className="flex flex-col mb-2">
@@ -561,12 +630,12 @@ export default function DashboardPage() {
                           "py-1.5",
                           order.status === "Completed" && "text-green-500",
                           order.status === "Pending" && "text-blue-500",
-                          order.status === "Cancelled" && "text-red-400"
+                          order.status === "Cancelled" && "text-red-400",
                         )}
                       >
                         {order.status}
                       </span>
-                      <span className="font-medium">#{order.id}</span>
+                      <span className="font-medium">{order.code}</span>
                     </div>
                     <div className="text-right">
                       <p className="text-gray-600 mb-2 text-sm">{order.date}</p>

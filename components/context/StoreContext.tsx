@@ -81,7 +81,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
         setStoreImage(data.logoUrl || "/images/auth/store.svg");
         const addr = data.address;
         setAddress(
-          `${addr?.streetName || ""}, ${addr?.city || ""}, ${addr?.state || ""}`,
+          `${addr?.streetName || ""}, ${addr?.city || ""}, ${addr?.state.name || ""}`,
         );
       }
     } catch (err) {
