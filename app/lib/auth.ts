@@ -1,5 +1,34 @@
 import Cookies from "js-cookie";
 
+export function setFirstName(name: string | null) {
+  if (name) {
+    const item = {
+      value: name,
+      expiry: Date.now() + 60 * 2000 * 10000,
+    };
+    localStorage.setItem("firstName", JSON.stringify(item));
+  } else {
+    localStorage.removeItem("firstName");
+  }
+}
+
+export function getFirstName(): string | null {
+  const itemStr = localStorage.getItem("firstName");
+  if (!itemStr) return null;
+
+  try {
+    const item = JSON.parse(itemStr);
+    if (Date.now() > item.expiry) {
+      localStorage.removeItem("firstName");
+      return null; // Expired
+    }
+    return item.value;
+  } catch (error) {
+    localStorage.removeItem("firstName");
+    return null;
+  }
+}
+
 export function setBusinessId(id: string | null) {
   if (id) {
     const item = {

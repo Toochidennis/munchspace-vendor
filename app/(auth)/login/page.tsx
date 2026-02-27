@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { hasBusiness, setAccessToken, setBusinessId } from "@/app/lib/auth";
+import { hasBusiness, setAccessToken, setBusinessId, setFirstName } from "@/app/lib/auth";
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
 const API_KEY =
@@ -221,7 +221,8 @@ export default function LoginPage() {
         setAccessToken(accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30
-        }`;
+          }`;
+        setFirstName(res.data.vendor.firstName);
         // Immediately redirect to dashboard
         window.location.href = "/restaurant/dashboard";
       } else if (response.status === 401) {
