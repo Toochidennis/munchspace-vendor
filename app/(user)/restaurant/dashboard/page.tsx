@@ -93,7 +93,7 @@ async function authenticatedFetch(
 }
 
 export default function DashboardPage() {
-  const firstName = getFirstName();
+  const [firstName, setFirstName] = useState<string | null>(null);
   const [period, setPeriod] = useState<
     | "today"
     | "last_7_days"
@@ -106,6 +106,10 @@ export default function DashboardPage() {
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setFirstName(getFirstName());
+  }, []);
 
   useEffect(() => {
     const fetchDashboard = async () => {
