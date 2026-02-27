@@ -62,7 +62,7 @@ import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
 import { Skeleton } from "../ui/skeleton";
 
-const X_API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+const X_API_KEY = "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
 const GOOGLE_API_KEY = "AIzaSyDjoKEpZBTaQuO4dPjbN4W1tHEdxuacPFI";
 
 const daysOfWeek = [

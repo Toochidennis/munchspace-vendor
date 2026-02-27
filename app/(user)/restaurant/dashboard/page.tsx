@@ -45,9 +45,10 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { getAccessToken, getBusinessId, getFirstName } from "@/app/lib/auth";
 import { toast } from "sonner";
 import { refreshAccessToken } from "@/app/lib/api";
+import Image from "next/image";
 
 // ────────────────────────────────────────────────
 //  Authenticated fetch (exact same style as your other pages)
@@ -92,6 +93,7 @@ async function authenticatedFetch(
 }
 
 export default function DashboardPage() {
+  const firstName = getFirstName();
   const [period, setPeriod] = useState<
     | "today"
     | "last_7_days"
@@ -126,6 +128,7 @@ export default function DashboardPage() {
         if (!json.success || !json.data) throw new Error("Invalid response");
 
         const api = json.data;
+        console.log("Raw API response:", api);
 
         const transformed = {
           traffic: api.traffic || [],
@@ -282,7 +285,9 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Hi Idris,</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Hi {firstName || "User"},
+            </h1>
             <p className="text-gray-600 mt-1">Welcome to your dashboard</p>
           </div>
           <Select
@@ -316,25 +321,41 @@ export default function DashboardPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={data.traffic}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="time" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#000",
-                        border: "none",
-                        borderRadius: "8px",
-                      }}
-                      isAnimationActive={false}
-                      labelStyle={{ color: "#fff" }}
-                      itemStyle={{ color: "#fff" }}
-                      cursor={false}
+                {data.traffic.length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-gray-500">
+                    <Image
+                      src="/images/empty-chart.png"
+                      width={200}
+                      height={200}
+                      alt="No data"
                     />
-                    <Bar dataKey="customers" fill="#f97316" />
-                  </BarChart>
-                </ResponsiveContainer>
+                    <p className="text-center px-10 md:px-20">
+                      This space will feature a bar chart showcasing the number
+                      of customers who visited your store once data is
+                      available.
+                    </p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={data.traffic}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="time" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#000",
+                          border: "none",
+                          borderRadius: "8px",
+                        }}
+                        isAnimationActive={false}
+                        labelStyle={{ color: "#fff" }}
+                        itemStyle={{ color: "#fff" }}
+                        cursor={false}
+                      />
+                      <Bar dataKey="customers" fill="#f97316" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </div>
