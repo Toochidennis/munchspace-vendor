@@ -67,8 +67,7 @@ async function authenticatedFetch(
   }
 
   const headers: HeadersInit = {
-    "x-api-key":
-      "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
+    "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
@@ -613,11 +612,14 @@ export default function DashboardPage() {
                         <Badge
                           className={cn(
                             "rounded px-4 py-1.5",
-                            order.status === "Completed" &&
-                              "bg-green-100 text-green-500 border border-green-200",
-                            order.status === "Pending" &&
+                            order.status.toLowerCase().includes("pending") &&
                               "bg-blue-100 text-blue-500 border border-blue-200",
-                            order.status === "Cancelled" &&
+                            order.status.toLowerCase().includes("preparing") &&
+                              "bg-yellow-100 text-yellow-700 border border-yellow-200",
+                            order.status.toLowerCase().includes("completed") &&
+                              "bg-green-100 text-green-500 border border-green-200",
+                            (order.status.toLowerCase().includes("cancel") ||
+                              order.status.toLowerCase().includes("return")) &&
                               "bg-red-100 text-red-400 border border-red-200",
                           )}
                         >

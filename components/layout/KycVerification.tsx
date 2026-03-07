@@ -54,8 +54,7 @@ const tinSchema = z.object({
 type TinFormValues = z.infer<typeof tinSchema>;
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY =
-  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // ──────────────────────────────────────────────────────────────
 // Reusable authenticated fetch with refresh + single retry

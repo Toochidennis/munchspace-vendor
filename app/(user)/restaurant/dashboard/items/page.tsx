@@ -45,8 +45,7 @@ async function authenticatedFetch(
   }
 
   const headers: HeadersInit = {
-    "x-api-key":
-      "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
+    "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };

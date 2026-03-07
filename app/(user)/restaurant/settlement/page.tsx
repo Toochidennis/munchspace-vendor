@@ -52,6 +52,7 @@ const addSettlementSchema = z.object({
 type AddSettlementType = z.infer<typeof addSettlementSchema>;
 
 interface BankOption {
+  id: string;
   name: string;
   code: string;
 }
@@ -66,8 +67,7 @@ interface SettlementAccount {
 }
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY =
-  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 async function authenticatedFetch(
   url: string,
@@ -123,9 +123,11 @@ export default function EarningsPage() {
   const [verificationError, setVerificationError] = useState<string | null>(
     null,
   );
+  const [selectedBank, setSelectedBank] = useState<BankOption | null>(null)
 
   const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
+    mode: "onChange",
     defaultValues: { bankName: "", accountNumber: "", accountName: "" },
   });
 
@@ -196,14 +198,10 @@ export default function EarningsPage() {
 
         if (!res.ok) {
           const err = await res.json();
-          console.log("Verification failed:", err);
           throw new Error(err.message || "Account verification failed");
         }
 
         const json = await res.json();
-
-        // Adjust field name based on your actual API response
-        // Common possibilities: accountName, name, accountHolderName, holderName
         const nameFromApi =
           json?.data?.accountName ||
           json?.data?.name ||
@@ -218,7 +216,6 @@ export default function EarningsPage() {
         form.setValue("accountName", nameFromApi);
         setVerificationError(null);
       } catch (err: any) {
-        console.error("Verification error:", err);
         setVerificationError(err.message || "Could not verify account name");
         form.setValue("accountName", "");
       } finally {
@@ -226,33 +223,33 @@ export default function EarningsPage() {
       }
     };
 
-    // Trigger only when both fields are filled and valid
     if (selectedBankName && accountNumber?.length === 10) {
-      const timer = setTimeout(verifyAccount, 800); // debounce a bit
+      const timer = setTimeout(verifyAccount, 800);
       return () => clearTimeout(timer);
     }
   }, [selectedBankName, accountNumber, businessId, banks, form]);
 
   const onSubmit = async (data: AddSettlementType) => {
-    console.log("Form data:", data);
     if (!businessId) {
       toast.error("Business ID is missing");
       return;
     }
 
-    const selectedBank = banks.find((b) => b.name === data.bankName);
-    if (!selectedBank) {
-      toast.error("Selected bank not found");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
+      // Updated payload structure as requested
+      if (!selectedBank) {
+        toast.error("Please select a bank");
+        return;
+      }
       const payload = {
-        ...data,
+        bankId: selectedBank.id,
+        accountNumber: data.accountNumber,
         bankCode: selectedBank.code,
-        logoUrl: "",
       };
+
+      console.log("Submitting payload:", payload);
+
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/financials/bank-account`,
         {
@@ -260,13 +257,15 @@ export default function EarningsPage() {
           body: JSON.stringify(payload),
         },
       );
+
+      const resJson = await res.json();
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || "Failed to add bank account");
       }
 
-      const resJson = await res.json();
-      setAccount(resJson.data || payload);
+      
+      setAccount(resJson.data || { ...data, bankCode: selectedBank.code });
       setIsDialogOpen(false);
       form.reset();
       toast.success("Settlement account added successfully");
@@ -390,31 +389,12 @@ export default function EarningsPage() {
           </div>
         )}
       </div>
-      {/* Dialog */}
+
       <CustomModal
         isOpen={isDialogOpen}
         onClose={() => setIsDialogOpen(false)}
         title="Add Account"
         maxWidth="sm:max-w-[450px]"
-        footer={
-          <div className="flex justify-end gap-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsDialogOpen(false)}
-              className="rounded-md px-6"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
-            >
-              {isSubmitting ? "Saving..." : "Add Account"}
-            </Button>
-          </div>
-        }
       >
         {isLoadingBanks ? (
           <div className="py-8 flex justify-center">
@@ -456,6 +436,8 @@ export default function EarningsPage() {
                                 key={bank.code}
                                 onSelect={() => {
                                   form.setValue("bankName", bank.name);
+                                  setSelectedBank(bank);
+                                  form.clearErrors("bankName");
                                   setBankOpen(false);
                                 }}
                               >
@@ -525,14 +507,30 @@ export default function EarningsPage() {
                   )}
                 />
               </div>
+              <div className="flex justify-end gap-3 pt-5 border-t bg-white">
+                <div className="flex justify-end gap-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                    className="rounded-md px-6"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
+                  >
+                    {isSubmitting ? "Saving..." : "Add Account"}
+                  </Button>
+                </div>
+              </div>
             </form>
           </Form>
         )}
       </CustomModal>
 
-      {/* Add Account Modal */}
-
-      {/* Delete Confirmation Modal */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="sm:max-w-sm rounded-2xl border-none shadow-xl p-0 overflow-hidden bg-black/40 backdrop-blur-[2px]">
           <div className="bg-white m-4 rounded-2xl p-6">

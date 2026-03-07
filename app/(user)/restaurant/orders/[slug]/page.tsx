@@ -39,8 +39,7 @@ async function authenticatedFetch(
   }
 
   const headers: HeadersInit = {
-    "x-api-key":
-      "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
+    "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
@@ -88,6 +87,7 @@ export default function OrderDetailsPage() {
         }
 
         const json = await response.json();
+        console.log("response", json);
 
         if (!json.success || !json.data) {
           throw new Error("Invalid response format");
@@ -105,14 +105,6 @@ export default function OrderDetailsPage() {
 
     fetchOrder();
   }, [orderId]);
-
-  const handleNextOrder = () => {
-    // Placeholder – in real implementation this would fetch next order
-    if (currentOrder < 84) {
-      // using your mock totalOrders
-      setCurrentOrder(currentOrder + 1);
-    }
-  };
 
   if (loading) {
     return (
@@ -223,6 +215,7 @@ export default function OrderDetailsPage() {
     processedBy: order.processedBy || "N/A",
     customerName: `${order.customer?.name || "N/A"}`,
     itemsCount: order.items.length,
+    nextOrderId: order.nextOrderId,
     items: order.items.map((item: any) => ({
       quantity: `${item.quantity}x`,
       name: item.name,
@@ -414,10 +407,12 @@ export default function OrderDetailsPage() {
           <p className="text-sm text-gray-600">
             Order {displayData.currentOrderIndex} of {displayData.totalOrders}
           </p>
-          <Button variant="outline" className="gap-2" onClick={handleNextOrder}>
-            Next Order
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <Link href={`/restaurant/orders/${displayData.nextOrderId}`}>
+            <Button variant="outline" className="gap-2">
+              Next Order
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
       </Card>
     </div>
