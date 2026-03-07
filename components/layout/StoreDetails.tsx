@@ -62,8 +62,7 @@ import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
 import { Skeleton } from "../ui/skeleton";
 
-const X_API_KEY = "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
-const GOOGLE_API_KEY = "AIzaSyDjoKEpZBTaQuO4dPjbN4W1tHEdxuacPFI";
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || " ";
 
 const daysOfWeek = [
   "Monday",
@@ -163,8 +162,7 @@ type StoreInfoDisplayValues = {
 type Option = { value: string; label: string };
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY =
-  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 const StoreDetails = () => {
   const { storeImage, setStoreImage, setAddress } = useStore();
@@ -365,7 +363,7 @@ const StoreDetails = () => {
 
         const headers = {
           Authorization: `Bearer ${token}`,
-          "x-api-key": X_API_KEY,
+          "x-api-key": API_KEY,
         };
 
         const [btRes, brRes, soRes, businessRes, nigeriaRes] =
@@ -629,7 +627,7 @@ const StoreDetails = () => {
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${token}`,
-            "x-api-key": X_API_KEY,
+            "x-api-key": API_KEY,
           },
           body: formData,
         },
@@ -668,7 +666,7 @@ const StoreDetails = () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
-            "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
+            "x-api-key": API_KEY,
           },
           body: JSON.stringify({
             currentPassword: values.currentPassword,
@@ -724,7 +722,7 @@ const StoreDetails = () => {
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${token}`,
-            "x-api-key": X_API_KEY,
+            "x-api-key": API_KEY,
           },
           body: formData,
         },
@@ -784,7 +782,7 @@ const StoreDetails = () => {
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${token}`,
-            "x-api-key": X_API_KEY,
+            "x-api-key": API_KEY,
           },
           body: formData,
         },
@@ -859,7 +857,7 @@ const StoreDetails = () => {
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${token}`,
-            "x-api-key": X_API_KEY,
+            "x-api-key": API_KEY,
           },
           body: formData,
         },

@@ -55,8 +55,7 @@ import { refreshAccessToken } from "@/app/lib/api";
 import { toast } from "sonner";
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY =
-  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // Helper function for formatting prices in display
 const formatPrice = (rawValue: string): string => {

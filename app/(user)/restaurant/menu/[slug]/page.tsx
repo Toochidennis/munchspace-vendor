@@ -14,7 +14,6 @@ import {
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   useForm,
   useFieldArray,
@@ -62,7 +61,6 @@ const formSchema = z.object({
     .int("Quantity must be a whole number")
     .min(1, "Quantity must be at least 1"),
   isAvailable: z.enum(["available", "unavailable"]),
-
   variants: z
     .array(
       z.object({
@@ -87,7 +85,6 @@ const formSchema = z.object({
         path: [],
       },
     ),
-
   addons: z
     .array(
       z.object({
@@ -112,7 +109,6 @@ const formSchema = z.object({
         path: [],
       },
     ),
-
   discount: z
     .object({
       type: z.enum(["PERCENTAGE", "FLAT", "FIXED_PRICE"]).optional(),
@@ -134,7 +130,8 @@ const formSchema = z.object({
         return true;
       },
       {
-        message: "Discount value must be greater than 0 (max 100% for percentage)",
+        message:
+          "Discount value must be greater than 0 (max 100% for percentage)",
         path: ["value"],
       },
     )
@@ -165,15 +162,13 @@ type MenuCategory = {
 };
 
 const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY =
-  "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
   let token = getAccessToken();
-
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired - refresh failed");
@@ -186,20 +181,17 @@ async function authenticatedFetch(
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
-
   if (!(init.body instanceof FormData)) {
     (headers as any)["Content-Type"] = "application/json";
   }
 
   let response = await fetch(url, { ...init, headers });
-
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk)
       throw new Error("Session expired during request (refresh failed)");
     token = getAccessToken();
     if (!token) throw new Error("Refresh succeeded but no token available");
-
     response = await fetch(url, {
       ...init,
       headers: { ...headers, Authorization: `Bearer ${token}` },
@@ -207,6 +199,55 @@ async function authenticatedFetch(
   }
 
   return response;
+}
+
+function MenuEditSkeleton() {
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="max-w-3xl mx-auto p-8">
+        <div className="mb-8 mt-10 md:mt-0">
+          <Skeleton className="h-10 w-48 rounded-md" />
+        </div>
+
+        <div className="mb-8">
+          <Skeleton className="h-8 w-64 mb-2 rounded-md" />
+          <Skeleton className="h-4 w-full max-w-md rounded-md" />
+        </div>
+
+        <div className="flex gap-10 border-b border-gray-200 mb-12 pb-2">
+          <Skeleton className="h-8 w-16 rounded-md" />
+          <Skeleton className="h-8 w-16 rounded-md" />
+          <Skeleton className="h-8 w-16 rounded-md" />
+          <Skeleton className="h-8 w-16 rounded-md" />
+        </div>
+
+        <div className="space-y-8">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-20 rounded-md" />
+            <Skeleton className="h-12 w-full rounded-md" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-24 rounded-md" />
+            <Skeleton className="h-32 w-full rounded-md" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-16 rounded-md" />
+            <Skeleton className="h-48 w-full rounded-lg" />
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-24 rounded-md" />
+              <Skeleton className="h-12 w-full rounded-md" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32 rounded-md" />
+              <Skeleton className="h-12 w-full rounded-md" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function EditMenuPage() {
@@ -291,7 +332,7 @@ export default function EditMenuPage() {
         if (!businessId) throw new Error("Business ID not found");
 
         const res = await authenticatedFetch(
-          `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}`,
+          `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}/compose`,
           { method: "GET" },
         );
 
@@ -299,15 +340,13 @@ export default function EditMenuPage() {
 
         const { data } = await res.json();
 
-        console.log("Full menu item data from API:", data);
-
-        const hasDiscount = !!data.menuItemDiscount?.type;
+        const hasDiscount = !!data.discount?.type;
 
         reset({
           name: data.name || "",
           description: data.description || "",
           image: data.imageUrl || "",
-          categoryTypeId: data.categoryTypeId?.toString() || "",
+          categoryTypeId: data.categoryType?.id || "",
           sellingPrice:
             data.sellingPrice != null ? Number(data.sellingPrice) : undefined,
           quantityInStock:
@@ -336,21 +375,20 @@ export default function EditMenuPage() {
 
           discount: hasDiscount
             ? {
-                type: data.menuItemDiscount.type,
+                type: data.discount.type,
                 value:
-                  data.menuItemDiscount.value != null
-                    ? String(data.menuItemDiscount.value)
+                  data.discount.value != null
+                    ? String(data.discount.value)
                     : "",
-                startsAt: data.menuItemDiscount.startsAt
-                  ? new Date(data.menuItemDiscount.startsAt)
+                startsAt: data.discount.startsAt
+                  ? new Date(data.discount.startsAt)
                   : undefined,
-                endsAt: data.menuItemDiscount.endsAt
-                  ? new Date(data.menuItemDiscount.endsAt)
+                endsAt: data.discount.endsAt
+                  ? new Date(data.discount.endsAt)
                   : undefined,
               }
             : undefined,
         });
-
         setShowDiscountForm(hasDiscount);
       } catch (err: any) {
         console.error("Failed to load menu item:", err);
@@ -399,7 +437,6 @@ export default function EditMenuPage() {
   const handleNext = async () => {
     const isValid = await validateCurrentTab();
     if (!isValid) return;
-
     const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex < tabOrder.length - 1) {
       setActiveTab(tabOrder[currentIndex + 1]);
@@ -479,7 +516,6 @@ export default function EditMenuPage() {
     }
 
     const businessId = getBusinessId();
-
     try {
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}/compose`,
@@ -510,11 +546,7 @@ export default function EditMenuPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
-      </div>
-    );
+    return <MenuEditSkeleton />;
   }
 
   const isFirstTab = activeTab === "details";
@@ -661,7 +693,7 @@ export default function EditMenuPage() {
                     <Select onValueChange={field.onChange} value={field.value}>
                       <SelectTrigger
                         className={cn(
-                          "h-12! w-full",
+                          "h-12 w-full",
                           errors.categoryTypeId &&
                             "border-red-600 focus-visible:ring-red-600",
                         )}
