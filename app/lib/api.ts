@@ -44,7 +44,6 @@ export async function refreshAccessToken(): Promise<string | null> {
   const cookies = document.cookie.split("; ");
   const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
   const refreshToken = refreshCookie ? refreshCookie.split("=")[1] : null;
-  // console.log("refresh token", refreshToken)
 
   if (!refreshToken) return null;
 

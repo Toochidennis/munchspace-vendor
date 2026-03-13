@@ -299,8 +299,6 @@ export default function EarningsPage() {
         bankCode: selectedBank.code,
       };
 
-      console.log("Submitting payload:", payload);
-
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/financials/bank-account`,
         {

@@ -209,7 +209,6 @@ export default function LoginPage() {
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
-        console.log("data is:", res.data);
         // Save business id in memory
         setBusinessId(res.data.vendor.businessId);
         // Save hasBusiness in memory

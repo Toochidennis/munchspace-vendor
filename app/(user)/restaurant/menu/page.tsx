@@ -354,7 +354,10 @@ export default function MenuPage() {
       if (!businessId) throw new Error("Business ID not found");
       const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${itemId}`;
 
-      const res = await authenticatedFetch(url, { method: "DELETE" });
+      const res = await authenticatedFetch(url, {
+        method: "DELETE",
+        body: JSON.stringify({}),
+      });
 
       if (!res.ok) {
         throw new Error(`Delete failed: ${res.status}`);

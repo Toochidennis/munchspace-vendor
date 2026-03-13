@@ -153,7 +153,6 @@ export default function DashboardPage() {
         if (!json.success || !json.data) throw new Error("Invalid response");
 
         const api = json.data;
-        console.log("Raw API response:", api);
 
         const transformed = {
           traffic: api.traffic || [],

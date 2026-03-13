@@ -655,7 +655,6 @@ const StoreDetails = () => {
       }
     } catch (err) {
       toast.error("Could not update store image");
-      console.log("previous logo is", previousLogoUrl);
       setStoreImage(previousLogoUrl ?? "/images/store-placeholder.png");
     }
   };
