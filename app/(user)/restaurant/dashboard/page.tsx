@@ -386,7 +386,7 @@ export default function DashboardPage() {
                       height={200}
                       alt="No data"
                     />
-                    <p className="text-center px-5 md:px-20">
+                    <p className="text-center text-sm px-5 md:px-20 mb-4">
                       This space will feature a bar chart showcasing the number
                       of customers who visited your store once data is
                       available.

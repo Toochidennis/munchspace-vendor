@@ -937,7 +937,7 @@ const StoreDetails = () => {
       </Card>
 
       {/* Store Information Display */}
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         <Card className="p-8 border-gray-100 shadow-none">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-semibold text-gray-900">
@@ -1052,7 +1052,7 @@ const StoreDetails = () => {
         </Card>
       </div>
 
-      <Card className="md:p-8 p-2 py-4 border-gray-100 shadow-none">
+      <Card className="md:p-8 p-2 py-4 mt-6 border-gray-100 shadow-none">
         <Accordion type="single" collapsible>
           <AccordionItem value="working-hours">
             <AccordionTrigger className="text-xl font-bold text-gray-900">
@@ -1173,7 +1173,7 @@ const StoreDetails = () => {
         </Accordion>
       </Card>
 
-      <Card className="p-8 border-gray-100 shadow-none flex justify-between">
+      <Card className="p-8 mt-6 border-gray-100 shadow-none flex justify-between">
         <div className="flex justify-between items-center w-full">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Change Password</h2>
