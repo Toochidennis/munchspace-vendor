@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   TrendingUp,
   TrendingDown,
@@ -8,6 +10,8 @@ import {
   Users,
   Percent,
   ChevronRight,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   Bar,
@@ -48,18 +52,24 @@ import Link from "next/link";
 import { getAccessToken, getBusinessId, getFirstName } from "@/app/lib/auth";
 import { toast } from "sonner";
 import { refreshAccessToken } from "@/app/lib/api";
-import Image from "next/image";
 
 // ────────────────────────────────────────────────
-//  Authenticated fetch (exact same style as your other pages)
+//  Constants from .env
 // ────────────────────────────────────────────────
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
 
 async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
   let token = getAccessToken();
+
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
@@ -67,7 +77,7 @@ async function authenticatedFetch(
   }
 
   const headers: HeadersInit = {
-    "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
+    "x-api-key": API_KEY,
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
@@ -82,14 +92,22 @@ async function authenticatedFetch(
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
     token = getAccessToken();
+
     response = await fetch(url, {
       ...init,
-      headers: { ...headers, Authorization: `Bearer ${token}` },
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
     });
   }
 
   return response;
 }
+
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const [firstName, setFirstName] = useState<string | null>(null);
@@ -105,6 +123,9 @@ export default function DashboardPage() {
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setFirstName(getFirstName());
@@ -113,6 +134,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchDashboard = async () => {
       setLoading(true);
+      setFetchNetworkError(null);
 
       const businessId = getBusinessId();
       if (!businessId) {
@@ -160,9 +182,19 @@ export default function DashboardPage() {
 
         setData(transformed);
       } catch (err: any) {
-        toast.error("Failed to load dashboard", {
-          description: err.message || "Please try again later.",
-        });
+        console.error("Dashboard fetch failed:", err);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load dashboard data. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Failed to load dashboard", {
+            description: err.message || "Please try again later.",
+          });
+        }
         setData({
           traffic: [],
           bestSelling: [],
@@ -186,7 +218,7 @@ export default function DashboardPage() {
     fetchDashboard();
   }, [period]);
 
-  // Color palette for best selling progress bar (exactly as in your original code)
+  // Color palette for best selling progress bar (unchanged)
   const colorPalette = [
     "bg-blue-500",
     "bg-green-500",
@@ -194,6 +226,25 @@ export default function DashboardPage() {
     "bg-orange-500",
     "bg-red-500",
   ];
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -276,7 +327,10 @@ export default function DashboardPage() {
     );
   }
 
-  const top5Items = data.bestSelling.slice(0, 5);
+  const top5Items =
+    data.bestSelling.length > 5
+      ? data.bestSelling.slice(0, 5)
+      : data.bestSelling;
   const totalSales = top5Items.reduce(
     (sum: number, item: any) => sum + item.sales,
     0,
@@ -316,7 +370,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Store Traffic Chart */}
           <div className="overflow-x-auto scrollbar-custom scrollbar-no-arrows pb-2 md:col-span-3">
-            <Card className="md:col-span-3 rounded-lg pb-0 pe-4 shadow-none min-w-130 border-gray-100">
+            <Card className="md:col-span-3 rounded-lg pb-0 pe-4 shadow-none md:min-w-130 border-gray-100">
               <CardHeader>
                 <CardTitle className="text-lg">Store Traffic</CardTitle>
                 <CardDescription>
@@ -332,7 +386,7 @@ export default function DashboardPage() {
                       height={200}
                       alt="No data"
                     />
-                    <p className="text-center px-10 md:px-20">
+                    <p className="text-center px-5 md:px-20">
                       This space will feature a bar chart showcasing the number
                       of customers who visited your store once data is
                       available.
@@ -365,7 +419,7 @@ export default function DashboardPage() {
 
           {/* KPI Cards */}
           <div className="md:col-span-3 lg:col-span-2 scrollbar-custom scrollbar-no-arrows pb-2 w-full overflow-x-auto relative">
-            <div className="grid grid-cols-2 gap-2 md:gap-4 whitespace-nowrap text-center min-w-95 ">
+            <div className="grid grid-cols-2 gap-2 md:gap-4 whitespace-nowrap text-center min-w-95">
               <Card className="gap-1 shadow-none md:gap-4 border-gray-100 px-0">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2 justify-center">

@@ -10,26 +10,38 @@ import {
   Wifi,
   Workflow,
   Loader2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
-import { refreshAccessToken } from "@/app/lib/api";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import { cn } from "@/lib/utils";
+import { refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
-//  Authenticated fetch helpers
+//  Constants from .env
 // ────────────────────────────────────────────────
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
 
 async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
   let token = getAccessToken();
+
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
@@ -37,8 +49,7 @@ async function authenticatedFetch(
   }
 
   const headers: HeadersInit = {
-    "x-api-key":
-      "eH4u8eujRzIrLWE+xkqyUWg33ggZ1Ts5bAKi/Ze5l23dyc7aLZSVMEssML0vUvDHrhchMtyskMxzGW3c4jhQCA==",
+    "x-api-key": API_KEY,
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
@@ -53,14 +64,22 @@ async function authenticatedFetch(
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
     token = getAccessToken();
+
     response = await fetch(url, {
       ...init,
-      headers: { ...headers, Authorization: `Bearer ${token}` },
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
     });
   }
 
   return response;
 }
+
+// ────────────────────────────────────────────────
+//  Types (unchanged)
+// ────────────────────────────────────────────────
 
 type MenuItem = {
   id: string;
@@ -94,6 +113,10 @@ type BusinessPreview = {
   menu: MenuGroup[];
 };
 
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
+
 export default function StorePreview() {
   const [storeName, setStoreName] = useState("");
   const [storeImage, setStoreImage] = useState<string | null>(null);
@@ -102,6 +125,9 @@ export default function StorePreview() {
   const [previewData, setPreviewData] = useState<BusinessPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("All");
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   const [isSavingName, setIsSavingName] = useState(false);
   const [isSavingImage, setIsSavingImage] = useState(false);
@@ -116,14 +142,21 @@ export default function StorePreview() {
         return;
       }
 
+      setLoading(true);
+      setFetchNetworkError(null);
+
       try {
         const url = `${API_BASE}/vendors/me/businesses/${businessId}/preview`;
         const res = await authenticatedFetch(url);
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
 
         const json = await res.json();
-        if (!json.success || !json.data) throw new Error("Invalid response");
+        if (!json.success || !json.data) {
+          throw new Error("Invalid response");
+        }
 
         setPreviewData(json.data);
 
@@ -131,9 +164,19 @@ export default function StorePreview() {
         setStoreName(json.data.business.displayName || "");
         setStoreImage(json.data.business.coverImage || null);
       } catch (err: any) {
-        toast.error("Failed to load store preview", {
-          description: err.message || "An unexpected error occurred.",
-        });
+        console.error("Preview fetch error:", err);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load store preview. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Failed to load store preview", {
+            description: err.message || "An unexpected error occurred.",
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -191,7 +234,7 @@ export default function StorePreview() {
       }
 
       toast.success("Store name updated successfully");
-      await refreshPreview(); // ← reflect real saved value
+      await refreshPreview(); // reflect real saved value
     } catch (err: any) {
       toast.error("Failed to update store name", {
         description: err.message || "Please try again.",
@@ -232,7 +275,7 @@ export default function StorePreview() {
       }
 
       toast.success("Store image updated successfully");
-      await refreshPreview(); // ← reflect real saved value + new URL
+      await refreshPreview(); // reflect real saved value + new URL
     } catch (err: any) {
       toast.error("Failed to update store image", {
         description: err.message || "Please try again.",
@@ -258,10 +301,29 @@ export default function StorePreview() {
   const displayedItems =
     previewData?.menu.find((g) => g.groupName === activeTab)?.items || [];
 
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
-        <div className="max-w-7xl mx-auto p-8">
+        <div className="max-w-7xl mx-auto p-5 md:p-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 animate-pulse">
             {/* Left side - Form skeleton */}
             <div className="space-y-8">
@@ -353,7 +415,7 @@ export default function StorePreview() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-7xl mx-auto p-8">
+      <div className="max-w-7xl mx-auto p-5 md:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           {/* Left Side - Form */}
           <div className="space-y-8">

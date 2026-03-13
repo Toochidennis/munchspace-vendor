@@ -1,3 +1,5 @@
+"use client";
+
 import {
   LoaderCircle,
   Pencil,
@@ -6,6 +8,8 @@ import {
   X,
   Check,
   ChevronsUpDown,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { Input } from "../ui/input";
@@ -42,8 +46,63 @@ import { Badge } from "../ui/badge";
 import { cn } from "@/lib/utils";
 import { Switch } from "../ui/switch";
 import { toast } from "sonner";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import { Skeleton } from "../ui/skeleton";
+import { refreshAccessToken } from "@/app/lib/api";
+
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+
+  return response;
+}
+
+// ────────────────────────────────────────────────
+//  Types & Schema (unchanged)
+// ────────────────────────────────────────────────
 
 interface ChargeType {
   id: string;
@@ -75,26 +134,22 @@ interface Charge {
   };
 }
 
-const chargesFormSchema = z
-  .object({
-    chargeTypeId: z.string().optional(), // Made optional for edit mode
-    amount: z
-      .string()
-      .min(1, "Amount is required")
-      .regex(/^\d+(\.\d{1,2})?$/, "Invalid amount format"),
-    serviceOperationIds: z
-      .array(z.string())
-      .min(1, "Select at least one service"),
-  })
-  .refine((data) => {
-    // Custom validation: chargeTypeId is required ONLY if we aren't editing (handled via component logic usually, but here for safety)
-    return true;
-  });
+const chargesFormSchema = z.object({
+  chargeTypeId: z.string().optional(),
+  amount: z
+    .string()
+    .min(1, "Amount is required")
+    .regex(/^\d+(\.\d{1,2})?$/, "Invalid amount format"),
+  serviceOperationIds: z
+    .array(z.string())
+    .min(1, "Select at least one service"),
+});
 
 type ChargesFormType = z.infer<typeof chargesFormSchema>;
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
 
 const Charges = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -110,8 +165,10 @@ const Charges = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<Charge | null>(null);
   const [serviceOperationOpen, setServiceOperationOpen] = useState(false);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
-  const accessToken = getAccessToken();
   const businessId = getBusinessId();
 
   const form = useForm<ChargesFormType>({
@@ -124,21 +181,23 @@ const Charges = () => {
   });
 
   const fetchData = async () => {
-    if (!accessToken || !businessId) return;
+    if (!businessId) {
+      toast.error("No business ID found");
+      return;
+    }
+
     setIsDataLoading(true);
+    setFetchNetworkError(null);
+
     try {
-      const headers = {
-        Authorization: `Bearer ${accessToken}`,
-        "x-api-key": API_KEY,
-      };
       const [typesRes, servicesRes, chargesRes] = await Promise.all([
-        fetch(`${API_BASE}/meta/charge-types`, { headers }),
-        fetch(`${API_BASE}/vendors/me/businesses/${businessId}/services`, {
-          headers,
-        }),
-        fetch(`${API_BASE}/vendors/me/businesses/${businessId}/charges`, {
-          headers,
-        }),
+        authenticatedFetch(`${API_BASE}/meta/charge-types`),
+        authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/services`,
+        ),
+        authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/charges`,
+        ),
       ]);
 
       const typesData = await typesRes.json();
@@ -166,17 +225,21 @@ const Charges = () => {
             : `₦${Number(c.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
           lastUpdated: new Date(c.updatedAt || c.createdAt).toLocaleDateString(
             "en-GB",
-            {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            },
+            { day: "numeric", month: "short", year: "numeric" },
           ),
         };
       });
+
       setCharges(enriched);
-    } catch (err) {
-      toast.error("Failed to load data. Please refresh.");
+    } catch (err: any) {
+      console.error("Data fetch error:", err);
+      if (err.message?.includes("fetch") || err.message?.includes("Network")) {
+        setFetchNetworkError(
+          "Unable to load charges data. Please check your internet connection.",
+        );
+      } else {
+        toast.error("Failed to load data. Please try again.");
+      }
     } finally {
       setIsDataLoading(false);
     }
@@ -184,7 +247,7 @@ const Charges = () => {
 
   useEffect(() => {
     fetchData();
-  }, [accessToken, businessId]);
+  }, [businessId]);
 
   const handleEdit = (charge: Charge) => {
     setEditingCharge(charge);
@@ -200,23 +263,19 @@ const Charges = () => {
   const confirmDelete = async () => {
     if (!deleteCandidate) return;
     setIsLoading(true);
+
     try {
-      const res = await fetch(
+      const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/charges/${deleteCandidate.id}`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "x-api-key": API_KEY,
-          },
-        },
+        { method: "DELETE" },
       );
 
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error("Delete failed");
+
       setCharges((prev) => prev.filter((c) => c.id !== deleteCandidate.id));
       setIsDeleteDialogOpen(false);
       toast.success("Charge deleted successfully");
-    } catch {
+    } catch (err) {
       toast.error("Failed to delete charge");
     } finally {
       setIsLoading(false);
@@ -225,6 +284,7 @@ const Charges = () => {
 
   const onSubmit = async (values: ChargesFormType) => {
     setIsLoading(true);
+
     try {
       const url = editingCharge
         ? `${API_BASE}/vendors/me/businesses/${businessId}/charges/${editingCharge.id}`
@@ -232,7 +292,6 @@ const Charges = () => {
 
       let requestBody: any;
       if (editingCharge) {
-        // Exclude chargeTypeId for PATCH
         const { chargeTypeId, ...rest } = values;
         requestBody = {
           ...rest,
@@ -246,17 +305,16 @@ const Charges = () => {
         };
       }
 
-      const res = await fetch(url, {
+      const res = await authenticatedFetch(url, {
         method: editingCharge ? "PATCH" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          "x-api-key": API_KEY,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
 
-      if (!res.ok) throw new Error("Failed to save charge");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to save charge");
+      }
 
       toast.success(
         editingCharge
@@ -266,7 +324,7 @@ const Charges = () => {
       setIsDialogOpen(false);
       fetchData();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to save charge");
     } finally {
       setIsLoading(false);
     }
@@ -277,9 +335,28 @@ const Charges = () => {
   );
   const isPercentage = selectedType?.isPercentage ?? false;
 
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white text-gray-900">
-      <div className="max-w-7xl mx-auto space-y-8 p-6">
+      <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold">Charges & Fees</h1>
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
@@ -356,18 +433,19 @@ const Charges = () => {
                           checked={charge.isEnabled}
                           onCheckedChange={async (v) => {
                             try {
-                              await fetch(
+                              const res = await authenticatedFetch(
                                 `${API_BASE}/vendors/me/businesses/${businessId}/charges/${charge.id}/toggle`,
                                 {
                                   method: "PATCH",
                                   headers: {
                                     "Content-Type": "application/json",
-                                    Authorization: `Bearer ${accessToken}`,
-                                    "x-api-key": API_KEY,
                                   },
                                   body: JSON.stringify({ isEnabled: v }),
                                 },
                               );
+
+                              if (!res.ok) throw new Error();
+
                               setCharges((prev) =>
                                 prev.map((c) =>
                                   c.id === charge.id
@@ -434,7 +512,6 @@ const Charges = () => {
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="p-6 space-y-6"
               >
-                {/* Charge Type field is now ONLY shown when adding new */}
                 {!editingCharge && (
                   <FormField
                     control={form.control}
@@ -447,7 +524,7 @@ const Charges = () => {
                           value={field.value}
                         >
                           <FormControl>
-                            <SelectTrigger className="h-11! w-full rounded-md">
+                            <SelectTrigger className="h-11 w-full rounded-md">
                               <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                           </FormControl>
@@ -653,12 +730,11 @@ const Charges = () => {
 
 export default Charges;
 
-
+// ChargesSkeleton remains unchanged
 const ChargesSkeleton = () => {
   return (
     <div className="bg-white text-gray-900">
       <div className="max-w-7xl mx-auto space-y-8 p-6">
-        {/* Header Skeleton */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <Skeleton className="h-8 w-48 rounded-md" />
           <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
@@ -667,7 +743,6 @@ const ChargesSkeleton = () => {
           </div>
         </div>
 
-        {/* Table Skeleton */}
         <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
           <Table>
             <TableHeader>
@@ -702,8 +777,7 @@ const ChargesSkeleton = () => {
                     <Skeleton className="h-5 w-24 rounded-md" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-6 w-10 rounded-full" />{" "}
-                    {/* Switch shape */}
+                    <Skeleton className="h-6 w-10 rounded-full" />
                   </TableCell>
                   <TableCell className="text-right pe-6">
                     <div className="flex justify-end gap-2">

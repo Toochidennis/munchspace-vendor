@@ -18,6 +18,8 @@ import {
   X,
   EyeOff,
   Eye,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -61,8 +63,51 @@ import { format } from "date-fns";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
 import { Skeleton } from "../ui/skeleton";
+import { refreshAccessToken } from "@/app/lib/api";
 
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || " ";
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || "";
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+
+  return response;
+}
 
 const daysOfWeek = [
   "Monday",
@@ -161,9 +206,6 @@ type StoreInfoDisplayValues = {
 
 type Option = { value: string; label: string };
 
-const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
-
 const StoreDetails = () => {
   const { storeImage, setStoreImage, setAddress } = useStore();
   const [previousLogoUrl, setPreviousLogoUrl] = useState<string | null>(null);
@@ -178,6 +220,10 @@ const StoreDetails = () => {
   const [updatingHours, setUpdatingHours] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
+
   // Visibility states for eye icons
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -273,151 +319,45 @@ const StoreDetails = () => {
   });
 
   useEffect(() => {
-    if (!isAddressModalOpen) return;
-
-    async function initMap() {
-      try {
-        setOptions({
-          key: GOOGLE_API_KEY,
-          libraries: ["places"],
-        });
-
-        const [{ Map }, placesLib] = await Promise.all([
-          importLibrary("maps"),
-          importLibrary("places"),
-        ]);
-
-        const mapDiv = document.getElementById("map");
-        if (!mapDiv) return;
-
-        const initialCenter = { lat: 6.5244, lng: 3.3792 };
-
-        const newMap = new Map(mapDiv, {
-          center: initialCenter,
-          zoom: 12,
-        });
-
-        const newMarker = new google.maps.Marker({
-          position: initialCenter,
-          map: newMap,
-          draggable: true,
-        });
-
-        newMarker.addListener("dragend", (e: any) => {
-          if (e.latLng) {
-            addressForm.setValue("latitude", e.latLng.lat());
-            addressForm.setValue("longitude", e.latLng.lng());
-          }
-        });
-
-        newMap.addListener("click", (e: any) => {
-          if (e.latLng) {
-            newMarker.setPosition(e.latLng);
-            addressForm.setValue("latitude", e.latLng.lat());
-            addressForm.setValue("longitude", e.latLng.lng());
-          }
-        });
-
-        const searchInput = document.getElementById(
-          "location-search",
-        ) as HTMLInputElement;
-        if (searchInput) {
-          const autocomplete = new placesLib.Autocomplete(searchInput);
-
-          autocomplete.addListener("place_changed", () => {
-            const place = autocomplete.getPlace();
-            if (place.geometry?.location) {
-              newMap.setCenter(place.geometry.location);
-              newMap.setZoom(15);
-              newMarker.setPosition(place.geometry.location);
-              addressForm.setValue("latitude", place.geometry.location.lat());
-              addressForm.setValue("longitude", place.geometry.location.lng());
-            }
-          });
-        }
-      } catch (err) {
-        console.error("Google Maps init failed:", err);
-        toast.error("Failed to load map. Please check your API key.");
-      }
-    }
-
-    initMap();
-  }, [isAddressModalOpen, addressForm]);
-
-  useEffect(() => {
     const fetchAllData = async () => {
+      setLoading(true);
+      setFetchNetworkError(null);
+
       try {
-        setLoading(true);
-
-        const token = getAccessToken();
-        if (!token) {
-          toast.error("Authentication required");
-          return;
-        }
-
         const businessId = getBusinessId();
-        if (!businessId) {
-          toast.error("No business ID found");
-          return;
-        }
-
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          "x-api-key": API_KEY,
-        };
+        if (!businessId) throw new Error("No business ID found");
 
         const [btRes, brRes, soRes, businessRes, nigeriaRes] =
           await Promise.all([
-            fetch("https://dev.api.munchspace.io/api/v1/meta/business-types", {
-              headers,
-            }),
-            fetch("https://dev.api.munchspace.io/api/v1/meta/brand-types", {
-              headers,
-            }),
-            fetch(
-              "https://dev.api.munchspace.io/api/v1/meta/service-operations",
-              {
-                headers,
-              },
+            authenticatedFetch(`${API_BASE}/meta/business-types`),
+            authenticatedFetch(`${API_BASE}/meta/brand-types`),
+            authenticatedFetch(`${API_BASE}/meta/service-operations`),
+            authenticatedFetch(
+              `${API_BASE}/vendors/me/businesses/${businessId}`,
             ),
-            fetch(
-              `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
-              { headers },
-            ),
-            fetch(`https://dev.api.munchspace.io/api/v1/meta/nigeria-states`, {
-              headers,
-            }),
+            authenticatedFetch(`${API_BASE}/meta/nigeria-states`),
           ]);
 
-        let btData = btRes.ok ? (await btRes.json()).data || [] : [];
-        let brData = brRes.ok ? (await brRes.json()).data || [] : [];
-        let soData = soRes.ok ? (await soRes.json()).data || [] : [];
-        let nigeriaJson: any = null;
+        const btJson = await btRes.json();
+        const brJson = await brRes.json();
+        const soJson = await soRes.json();
+        const businessJson = await businessRes.json();
+        const nigeriaJson = await nigeriaRes.json();
 
-        setBusinessTypeOptions(btData);
-        setBrandTypeOptions(brData);
-        setServiceOperationOptions(soData);
+        setBusinessTypeOptions(btJson.data || []);
+        setBrandTypeOptions(brJson.data || []);
+        setServiceOperationOptions(soJson.data || []);
 
-        if (!businessRes.ok) {
-          throw new Error("Failed to fetch business data");
-        }
-
-        const { data } = await businessRes.json();
-
-        // console.log("Nigeria res is:", await nigeriaRes.json())
-
-        if (nigeriaRes.ok) {
-          const nigeriaR = await nigeriaRes.json();
-          nigeriaJson = nigeriaR.data;
-          console.log("Nig JSON:", nigeriaJson);
-        }
-
-        if (nigeriaJson?.country && Array.isArray(nigeriaJson.states)) {
-          setNigeriaData(nigeriaJson);
-          setStatesLoading(false);
+        if (
+          nigeriaJson?.data?.country &&
+          Array.isArray(nigeriaJson.data.states)
+        ) {
+          setNigeriaData(nigeriaJson.data);
         } else {
           setStatesError("Failed to load Nigerian states.");
         }
+
+        const data = businessJson.data;
 
         const workingHours: Record<string, any> = {};
         daysOfWeek.forEach((uiDay) => {
@@ -429,10 +369,11 @@ const StoreDetails = () => {
             end: hours?.closeTime || "20:00",
           };
         });
+
         form.reset({ workingHours });
 
         const transformAddress = (apiAddr: any) => {
-          if (!apiAddr) {
+          if (!apiAddr)
             return {
               country: "",
               state: "",
@@ -441,8 +382,6 @@ const StoreDetails = () => {
               city: "",
               postalCode: undefined,
             };
-          }
-
           return {
             country: apiAddr.country?.name || "",
             state: apiAddr.state?.name || "",
@@ -482,49 +421,63 @@ const StoreDetails = () => {
           businessType: data.businessType?.id || "",
           brandType: data.brandType?.id || "",
           serviceOperations:
-            data.serviceOperations?.map((op: MetaItem) => op.id) || [],
+            data.serviceOperations?.map((op: any) => op.id) || [],
         });
 
         addressForm.reset({
           country: "Nigeria",
-          state: data.address?.state || "",
-          lga: data.address?.lga || "",
+          state: data.address?.state?.id || "",
+          lga: data.address?.lga?.id || "",
           streetName: data.address?.streetName || "",
           city: data.address?.city || "",
-          postalCode: data.address?.postalCode || "",
-          latitude: data.latitude || 0,
-          longitude: data.longitude || 0,
+          postalCode: data.address?.postalCode
+            ? Number(data.address.postalCode)
+            : 0,
+          latitude: data.address?.latitude || 0,
+          longitude: data.address?.longitude || 0,
         });
 
         if (data.logoUrl) {
-          setStoreImage(data.logoUrl);
-        }
-      } catch (err) {
+          setStoreImage(data.logoUrl)
+          setPreviousLogoUrl(data.logoUrl);
+        };
+
+      } catch (err: any) {
         console.error("Fetch error:", err);
-        toast.error("Could not load store information");
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load store details. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Could not load store information");
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchAllData();
-  }, [form, storeForm, addressForm]);
+  }, [form, storeForm, addressForm, setStoreImage]);
+
+  // ────────────────────────────────────────────────
+  //  LGA loading (using authenticatedFetch)
+  // ────────────────────────────────────────────────
 
   useEffect(() => {
     const selectedStateId = addressForm.watch("state");
-
-    // Immediately reset everything when state changes
     addressForm.setValue("lga", "");
     setLgas([]);
     setLgasError("");
-    setLgasLoading(true); // show loading right away
+    setLgasLoading(true);
 
     if (!selectedStateId || !nigeriaData?.states) {
       setLgasLoading(false);
       return;
     }
 
-    // We'll use this to detect if this is still the relevant fetch
     let isCurrent = true;
 
     async function loadLgas() {
@@ -536,18 +489,13 @@ const StoreDetails = () => {
 
         const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(selectedState.id)}&stateCode=${encodeURIComponent(selectedState.code)}`;
 
-        const response = await fetch(url, {
-          headers: { "x-api-key": API_KEY },
-        });
+        const response = await authenticatedFetch(url);
 
-        if (!isCurrent) return; // ← prevent stale update
+        if (!isCurrent) return;
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const json = await response.json();
-
         const rawArray = Array.isArray(json)
           ? json
           : (json.data ?? json.lgas ?? json.items ?? []);
@@ -562,75 +510,134 @@ const StoreDetails = () => {
         if (!isCurrent) return;
 
         setLgas(normalized);
-        setLgasError(""); // explicitly clear on success
-
+        setLgasError("");
         if (normalized.length === 1) {
           addressForm.setValue("lga", normalized[0].value);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (!isCurrent) return;
         console.error("LGA fetch failed:", err);
-        // setLgasError("Could not load LGAs for the selected state.");
-      } finally {
-        if (isCurrent) {
-          setLgasLoading(false);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load LGA options. Please check your connection.",
+          );
+        } else {
+          setLgasError("Could not load LGAs for the selected state.");
         }
+      } finally {
+        if (isCurrent) setLgasLoading(false);
       }
     }
 
     loadLgas();
 
-    // Cleanup: mark previous fetches as stale
     return () => {
       isCurrent = false;
     };
-  }, [addressForm.watch("state"), nigeriaData]);
+  }, [addressForm.watch("state"), nigeriaData, addressForm]);
+
+  // ────────────────────────────────────────────────
+  //  Google Maps (unchanged)
+  // ────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAddressModalOpen) return;
+
+    async function initMap() {
+      try {
+        setOptions({ key: GOOGLE_API_KEY, libraries: ["places"] });
+        const [{ Map }, placesLib] = await Promise.all([
+          importLibrary("maps"),
+          importLibrary("places"),
+        ]);
+
+        const mapDiv = document.getElementById("map");
+        if (!mapDiv) return;
+
+        const initialCenter = { lat: 6.5244, lng: 3.3792 };
+        const newMap = new Map(mapDiv, { center: initialCenter, zoom: 12 });
+
+        const newMarker = new google.maps.Marker({
+          position: initialCenter,
+          map: newMap,
+          draggable: true,
+        });
+
+        newMarker.addListener("dragend", (e: any) => {
+          if (e.latLng) {
+            addressForm.setValue("latitude", e.latLng.lat());
+            addressForm.setValue("longitude", e.latLng.lng());
+          }
+        });
+
+        newMap.addListener("click", (e: any) => {
+          if (e.latLng) {
+            newMarker.setPosition(e.latLng);
+            addressForm.setValue("latitude", e.latLng.lat());
+            addressForm.setValue("longitude", e.latLng.lng());
+          }
+        });
+
+        const searchInput = document.getElementById(
+          "location-search",
+        ) as HTMLInputElement;
+        if (searchInput) {
+          const autocomplete = new placesLib.Autocomplete(searchInput);
+          autocomplete.addListener("place_changed", () => {
+            const place = autocomplete.getPlace();
+            if (place.geometry?.location) {
+              newMap.setCenter(place.geometry.location);
+              newMap.setZoom(15);
+              newMarker.setPosition(place.geometry.location);
+              addressForm.setValue("latitude", place.geometry.location.lat());
+              addressForm.setValue("longitude", place.geometry.location.lng());
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Google Maps init failed:", err);
+        toast.error("Failed to load map. Please check your API key.");
+      }
+    }
+
+    initMap();
+  }, [isAddressModalOpen, addressForm]);
+
+  // ────────────────────────────────────────────────
+  //  Handlers (updated to use authenticatedFetch)
+  // ────────────────────────────────────────────────
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Client-side validation
     if (file.size > 2 * 1024 * 1024) {
       toast.error("File size exceeds 2MB limit");
       return;
     }
-
     if (!["image/png", "image/jpeg", "image/jpg"].includes(file.type)) {
       toast.error("Only PNG and JPEG images are allowed");
       return;
     }
 
-    // Save current image for rollback
-    setPreviousLogoUrl(storeImage);
-
-    // Optimistic preview
+    // setPreviousLogoUrl(storeImage);
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setStoreImage(reader.result as string);
-    };
+    reader.onloadend = () => setStoreImage(reader.result as string);
     reader.readAsDataURL(file);
 
     try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Authentication required");
-
-      const businessId = await getBusinessId();
+      const businessId = getBusinessId();
       if (!businessId) throw new Error("No business ID found");
 
       const formData = new FormData();
       formData.append("logo", file);
 
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
-          body: formData,
-        },
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
+        { method: "PATCH", body: formData },
       );
 
       if (!res.ok) {
@@ -640,68 +647,54 @@ const StoreDetails = () => {
 
       const responseData = await res.json();
       const newLogoUrl = responseData?.data?.logoUrl;
-
       if (newLogoUrl) {
         setStoreImage(newLogoUrl);
         toast.success("Store image updated successfully");
       } else {
-        toast.warning("Image uploaded, but no new URL returned");
+        toast.warning("Image uploaded");
       }
     } catch (err) {
-      console.error("Logo upload failed:", err);
       toast.error("Could not update store image");
-      // Revert preview
+      console.log("previous logo is", previousLogoUrl);
       setStoreImage(previousLogoUrl ?? "/images/store-placeholder.png");
     }
   };
 
-  const onPasswordSubmit = async (values: any) => {
+  const onPasswordSubmit: SubmitHandler<PasswordFormValues> = async (
+    values,
+  ) => {
     setIsSubmitting(true);
     try {
-      const token = getAccessToken();
-      const response = await fetch(
-        "https://dev.api.munchspace.io/api/v1/auth/password/change",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
-          body: JSON.stringify({
-            currentPassword: values.currentPassword,
-            newPassword: values.newPassword,
-          }),
-        },
-      );
+      const res = await authenticatedFetch(`${API_BASE}/auth/password/change`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword,
+        }),
+      });
 
-      const data = await response.json();
-      console.log("Password change response:", data, values);
+      const data = await res.json();
 
-      if (!response.ok)
-        throw new Error(data.message || "Failed to update password");
+      if (!res.ok) throw new Error(data.message || "Failed to update password");
 
       toast.success("Password updated successfully");
       logout();
       setIsPasswordModalOpen(false);
       passwordForm.reset();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error.message || "Failed to change password");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const onStoreSubmit = async (data: StoreInfoEditValues) => {
+  const onStoreSubmit: SubmitHandler<StoreInfoEditValues> = async (data) => {
     try {
-      const token = await getAccessToken();
-      if (!token) return toast.error("Authentication required");
-
-      const businessId = await getBusinessId();
+      const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
-
       formData.append("displayName", data.storeName);
       formData.append("email", data.email);
       formData.append("phone", data.phone);
@@ -711,21 +704,13 @@ const StoreDetails = () => {
       );
       formData.append("businessTypeId", data.businessType);
       formData.append("brandTypeId", data.brandType);
+      data.serviceOperations.forEach((id) =>
+        formData.append("serviceOperationIds[]", id),
+      );
 
-      data.serviceOperations.forEach((id) => {
-        formData.append("serviceOperationIds[]", id);
-      });
-
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
-          body: formData,
-        },
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
+        { method: "PATCH", body: formData },
       );
 
       if (!res.ok) throw new Error("Update failed");
@@ -757,46 +742,35 @@ const StoreDetails = () => {
 
   const onAddressSubmit: SubmitHandler<AddressEditValues> = async (data) => {
     try {
-      const token = getAccessToken();
-      if (!token) return toast.error("Authentication required");
-
       const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
-
-      formData.append("address[countryId]", "cmlzf6q8v004z01poe6yusjpr");
+      formData.append("address[countryId]", "cmlzf6q8v004z01poe6yusjpr"); // Nigeria ID
       formData.append("address[stateId]", data.state);
       formData.append("address[lgaId]", data.lga);
       formData.append("address[streetName]", data.streetName);
       formData.append("address[city]", data.city);
       if (data.postalCode)
         formData.append("address[postalCode]", data.postalCode.toString());
-
       formData.append("address[latitude]", data.latitude.toString());
       formData.append("address[longitude]", data.longitude.toString());
 
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
-          body: formData,
-        },
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
+        { method: "PATCH", body: formData },
       );
 
-      const resData = await res.json();
-      console.log("Address update response:", resData);
-
-      if (!res.ok) throw new Error("Address update failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Address update failed");
+      }
 
       const stateName =
         nigeriaData?.states.find((s) => s.id === data.state)?.name || "";
       const lgaName = lgas?.find((s) => s.value === data.lga)?.label || "";
       const formattedAddress = `${data.streetName}, ${data.city}, ${stateName}`;
+
       setAddress(formattedAddress);
 
       setStoreInfo((prev) => ({
@@ -813,8 +787,8 @@ const StoreDetails = () => {
         latitude: data.latitude,
         longitude: data.longitude,
       }));
-      toast.success("Address updated successfully");
 
+      toast.success("Address updated successfully");
       addressForm.reset(data);
       setIsAddressModalOpen(false);
     } catch (err) {
@@ -826,15 +800,10 @@ const StoreDetails = () => {
   const handleUpdateWorkingHours = async () => {
     try {
       setUpdatingHours(true);
-
-      const token = getAccessToken();
-      if (!token) return toast.error("Authentication required");
-
       const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const workingHoursData = form.getValues("workingHours");
-
       const apiWorkingHours = daysOfWeek
         .filter((day) => workingHoursData[day].enabled)
         .map((day) => ({
@@ -844,23 +813,15 @@ const StoreDetails = () => {
         }));
 
       const formData = new FormData();
-
       apiWorkingHours.forEach((hour, index) => {
         formData.append(`workingHours[${index}][day]`, hour.day);
         formData.append(`workingHours[${index}][openTime]`, hour.openTime);
         formData.append(`workingHours[${index}][closeTime]`, hour.closeTime);
       });
 
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
-          body: formData,
-        },
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
+        { method: "PATCH", body: formData },
       );
 
       if (!res.ok) throw new Error("Failed to update working hours");
@@ -888,14 +849,32 @@ const StoreDetails = () => {
     form.setValue(`workingHours.${day}.end`, "20:00");
   };
 
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
+
   if (loading) {
     return <StoreSkeleton />;
   }
-
   return (
     <div>
       {/* Store Image Upload */}
-      <Card className="p-4 md:p-8 bg-white border-gray-100 shadow-none">
+      <Card className="md:p-8 bg-white border-gray-100 shadow-none">
         <div className="flex items-center gap-4">
           <div className="flex gap-8">
             <div className="relative group">

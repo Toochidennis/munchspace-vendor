@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Trash2, Plus, LoaderCircle, ChevronsUpDown } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  LoaderCircle,
+  ChevronsUpDown,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,35 +46,23 @@ import Image from "next/image";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
-import { refreshAccessToken } from "@/app/lib/api";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import CustomModal from "@/components/layout/CustomModal";
+import { refreshAccessToken } from "@/app/lib/api";
 
-const addSettlementSchema = z.object({
-  bankName: z.string().min(1, "Bank name is required"),
-  accountName: z.string().min(1, "Account name is required"),
-  accountNumber: z.string().min(1, "Account number is required"),
-});
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
 
-type AddSettlementType = z.infer<typeof addSettlementSchema>;
-
-interface BankOption {
-  id: string;
-  name: string;
-  code: string;
-}
-
-interface SettlementAccount {
-  businessId?: string;
-  bankName: string;
-  accountName: string;
-  accountNumber: string;
-  bankCode?: string;
-  logoUrl?: string;
-}
-
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
 
 async function authenticatedFetch(
   url: string,
@@ -95,17 +90,51 @@ async function authenticatedFetch(
   }
 
   let response = await fetch(url, { ...init, headers });
+
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
     token = getAccessToken();
+
     response = await fetch(url, {
       ...init,
       headers: { ...headers, Authorization: `Bearer ${token}` },
     });
   }
+
   return response;
 }
+
+// ────────────────────────────────────────────────
+//  Schema & Types (unchanged)
+// ────────────────────────────────────────────────
+
+const addSettlementSchema = z.object({
+  bankName: z.string().min(1, "Bank name is required"),
+  accountName: z.string().min(1, "Account name is required"),
+  accountNumber: z.string().min(1, "Account number is required"),
+});
+
+type AddSettlementType = z.infer<typeof addSettlementSchema>;
+
+interface BankOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface SettlementAccount {
+  businessId?: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  bankCode?: string;
+  logoUrl?: string;
+}
+
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
 
 export default function EarningsPage() {
   const [activeTab, setActiveTab] = useState<"earnings" | "payout">("earnings");
@@ -123,7 +152,10 @@ export default function EarningsPage() {
   const [verificationError, setVerificationError] = useState<string | null>(
     null,
   );
-  const [selectedBank, setSelectedBank] = useState<BankOption | null>(null)
+  const [selectedBank, setSelectedBank] = useState<BankOption | null>(null);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
@@ -140,29 +172,48 @@ export default function EarningsPage() {
 
     async function fetchData() {
       if (!id) return;
-      try {
-        setIsLoadingAccount(true);
-        const accRes = await authenticatedFetch(
-          `${API_BASE}/vendors/me/businesses/${id}/financials/bank-account`,
-        );
-        const accJson = await accRes.json();
 
+      setIsLoadingAccount(true);
+      setIsLoadingBanks(true);
+      setFetchNetworkError(null);
+
+      try {
+        const [accRes, bankRes] = await Promise.all([
+          authenticatedFetch(
+            `${API_BASE}/vendors/me/businesses/${id}/financials/bank-account`,
+          ),
+          authenticatedFetch(
+            `${API_BASE}/vendors/me/businesses/${id}/financials/banks`,
+          ),
+        ]);
+
+        const accJson = await accRes.json();
         if (accJson.success && accJson.data) {
           setAccount(accJson.data);
         }
 
-        const bankRes = await authenticatedFetch(
-          `${API_BASE}/vendors/me/businesses/${id}/financials/banks`,
-        );
         const bankJson = await bankRes.json();
-        if (bankJson.success) setBanks(bankJson.data);
-      } catch (err) {
+        if (bankJson.success) {
+          setBanks(bankJson.data);
+        }
+      } catch (err: any) {
         console.error("Fetch error:", err);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load settlement data. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Failed to load settlement information");
+        }
       } finally {
         setIsLoadingAccount(false);
         setIsLoadingBanks(false);
       }
     }
+
     fetchData();
   }, []);
 
@@ -237,11 +288,11 @@ export default function EarningsPage() {
 
     setIsSubmitting(true);
     try {
-      // Updated payload structure as requested
       if (!selectedBank) {
         toast.error("Please select a bank");
         return;
       }
+
       const payload = {
         bankId: selectedBank.id,
         accountNumber: data.accountNumber,
@@ -264,7 +315,6 @@ export default function EarningsPage() {
         throw new Error(err.message || "Failed to add bank account");
       }
 
-      
       setAccount(resJson.data || { ...data, bankCode: selectedBank.code });
       setIsDialogOpen(false);
       form.reset();
@@ -288,6 +338,25 @@ export default function EarningsPage() {
       setIsDeleting(false);
     }
   };
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
@@ -507,6 +576,7 @@ export default function EarningsPage() {
                   )}
                 />
               </div>
+
               <div className="flex justify-end gap-3 pt-5 border-t bg-white">
                 <div className="flex justify-end gap-4">
                   <Button

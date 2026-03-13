@@ -9,6 +9,8 @@ import {
   X,
   Trash2,
   Plus,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -50,27 +52,71 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
-import { refreshAccessToken } from "@/app/lib/api";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import { toast } from "sonner";
+import { refreshAccessToken } from "@/app/lib/api";
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
-// Helper function for formatting prices in display
-const formatPrice = (rawValue: string): string => {
-  if (!rawValue) return "₦0.00";
-  const num = parseFloat(rawValue);
-  if (isNaN(num)) return "₦0.00";
-  return `₦${num.toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-};
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
 
-// ──────────────────────────────────────────────────────────────
-// Schema & types
-// ──────────────────────────────────────────────────────────────
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  if (typeof window === "undefined") {
+    return new Response(JSON.stringify({ success: false }), { status: 200 });
+  }
+
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
+
+// ────────────────────────────────────────────────
+//  Schema & Types (unchanged)
+// ────────────────────────────────────────────────
 
 const menuItemSchema = z.object({
   name: z.string().min(1, "Menu name is required"),
@@ -90,62 +136,9 @@ interface MenuItem {
   available: boolean;
 }
 
-// ──────────────────────────────────────────────────────────────
-// Authenticated fetch helper with refresh support
-// ──────────────────────────────────────────────────────────────
-
-async function authenticatedFetch(
-  url: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  let token = getAccessToken();
-  if (!token) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired - refresh failed");
-    }
-    token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
-  }
-
-  // Construct headers
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "x-api-key": API_KEY,
-    ...(init.headers as Record<string, string>),
-  };
-
-  // Only include Content-Type: application/json if there is a body
-  if (init.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  let response = await fetch(url, { ...init, headers });
-
-  if (response.status === 401) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired during request (refresh failed)");
-    }
-
-    token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
-
-    response = await fetch(url, {
-      ...init,
-      headers: {
-        ...headers,
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
-
-  return response;
-}
+// ────────────────────────────────────────────────
+//  Custom Modal (kept as-is from your original)
+// ────────────────────────────────────────────────
 
 function CustomModal({
   isOpen,
@@ -196,9 +189,9 @@ function CustomModal({
   );
 }
 
-// ──────────────────────────────────────────────────────────────
-// Main component
-// ──────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────
+//  Main Component
+// ────────────────────────────────────────────────
 
 export default function MenuPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -217,6 +210,20 @@ export default function MenuPage() {
 
   // Availability toggle loading states (per item)
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
+
+  const formatPrice = (rawValue: string): string => {
+    if (!rawValue) return "₦0.00";
+    const num = parseFloat(rawValue);
+    if (isNaN(num)) return "₦0.00";
+    return `₦${num.toLocaleString("en-NG", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
   const form = useForm<MenuItemFormValues>({
     resolver: zodResolver(menuItemSchema),
     defaultValues: {
@@ -232,10 +239,10 @@ export default function MenuPage() {
     const fetchMenuItems = async () => {
       setLoading(true);
       setError(null);
+      setFetchNetworkError(null);
 
       try {
         const businessId = getBusinessId();
-        console.log("Fetching menu items for business ID:", getAccessToken());
         if (!businessId) throw new Error("Business ID not found");
 
         const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items`;
@@ -265,11 +272,20 @@ export default function MenuPage() {
         setItems(mappedItems);
       } catch (err: any) {
         console.error("Menu fetch failed:", err);
-        const msg =
-          err.message?.includes("expired") || err.message?.includes("refresh")
-            ? "Your session has expired. Please sign in again."
-            : "Failed to load menu items. Please try again later.";
-        setError(msg);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load menu items. Please check your internet connection.",
+          );
+        } else {
+          const msg =
+            err.message?.includes("expired") || err.message?.includes("refresh")
+              ? "Your session has expired. Please sign in again."
+              : "Failed to load menu items. Please try again later.";
+          setError(msg);
+        }
       } finally {
         setLoading(false);
       }
@@ -285,7 +301,6 @@ export default function MenuPage() {
     const newAvailable = !item.available;
 
     setTogglingIds((prev) => new Set([...prev, id]));
-    // Optimistic update
     setItems((prev) =>
       prev.map((i) => (i.id === id ? { ...i, available: newAvailable } : i)),
     );
@@ -297,9 +312,7 @@ export default function MenuPage() {
 
       const res = await authenticatedFetch(url, {
         method: "PATCH",
-        body: JSON.stringify({
-          isAvailable: newAvailable,
-        }),
+        body: JSON.stringify({ isAvailable: newAvailable }),
       });
 
       if (!res.ok) {
@@ -311,7 +324,6 @@ export default function MenuPage() {
       );
     } catch (err: any) {
       console.error("Availability toggle failed:", err);
-      // Rollback on error
       setItems((prev) =>
         prev.map((i) => (i.id === id ? { ...i, available: !newAvailable } : i)),
       );
@@ -319,7 +331,6 @@ export default function MenuPage() {
         err.message?.includes("expired") || err.message?.includes("refresh")
           ? "Session expired. Please sign in again."
           : "Failed to update availability. Please try again.";
-
       toast.error(msg);
     } finally {
       setTogglingIds((prev) => {
@@ -337,12 +348,12 @@ export default function MenuPage() {
 
     setItems((prev) => prev.filter((i) => i.id !== itemId));
     setIsDeleting(true);
+
     try {
       const businessId = getBusinessId();
       if (!businessId) throw new Error("Business ID not found");
       const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${itemId}`;
 
-      // This call now excludes the application/json header because no body is provided
       const res = await authenticatedFetch(url, { method: "DELETE" });
 
       if (!res.ok) {
@@ -383,7 +394,9 @@ export default function MenuPage() {
   };
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
   };
 
   const handleItemsPerPageChange = (value: string) => {
@@ -418,9 +431,28 @@ export default function MenuPage() {
     return pages;
   };
 
- if (loading) {
-   return <MenuSkeleton />;
- }
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <MenuSkeleton />;
+  }
 
   if (error) {
     return (
@@ -431,7 +463,7 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen p-6 mt-10 md:mt-0 flex flex-col">
+    <div className="min-h-screen p-5 md:p-8 mt-10 md:mt-0 flex flex-col">
       <div className="max-w-7xl mx-auto space-y-8 flex-1 w-full">
         <div className="flex justify-between items-center mb-8 md:mb-15">
           <h1 className="text-3xl font-bold text-gray-900">Menu</h1>
@@ -614,12 +646,13 @@ export default function MenuPage() {
                       >
                         <div className="flex items-center gap-2 mb-2 flex-1">
                           <div className="w-18 h-18 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
-                            <Image
+                            <img
                               src={item.image}
                               alt={item.name}
                               width={64}
                               height={64}
                               className="object-cover w-full h-full"
+                              crossOrigin="anonymous"
                             />
                           </div>
                           <div className="min-w-0 flex-1">
@@ -657,8 +690,8 @@ export default function MenuPage() {
                               <Image
                                 src="/images/Edit.svg"
                                 alt="Edit"
-                                width={20}
-                                height={20}
+                                width={30}
+                                height={30}
                               />
                             </Button>
                             <Button
@@ -678,7 +711,6 @@ export default function MenuPage() {
               </div>
             </>
           ) : (
-            /* Empty State for Search or No Items */
             <div className="flex flex-col items-center justify-center py-12 px-6">
               <div className="relative mb-8">
                 <Image
@@ -712,7 +744,6 @@ export default function MenuPage() {
           )}
         </div>
 
-        {/* Pagination - Always at bottom if items exist overall */}
         {filteredItems.length > 0 && (
           <div className="flex items-center justify-center mx-2 gap-5 text-sm py-8 border-t border-gray-100">
             <p className="text-gray-600 hidden md:block">
@@ -822,7 +853,6 @@ export default function MenuPage() {
   );
 }
 
-
 const MenuSkeleton = () => {
   return (
     <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0 max-w-7xl mx-auto space-y-8">
@@ -843,10 +873,10 @@ const MenuSkeleton = () => {
             key={i}
             className="flex items-center p-4 border-b border-gray-200 gap-4"
           >
-            <div className="w-16 h-16 bg-gray-100 animate-pulse rounded-md" />
+            <div className="w-20 h-16 bg-gray-100 animate-pulse rounded-md" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 w-1/4 bg-gray-200 animate-pulse rounded-md" />
-              <div className="h-3 w-1/2 bg-gray-100 animate-pulse rounded-md" />
+              <div className="h-4 w-3/4 bg-gray-200 animate-pulse rounded-md" />
+              <div className="h-3 w-full bg-gray-100 animate-pulse rounded-md" />
             </div>
             <div className="h-4 w-20 bg-gray-200 animate-pulse rounded-md mx-auto" />
             <div className="h-8 w-12 bg-gray-100 animate-pulse rounded-md mx-auto" />

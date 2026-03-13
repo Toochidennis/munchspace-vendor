@@ -18,7 +18,7 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 async function authenticatedFetch(
@@ -67,7 +67,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
       if (!token || !businessId) return;
 
       const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
