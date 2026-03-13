@@ -10,6 +10,8 @@ import {
   Calendar,
   ArrowLeft,
   Loader2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -43,9 +45,68 @@ import {
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
-import { refreshAccessToken } from "@/app/lib/api";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import Link from "next/link";
+import { refreshAccessToken } from "@/app/lib/api";
+
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
+
+// ────────────────────────────────────────────────
+//  Schema & Types (unchanged)
+// ────────────────────────────────────────────────
 
 const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 
@@ -135,7 +196,8 @@ const formSchema = z.object({
         return true;
       },
       {
-        message: "Discount value must be greater than 0 (max 100% for percentage)",
+        message:
+          "Discount value must be greater than 0 (max 100% for percentage)",
         path: ["value"],
       },
     )
@@ -165,49 +227,6 @@ type MenuCategory = {
   description: string;
 };
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
-
-async function authenticatedFetch(
-  url: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  let token = getAccessToken();
-
-  if (!token) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired - refresh failed");
-    token = getAccessToken();
-    if (!token) throw new Error("Refresh succeeded but no token available");
-  }
-
-  const headers: HeadersInit = {
-    "x-api-key": API_KEY,
-    Authorization: `Bearer ${token}`,
-    ...init.headers,
-  };
-
-  if (!(init.body instanceof FormData)) {
-    (headers as any)["Content-Type"] = "application/json";
-  }
-
-  let response = await fetch(url, { ...init, headers });
-
-  if (response.status === 401) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired during request");
-    token = getAccessToken();
-    if (!token) throw new Error("Refresh succeeded but no token available");
-
-    response = await fetch(url, {
-      ...init,
-      headers: { ...headers, Authorization: `Bearer ${token}` },
-    });
-  }
-
-  return response;
-}
-
 export default function CreateMenuPage() {
   const [activeTab, setActiveTab] = useState<
     "details" | "sizes" | "extras" | "discounts"
@@ -216,6 +235,9 @@ export default function CreateMenuPage() {
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDiscountForm, setShowDiscountForm] = useState(false);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   const router = useRouter();
 
@@ -254,14 +276,16 @@ export default function CreateMenuPage() {
   useEffect(() => {
     const fetchCategories = async () => {
       setLoadingCategories(true);
+      setFetchNetworkError(null);
+
       try {
         const res = await authenticatedFetch(
           `${API_BASE}/meta/menu-categories`,
-          {
-            method: "GET",
-          },
+          { method: "GET" },
         );
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
         const response = await res.json();
         if (response.success && Array.isArray(response.data)) {
           setCategories(response.data);
@@ -269,11 +293,21 @@ export default function CreateMenuPage() {
           setCategories([]);
         }
       } catch (err: any) {
-        const msg = err.message?.includes("expired")
-          ? "Your session has expired. Please sign in again."
-          : "Failed to load categories. Please try again later.";
-        toast.error(msg);
-        setCategories([]);
+        console.error("Failed to load categories:", err);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load menu categories. Please check your internet connection.",
+          );
+        } else {
+          const msg = err.message?.includes("expired")
+            ? "Your session has expired. Please sign in again."
+            : "Failed to load categories. Please try again later.";
+          toast.error(msg);
+          setCategories([]);
+        }
       } finally {
         setLoadingCategories(false);
       }
@@ -396,34 +430,53 @@ export default function CreateMenuPage() {
 
       if (res.ok) {
         toast.success("Menu item created successfully");
-        // router.push("/restaurant/menu");
+        router.push("/restaurant/menu");
       } else {
         toast.error(responseData?.message || "Failed to create menu item");
       }
     } catch (err: any) {
-      toast.error(
-        err.message?.includes("expired")
-          ? "Session expired. Please sign in again."
-          : "An unexpected error occurred.",
-      );
+      console.error("Create error:", err);
+      const msg = err.message?.includes("expired")
+        ? "Your session has expired. Please sign in again."
+        : "An unexpected error occurred.";
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   const isFirstTab = activeTab === "details";
   const isLastTab = activeTab === "discounts";
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-3xl mx-auto p-8">
-        <div className="mb-8 mt-10 md:mt-0">
+      <div className="max-w-3xl mx-auto p-5 md:p-8">
+        <div className="mb-8 mt-14 md:mt-0">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-4">
             <Link
               href="/restaurant/menu"
               className="text-gray-400 hover:text-gray-600"
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-7 w-7" />
             </Link>
             Create Menu
           </h1>
@@ -559,7 +612,7 @@ export default function CreateMenuPage() {
                     >
                       <SelectTrigger
                         className={cn(
-                          "h-12! w-full",
+                          "h-12 w-full",
                           errors.categoryTypeId &&
                             "border-red-600 focus-visible:ring-red-600",
                         )}
@@ -897,6 +950,7 @@ export default function CreateMenuPage() {
                               </p>
                             </div>
                           </div>
+
                           <div className="flex items-start space-x-3">
                             <RadioGroupItem
                               value="FLAT"
@@ -915,6 +969,7 @@ export default function CreateMenuPage() {
                               </p>
                             </div>
                           </div>
+
                           <div className="flex items-start space-x-3">
                             <RadioGroupItem
                               value="FIXED_PRICE"
@@ -953,7 +1008,7 @@ export default function CreateMenuPage() {
                         </span>
                       </div>
                       {errors.discount?.value && (
-                        <p className="text-red-600 text-sm">
+                        <p className="text-red-600 text-sm mt-1">
                           {errors.discount.value.message}
                         </p>
                       )}

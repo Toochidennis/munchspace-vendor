@@ -16,7 +16,7 @@ const Error = () => {
         <Link href={"/"} >
           <Button className="bg-munchprimary hover:bg-munchprimaryDark mt-5 cursor-pointer">
             <ArrowLeft />
-            <p>Go to Homepage</p>
+            <p>Go to Dashboard</p>
           </Button>
         </Link>
       </div>

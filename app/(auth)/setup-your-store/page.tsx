@@ -15,6 +15,8 @@ import {
   ChevronsUpDown,
   X,
   BrushCleaning,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -48,6 +50,51 @@ import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { getAccessToken, hasBusiness, setBusinessId } from "@/app/lib/auth";
+import { refreshAccessToken } from "@/app/lib/api";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (same as in orders page)
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || "";
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+  }
+
+  return response;
+}
 
 const setupSchema = z.object({
   storeImage: z.any().optional(), // not used in form, just for type safety
@@ -100,27 +147,23 @@ const daysOfWeek = [
   "Sunday",
 ];
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
-
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || "";
-
 export default function SetupStorePage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
-
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
   const [brandTypeOpen, setBrandTypeOpen] = useState(false);
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
-
   const [businessTypes, setBusinessTypes] = useState<Option[]>([]);
   const [brandTypes, setBrandTypes] = useState<Option[]>([]);
   const [serviceOperations, setServiceOperations] = useState<Option[]>([]);
   const [metaLoading, setMetaLoading] = useState(true);
   const [metaError, setMetaError] = useState("");
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
   const [nigeriaData, setNigeriaData] = useState<{
     country: { id: string; code: string; name: string };
     states: { id: string; code: string; name: string }[];
@@ -133,18 +176,8 @@ export default function SetupStorePage() {
   const [lgasLoading, setLgasLoading] = useState(false);
   const [lgasError, setLgasError] = useState("");
   const [lgaOpen, setLgaOpen] = useState(false);
-
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [marker, setMarker] = useState<google.maps.Marker | null>(null);
-
-  function getCookie(name: string): string | null {
-    return (
-      document.cookie
-        .split("; ")
-        .find((row) => row.startsWith(`${name}=`))
-        ?.split("=")[1] ?? null
-    );
-  }
 
   const form = useForm<SetupValues>({
     resolver: zodResolver(setupSchema),
@@ -155,13 +188,13 @@ export default function SetupStorePage() {
       storeEmail: "",
       phoneNumber: "",
       description: "",
-      socialLink: "", // ← Critical fix: always string, never undefined
+      socialLink: "",
       country: "Nigeria",
       state: "",
       lga: "",
       streetName: "",
       city: "",
-      postalCode: "", // ← Critical fix: always string, never undefined
+      postalCode: "",
       latitude: 0,
       longitude: 0,
       businessType: "",
@@ -183,47 +216,20 @@ export default function SetupStorePage() {
     async function fetchMeta() {
       setMetaLoading(true);
       setMetaError("");
+      setFetchNetworkError(null);
+
       try {
         const [btRes, brRes, soRes, nigeriaRes] = await Promise.all([
-          fetch(`${API_BASE}/meta/business-types`, {
-            headers: { "x-api-key": API_KEY },
-          }),
-          fetch(`${API_BASE}/meta/brand-types`, {
-            headers: { "x-api-key": API_KEY },
-          }),
-          fetch(`${API_BASE}/meta/service-operations`, {
-            headers: { "x-api-key": API_KEY },
-          }),
-          fetch(`${API_BASE}/meta/nigeria-states`, {
-            headers: { "x-api-key": API_KEY },
-          }),
+          authenticatedFetch(`${API_BASE}/meta/business-types`),
+          authenticatedFetch(`${API_BASE}/meta/brand-types`),
+          authenticatedFetch(`${API_BASE}/meta/service-operations`),
+          authenticatedFetch(`${API_BASE}/meta/nigeria-states`),
         ]);
 
-        let btData: any = [];
-        let brData: any = [];
-        let soData: any = [];
-        let nigeriaJson: any = null;
-
-        if (btRes.ok) {
-          const json = await btRes.json();
-          btData = Array.isArray(json) ? json : json.data || json.items || [];
-        }
-
-        if (brRes.ok) {
-          const json = await brRes.json();
-          brData = Array.isArray(json) ? json : json.data || json.items || [];
-        }
-
-        if (soRes.ok) {
-          const json = await soRes.json();
-          soData = Array.isArray(json) ? json : json.data || json.items || [];
-        }
-
-        if (nigeriaRes.ok) {
-          const nigeriaR = await nigeriaRes.json();
-          nigeriaJson = nigeriaR.data;
-          console.log("Nigeria data:", nigeriaJson);
-        }
+        const btJson = await btRes.json();
+        const brJson = await brRes.json();
+        const soJson = await soRes.json();
+        const nigeriaJson = await nigeriaRes.json();
 
         const normalize = (arr: any[]) =>
           arr.map((item) => ({
@@ -231,21 +237,30 @@ export default function SetupStorePage() {
             label: item.label || item.name || String(item),
           }));
 
-        setBusinessTypes(normalize(btData));
-        setBrandTypes(normalize(brData));
-        setServiceOperations(normalize(soData));
+        setBusinessTypes(normalize(btJson.data || btJson || []));
+        setBrandTypes(normalize(brJson.data || brJson || []));
+        setServiceOperations(normalize(soJson.data || soJson || []));
 
-        if (nigeriaJson?.country && Array.isArray(nigeriaJson.states)) {
-          setNigeriaData(nigeriaJson);
+        if (
+          nigeriaJson?.data?.country &&
+          Array.isArray(nigeriaJson.data.states)
+        ) {
+          setNigeriaData(nigeriaJson.data);
         } else {
-          setStatesError("Failed to load Nigerian states.");
+          setStatesError("Failed to load Nigerian states data structure.");
         }
       } catch (err: any) {
         console.error("Meta fetch error:", err);
-        setMetaError(
-          "Failed to load business types, brand types or service operations.",
-        );
-        setStatesError("Failed to load Nigerian states.");
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load required data. Please check your internet connection.",
+          );
+        } else {
+          setMetaError("Failed to load metadata. Please try again.");
+        }
       } finally {
         setMetaLoading(false);
         setStatesLoading(false);
@@ -257,19 +272,16 @@ export default function SetupStorePage() {
 
   useEffect(() => {
     const selectedStateId = form.watch("state");
-
-    // Immediately reset everything when state changes
     form.setValue("lga", "");
     setLgas([]);
     setLgasError("");
-    setLgasLoading(true); // show loading right away
+    setLgasLoading(true);
 
     if (!selectedStateId || !nigeriaData?.states) {
       setLgasLoading(false);
       return;
     }
 
-    // We'll use this to detect if this is still the relevant fetch
     let isCurrent = true;
 
     async function loadLgas() {
@@ -280,67 +292,64 @@ export default function SetupStorePage() {
         if (!selectedState) throw new Error("State not found");
 
         const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(selectedState.id)}&stateCode=${encodeURIComponent(selectedState.code)}`;
+        const response = await authenticatedFetch(url);
 
-        const response = await fetch(url, {
-          headers: { "x-api-key": API_KEY },
-        });
-
-        if (!isCurrent) return; // ← prevent stale update
+        if (!isCurrent) return;
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
 
         const json = await response.json();
-
         const rawArray = Array.isArray(json)
           ? json
           : (json.data ?? json.lgas ?? json.items ?? []);
-
         const normalized = rawArray
           .map((item: any) => ({
             value: String(item.id || item.lgaId || item.code || ""),
             label: item.name || item.lgaName || item.label || String(item),
           }))
-          .filter((opt:any) => opt.value && opt.label.trim());
+          .filter((opt: any) => opt.value && opt.label.trim());
 
         if (!isCurrent) return;
 
         setLgas(normalized);
-        setLgasError(""); // explicitly clear on success
-
+        setLgasError("");
         if (normalized.length === 1) {
           form.setValue("lga", normalized[0].value);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (!isCurrent) return;
         console.error("LGA fetch failed:", err);
-        setLgasError("Could not load LGAs for the selected state.");
-      } finally {
-        if (isCurrent) {
-          setLgasLoading(false);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load LGA data. Please check your connection.",
+          );
+        } else {
+          setLgasError("Could not load LGAs for the selected state.");
         }
+      } finally {
+        if (isCurrent) setLgasLoading(false);
       }
     }
 
     loadLgas();
 
-    // Cleanup: mark previous fetches as stale
     return () => {
       isCurrent = false;
     };
-  }, [form.watch("state"), nigeriaData]);
+  }, [form.watch("state"), nigeriaData, form]);
 
+  // Google Maps initialization remains unchanged
   useEffect(() => {
     if (step !== 4) return;
 
     async function initMap() {
       try {
-        setOptions({
-          key: GOOGLE_API_KEY,
-          libraries: ["places"],
-        });
-
+        setOptions({ key: GOOGLE_API_KEY, libraries: ["places"] });
         const [{ Map }, placesLib] = await Promise.all([
           importLibrary("maps"),
           importLibrary("places"),
@@ -350,11 +359,7 @@ export default function SetupStorePage() {
         if (!mapDiv) return;
 
         const initialCenter = { lat: 6.5244, lng: 3.3792 };
-
-        const newMap = new Map(mapDiv, {
-          center: initialCenter,
-          zoom: 12,
-        });
+        const newMap = new Map(mapDiv, { center: initialCenter, zoom: 12 });
         setMap(newMap);
 
         const newMarker = new google.maps.Marker({
@@ -384,7 +389,6 @@ export default function SetupStorePage() {
         ) as HTMLInputElement;
         if (searchInput) {
           const autocomplete = new placesLib.Autocomplete(searchInput);
-
           autocomplete.addListener("place_changed", () => {
             const place = autocomplete.getPlace();
             if (place.geometry?.location) {
@@ -408,7 +412,6 @@ export default function SetupStorePage() {
 
   const validateCurrentStep = async () => {
     let fields: (keyof SetupValues)[] = [];
-
     if (step === 1)
       fields = [
         "legalName",
@@ -429,7 +432,6 @@ export default function SetupStorePage() {
         "latitude",
         "longitude",
       ];
-
     return await form.trigger(fields);
   };
 
@@ -439,46 +441,30 @@ export default function SetupStorePage() {
 
     if (step === 4) {
       setIsLoading(true);
-
       try {
         const values = form.getValues();
-
-        // Normalize phone number
         let normalizedPhone = values.phoneNumber.trim();
-
-        // Remove leading zero if present
         if (normalizedPhone.startsWith("0")) {
           normalizedPhone = normalizedPhone.substring(1);
         }
-
-        // Add +234 if it doesn't already start with +
         if (!normalizedPhone.startsWith("+")) {
           normalizedPhone = "+234" + normalizedPhone;
         }
 
         const formData = new FormData();
-
         formData.append("legalName", values.legalName);
         formData.append("displayName", values.displayName);
         formData.append("email", values.storeEmail);
         formData.append("phone", normalizedPhone);
         formData.append("description", values.description);
-
-        // if (values.socialLink?.trim()) {
-        //   formData.append("website", values.socialLink);
-        // }
-
         formData.append(
           "establishedAt",
           format(values.establishedDate, "yyyy-MM-dd"),
         );
 
-        if (values.businessType) {
+        if (values.businessType)
           formData.append("businessTypeId", values.businessType);
-        }
-        if (values.brandType) {
-          formData.append("brandTypeId", values.brandType);
-        }
+        if (values.brandType) formData.append("brandTypeId", values.brandType);
 
         values.serviceOperations.forEach((id) => {
           formData.append("serviceOperationIds[]", id);
@@ -487,7 +473,6 @@ export default function SetupStorePage() {
         const enabledDays = daysOfWeek.filter(
           (day) => values.workingHours[day]?.enabled,
         );
-
         enabledDays.forEach((day, index) => {
           formData.append(`workingHours[${index}][day]`, day.toUpperCase());
           formData.append(
@@ -516,27 +501,23 @@ export default function SetupStorePage() {
           formData.append("image", selectedImageFile);
         }
 
-        const accessToken = getAccessToken();
-
-        const response = await fetch(`${API_BASE}/vendors/me/businesses`, {
-          method: "POST",
-          headers: {
-            "x-api-key": API_KEY,
-            Authorization: `Bearer ${accessToken}`,
+        const response = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses`,
+          {
+            method: "POST",
+            body: formData,
           },
-          body: formData,
-        });
+        );
 
         const feedback = await response.json();
 
         if (response.ok) {
-          setBusinessId(feedback.data.businessId)
+          setBusinessId(feedback.data.businessId);
           hasBusiness(true);
           toast.success("Store created successfully!", {
             description: "Redirecting to dashboard...",
             duration: 3000,
           });
-
           setTimeout(() => {
             router.push("/restaurant/dashboard");
           }, 1500);
@@ -545,7 +526,6 @@ export default function SetupStorePage() {
             description:
               feedback.message || "Please check your input and try again.",
           });
-          console.error("Failed to create store:", feedback);
         }
       } catch (error) {
         toast.error("An error occurred", {
@@ -570,19 +550,16 @@ export default function SetupStorePage() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image file");
       return;
     }
-
     setSelectedImageFile(file);
     const localPreview = URL.createObjectURL(file);
     setPreviewUrl(localPreview);
   };
 
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
-
   const toggleOpen = (day: string) => {
     setOpenDays((prev) => ({ ...prev, [day]: !prev[day] }));
   };
@@ -591,6 +568,25 @@ export default function SetupStorePage() {
     const found = options.find((o) => o.value === value);
     return found ? found.label : value.replace(/_/g, " ");
   };
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">

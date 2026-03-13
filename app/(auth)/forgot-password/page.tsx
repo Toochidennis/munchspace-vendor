@@ -20,7 +20,7 @@ import { useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 const formSchema = z.object({

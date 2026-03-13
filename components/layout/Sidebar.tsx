@@ -31,7 +31,7 @@ type VendorProfile = {
   createdAt: string;
 };
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 export default function RestaurantSidebar() {
@@ -150,7 +150,7 @@ export default function RestaurantSidebar() {
             width={50}
             height={50}
             alt="restaurant"
-            className="h-10 w-10"
+            className="h-10 w-10 rounded"
             crossOrigin="anonymous"
           />
           {!collapsed && (
@@ -536,7 +536,7 @@ export default function RestaurantSidebar() {
             <button
               onClick={() => setMobileCollapsed(!mobileCollapsed)}
               className={cn(
-                "w-fit mb-7 absolute top-4 bg-white rounded p-3 -right-15",
+                "w-fit mb-7 absolute top-4 bg-white rounded p-3 -right-13",
                 mobileCollapsed && "",
               )}
             >

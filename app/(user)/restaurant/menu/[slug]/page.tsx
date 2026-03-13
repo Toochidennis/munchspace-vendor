@@ -10,6 +10,8 @@ import {
   Calendar,
   ArrowLeft,
   Loader2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -42,8 +44,70 @@ import {
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
+
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
+
+type MenuCategory = {
+  id: string;
+  key: string;
+  label: string;
+  description: string;
+};
 
 const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 
@@ -154,53 +218,6 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
-type MenuCategory = {
-  id: string;
-  key: string;
-  label: string;
-  description: string;
-};
-
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
-
-async function authenticatedFetch(
-  url: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  let token = getAccessToken();
-  if (!token) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired - refresh failed");
-    token = getAccessToken();
-    if (!token) throw new Error("Refresh succeeded but no token available");
-  }
-
-  const headers: HeadersInit = {
-    "x-api-key": API_KEY,
-    Authorization: `Bearer ${token}`,
-    ...init.headers,
-  };
-  if (!(init.body instanceof FormData)) {
-    (headers as any)["Content-Type"] = "application/json";
-  }
-
-  let response = await fetch(url, { ...init, headers });
-  if (response.status === 401) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk)
-      throw new Error("Session expired during request (refresh failed)");
-    token = getAccessToken();
-    if (!token) throw new Error("Refresh succeeded but no token available");
-    response = await fetch(url, {
-      ...init,
-      headers: { ...headers, Authorization: `Bearer ${token}` },
-    });
-  }
-
-  return response;
-}
-
 function MenuEditSkeleton() {
   return (
     <div className="min-h-screen bg-white">
@@ -259,6 +276,9 @@ export default function EditMenuPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showDiscountForm, setShowDiscountForm] = useState(false);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   const router = useRouter();
   const params = useParams();
@@ -300,12 +320,16 @@ export default function EditMenuPage() {
   useEffect(() => {
     const fetchCategories = async () => {
       setLoadingCategories(true);
+      setFetchNetworkError(null);
+
       try {
         const res = await authenticatedFetch(
           `${API_BASE}/meta/menu-categories`,
           { method: "GET" },
         );
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
         const response = await res.json();
         if (response.success && Array.isArray(response.data)) {
           setCategories(response.data);
@@ -314,11 +338,21 @@ export default function EditMenuPage() {
         }
       } catch (err: any) {
         console.error("Failed to load categories:", err);
-        toast.error("Failed to load categories. Please try again later.");
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load menu categories. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Failed to load categories. Please try again later.");
+        }
       } finally {
         setLoadingCategories(false);
       }
     };
+
     fetchCategories();
   }, []);
 
@@ -327,6 +361,8 @@ export default function EditMenuPage() {
 
     const fetchMenuItem = async () => {
       setIsLoading(true);
+      setFetchNetworkError(null);
+
       try {
         const businessId = getBusinessId();
         if (!businessId) throw new Error("Business ID not found");
@@ -389,15 +425,24 @@ export default function EditMenuPage() {
               }
             : undefined,
         });
+
         setShowDiscountForm(hasDiscount);
       } catch (err: any) {
         console.error("Failed to load menu item:", err);
-        toast.error(
-          err.message?.includes("expired")
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load menu item data. Please check your internet connection.",
+          );
+        } else {
+          const msg = err.message?.includes("expired")
             ? "Your session has expired. Please sign in again."
-            : "Failed to load menu item data. Redirecting...",
-        );
-        router.push("/restaurant/menu");
+            : "Failed to load menu item data. Redirecting...";
+          toast.error(msg);
+          router.push("/restaurant/menu");
+        }
       } finally {
         setIsLoading(false);
       }
@@ -545,6 +590,25 @@ export default function EditMenuPage() {
     }
   };
 
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return <MenuEditSkeleton />;
   }
@@ -554,11 +618,11 @@ export default function EditMenuPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-3xl mx-auto p-8">
+      <div className="max-w-3xl mx-auto p-5 md:p-8">
         <div className="mb-8 mt-10 md:mt-0">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-4">
             <ArrowLeft
-              className="h-6 w-6 text-gray-600 hover:text-gray-900 cursor-pointer"
+              className="h-7 w-7 text-gray-600 hover:text-gray-900 cursor-pointer"
               onClick={() => router.back()}
             />
             Edit Menu

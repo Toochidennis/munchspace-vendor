@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { hasBusiness, setAccessToken, setBusinessId, setFirstName } from "@/app/lib/auth";
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // Step 1: Email + Password schema

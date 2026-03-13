@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -29,15 +35,22 @@ import { toast } from "sonner";
 import { refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
-//  Authenticated fetch (exact same style as your other pages)
+//  Constants from .env
 // ────────────────────────────────────────────────
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
 
 async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
   let token = getAccessToken();
+
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
@@ -45,7 +58,7 @@ async function authenticatedFetch(
   }
 
   const headers: HeadersInit = {
-    "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
+    "x-api-key": API_KEY,
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
@@ -60,14 +73,22 @@ async function authenticatedFetch(
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
     token = getAccessToken();
+
     response = await fetch(url, {
       ...init,
-      headers: { ...headers, Authorization: `Bearer ${token}` },
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
     });
   }
 
   return response;
 }
+
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
 
 export default function BestSellingItemsPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,10 +107,14 @@ export default function BestSellingItemsPage() {
   const [items, setItems] = useState<any[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     const fetchBestSelling = async () => {
       setLoading(true);
+      setFetchNetworkError(null);
 
       const businessId = getBusinessId();
       if (!businessId) {
@@ -110,9 +135,19 @@ export default function BestSellingItemsPage() {
         setItems(json.data.data || []);
         setTotalItems(json.data.total || 0);
       } catch (err: any) {
-        toast.error("Failed to load best selling items", {
-          description: err.message || "Please try again later.",
-        });
+        console.error("Best-selling fetch failed:", err);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load best-selling items. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Failed to load best selling items", {
+            description: err.message || "Please try again later.",
+          });
+        }
         setItems([]);
         setTotalItems(0);
       } finally {
@@ -175,17 +210,19 @@ export default function BestSellingItemsPage() {
       pages.push("...");
       pages.push(totalPages);
     } else {
-      for (let i = 1; i <= 5; i++) {
-        pages.push(i);
+      for (let i = totalPages - 4; i <= totalPages; i++) {
+        if (i > 0) pages.push(i);
       }
-      pages.push("...");
-      pages.push(totalPages);
+      if (totalPages > 5) {
+        pages.unshift("...");
+        pages.unshift(1);
+      }
     }
 
     return pages;
   };
 
-  // Skeleton row
+  // Skeleton row (unchanged)
   const SkeletonRow = () => (
     <TableRow>
       <TableCell className="py-4 ps-4">
@@ -206,10 +243,27 @@ export default function BestSellingItemsPage() {
     </TableRow>
   );
 
-  // Determine if pagination should be shown:
-  // - Not during loading
-  // - Only when there are items after filtering
+  // Determine if pagination should be shown
   const showPagination = !loading && filteredItems.length > 0;
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-gray-900 mt-10 md:mt-0">

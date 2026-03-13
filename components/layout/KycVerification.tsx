@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Upload, LoaderCircle, Link as LinkIcon } from "lucide-react";
+import {
+  Upload,
+  LoaderCircle,
+  Link as LinkIcon,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,9 +25,68 @@ import {
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
-import { refreshAccessToken } from "@/app/lib/api";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import { Skeleton } from "../ui/skeleton";
+import { refreshAccessToken } from "@/app/lib/api";
+
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
+
+// ────────────────────────────────────────────────
+//  Types & Schema (unchanged)
+// ────────────────────────────────────────────────
 
 interface DocumentState {
   fileUrl?: string | null;
@@ -48,77 +113,22 @@ interface Document {
 
 const tinSchema = z.object({
   tin: z.string().min(1, "TIN is required"),
-  // .regex(/^\d{12,13}$/, "TIN must be 12 or 13 digits"), // ← uncomment when ready
+  // .regex(/^\d{12,13}$/, "TIN must be 12 or 13 digits"),
 });
 
 type TinFormValues = z.infer<typeof tinSchema>;
 
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
-
-// ──────────────────────────────────────────────────────────────
-// Reusable authenticated fetch with refresh + single retry
-// ──────────────────────────────────────────────────────────────
-
-async function authenticatedFetch(
-  url: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  let token = getAccessToken();
-
-  // No token → try refresh first
-  if (!token) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired - refresh failed");
-    }
-    token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
-  }
-
-  const headers: HeadersInit = {
-    "x-api-key": API_KEY,
-    Authorization: `Bearer ${token}`,
-    ...init.headers,
-  };
-
-  // Do not set Content-Type when sending FormData
-  if (!(init.body instanceof FormData)) {
-    (headers as any)["Content-Type"] = "application/json";
-  }
-
-  let response = await fetch(url, { ...init, headers });
-
-  // Handle 401 → refresh + retry once
-  if (response.status === 401) {
-    const refreshOk = await refreshAccessToken();
-    if (!refreshOk) {
-      throw new Error("Session expired during request (refresh failed)");
-    }
-
-    token = getAccessToken();
-    if (!token) {
-      throw new Error("Refresh succeeded but no token available");
-    }
-
-    response = await fetch(url, {
-      ...init,
-      headers: {
-        ...headers,
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
-
-  return response;
-}
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
 
 export default function KycVerification() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [isTinSubmitting, setIsTinSubmitting] = useState(false);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   const tinForm = useForm<TinFormValues>({
     resolver: zodResolver(tinSchema),
@@ -127,7 +137,6 @@ export default function KycVerification() {
 
   const businessId = getBusinessId();
 
-  // Fetch all document requirements and current states
   useEffect(() => {
     const fetchDocuments = async () => {
       if (!businessId) {
@@ -137,11 +146,11 @@ export default function KycVerification() {
       }
 
       setLoading(true);
+      setFetchNetworkError(null);
 
       try {
         const res = await authenticatedFetch(
           `${API_BASE}/vendors/me/businesses/${businessId}/documents`,
-          { method: "GET" },
         );
 
         if (!res.ok) {
@@ -154,21 +163,28 @@ export default function KycVerification() {
         }
 
         const fetchedDocs = json.data.documents;
-        console.log("fetchedDocs", fetchedDocs);
         setDocuments(fetchedDocs);
 
-        // Pre-fill TIN if it already exists
         const taxDoc = fetchedDocs.find((d: Document) => d.key === "tax_id");
         if (taxDoc?.state?.exists && taxDoc.state.value) {
           tinForm.reset({ tin: taxDoc.state.value });
         }
       } catch (err: any) {
         console.error("Documents fetch error:", err);
-        const msg =
-          err.message?.includes("expired") || err.message?.includes("refresh")
-            ? "Your session has expired. Please sign in again."
-            : "Could not load verification requirements. Please try again later.";
-        toast.error(msg);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load verification requirements. Please check your internet connection.",
+          );
+        } else {
+          const msg =
+            err.message?.includes("expired") || err.message?.includes("refresh")
+              ? "Your session has expired. Please sign in again."
+              : "Could not load verification requirements. Please try again later.";
+          toast.error(msg);
+        }
       } finally {
         setLoading(false);
       }
@@ -177,7 +193,6 @@ export default function KycVerification() {
     fetchDocuments();
   }, [businessId, tinForm]);
 
-  // Unified file upload handler
   const handleFileUpload = async (doc: Document, file: File) => {
     if (!businessId || !doc.id) {
       toast.error("Cannot upload: missing required information");
@@ -207,11 +222,6 @@ export default function KycVerification() {
 
       const result = await res.json();
 
-      console.log("=== UPLOAD RESPONSE DEBUG ===");
-      console.log("Status:", res.status);
-      console.log("Full response body:", JSON.stringify(result, null, 2));
-      console.log("============================");
-
       if (!res.ok) {
         const errorMessage = result.message || result.error || "Upload failed";
         throw new Error(errorMessage);
@@ -240,7 +250,6 @@ export default function KycVerification() {
       const normalizedStatus = String(rawStatus).toUpperCase().trim();
 
       if (!fileUrl) {
-        console.warn("No file URL found in response");
         throw new Error("Server did not return a valid document URL");
       }
 
@@ -282,7 +291,6 @@ export default function KycVerification() {
     }
   };
 
-  // Handle TIN submission/update
   const onTinSubmit = async (data: TinFormValues) => {
     setIsTinSubmitting(true);
 
@@ -299,9 +307,7 @@ export default function KycVerification() {
 
       const res = await authenticatedFetch(`${API_BASE}${endpoint}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taxId: data.tin.trim() }),
       });
 
@@ -341,14 +347,6 @@ export default function KycVerification() {
   };
 
   const getStatusBadge = (doc: Document) => {
-    if (doc.key === "tax_id") {
-      return doc.state.exists ? (
-        <Badge className="bg-blue-100 text-blue-700">In Review</Badge>
-      ) : (
-        <Badge className="bg-pink-100 text-pink-700">Required</Badge>
-      );
-    }
-
     switch (doc.state.status) {
       case "NOT_UPLOADED":
         return <Badge className="bg-pink-100 text-pink-700">Required</Badge>;
@@ -362,6 +360,25 @@ export default function KycVerification() {
         return <Badge variant="outline">Unknown</Badge>;
     }
   };
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   if (loading) {
     return <KycSkeleton />;
@@ -381,9 +398,11 @@ export default function KycVerification() {
                   <h2 className="text-xl font-semibold text-gray-900">
                     {doc.label}
                   </h2>
-                  <div className="flex items-center gap-3 mt-2">
-                    {getStatusBadge(doc)}
-                  </div>
+                  {doc.key !== "tax_id" && (
+                    <div className="flex items-center gap-3 mt-2">
+                      {getStatusBadge(doc)}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -391,7 +410,6 @@ export default function KycVerification() {
                 {doc.description}
               </p>
 
-              {/* Tax ID (TIN) Section */}
               {doc.key === "tax_id" && (
                 <Form {...tinForm}>
                   <form
@@ -444,7 +462,6 @@ export default function KycVerification() {
                 </Form>
               )}
 
-              {/* File-based document section */}
               {doc.key !== "tax_id" && doc.upload && (
                 <div className="space-y-4">
                   {doc.state.fileUrl && (
@@ -503,7 +520,6 @@ export default function KycVerification() {
   );
 }
 
-
 const KycSkeleton = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -514,7 +530,6 @@ const KycSkeleton = () => {
               key={i}
               className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-5"
             >
-              {/* Title and Badge Section */}
               <div className="flex items-start justify-between">
                 <div className="space-y-2">
                   <Skeleton className="h-7 w-64 rounded-md" />
@@ -524,18 +539,13 @@ const KycSkeleton = () => {
                 </div>
               </div>
 
-              {/* Description Section */}
               <div className="space-y-2">
                 <Skeleton className="h-4 w-full rounded-md" />
                 <Skeleton className="h-4 w-3/4 rounded-md" />
               </div>
 
-              {/* Action/Input Section */}
               <div className="pt-4 space-y-4">
-                {/* Specifically mimics the TIN input or the Upload button area */}
                 <Skeleton className="h-10 w-40 rounded-md" />
-
-                {/* Optional additional line for the 'Accepted formats' text */}
                 <Skeleton className="h-3 w-56 rounded-md" />
               </div>
             </div>

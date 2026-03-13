@@ -130,12 +130,12 @@ export default function AccountSettingsPage() {
               >
                 Charges & Fees
               </TabsTrigger>
-              <TabsTrigger
+              {/* <TabsTrigger
                 value="preview"
                 className="px-2 md:px-4 data-[state=active]:text-munchprimary data-[state=active]:font-medium data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-1 md:pb-2 rounded-none text-base font-normal"
               >
                 Store Preview
-              </TabsTrigger>
+              </TabsTrigger> */}
             </TabsList>
           </div>
 
@@ -148,9 +148,9 @@ export default function AccountSettingsPage() {
           <TabsContent value="charges" className="mt-5 space-y-12">
             <Charges />
           </TabsContent>
-          <TabsContent value="preview" className="mt-5 space-y-12">
+          {/* <TabsContent value="preview" className="mt-5">
             <StorePreview />
-          </TabsContent>
+          </TabsContent> */}
         </Tabs>
       </div>
     </div>

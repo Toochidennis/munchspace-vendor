@@ -13,25 +13,38 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { ShoppingCart, ChevronRight } from "lucide-react";
+import {
+  ShoppingCart,
+  ChevronRight,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { toast } from "sonner";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import {
+  getAccessToken,
+  getBusinessId,
+} from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
-//  Authenticated fetch (assumed to exist in your project)
+//  Constants from .env
 // ────────────────────────────────────────────────
-const API_BASE = "https://dev.api.munchspace.io/api/v1";
+
+const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
 
 async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  // Your existing authenticatedFetch implementation
-  // (copied from previous context – make sure it exists in "@/app/lib/auth" or similar)
   let token = getAccessToken();
+
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
@@ -39,7 +52,7 @@ async function authenticatedFetch(
   }
 
   const headers: HeadersInit = {
-    "x-api-key": process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "",
+    "x-api-key": API_KEY,
     Authorization: `Bearer ${token}`,
     ...init.headers,
   };
@@ -54,14 +67,22 @@ async function authenticatedFetch(
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
     token = getAccessToken();
+
     response = await fetch(url, {
       ...init,
-      headers: { ...headers, Authorization: `Bearer ${token}` },
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
     });
   }
 
   return response;
 }
+
+// ────────────────────────────────────────────────
+//  Component
+// ────────────────────────────────────────────────
 
 export default function OrderDetailsPage() {
   const slug = useParams<{ slug: string }>();
@@ -69,15 +90,20 @@ export default function OrderDetailsPage() {
 
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   const [currentOrder, setCurrentOrder] = useState(1); // Keeping your placeholder logic
 
   useEffect(() => {
     const BUSINESS_ID = getBusinessId();
-    if (!orderId) return;
+    if (!orderId || !BUSINESS_ID) return;
 
     const fetchOrder = async () => {
       setLoading(true);
+      setFetchNetworkError(null);
+
       try {
         const url = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}`;
         const response = await authenticatedFetch(url);
@@ -95,9 +121,19 @@ export default function OrderDetailsPage() {
 
         setOrder(json.data);
       } catch (err: any) {
-        toast.error("Failed to load order details", {
-          description: err.message || "Please try again later.",
-        });
+        console.error("Order fetch error:", err);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load order details. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Failed to load order details", {
+            description: err.message || "Please try again later.",
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -105,6 +141,25 @@ export default function OrderDetailsPage() {
 
     fetchOrder();
   }, [orderId]);
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -370,6 +425,7 @@ export default function OrderDetailsPage() {
         </div>
 
         <hr className="border-dashed" />
+
         {/* Summary */}
         <div className="p-6 bg-gray-50 py-9">
           <h3 className="text-lg font-bold text-gray-900 mb-4">Summary</h3>
