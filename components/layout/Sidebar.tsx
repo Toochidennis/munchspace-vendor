@@ -369,18 +369,19 @@ export default function RestaurantSidebar() {
               </button>
               {/* Header */}
               <div className="flex items-center gap-3 bg-white shrink-0 rounded-xl px-2 py-2">
-                <Image
-                  src="/images/auth/store.svg"
+                <img
+                  src={storeImage || "/images/auth/store.svg"}
                   width={50}
                   height={50}
                   alt="restaurant"
-                  className="h-10 w-10"
+                  className="h-10 w-10 rounded"
+                  crossOrigin="anonymous"
                 />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-900">
-                    No 32, opposite Zara mall, mainland
-                  </p>
-                </div>
+                {!collapsed && (
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-900">{address}</p>
+                  </div>
+                )}
               </div>
 
               {/* Navigation - Scrollable if needed, but content fits in most cases */}
@@ -390,7 +391,7 @@ export default function RestaurantSidebar() {
                 </p>
                 <ul className="space-y-1">
                   {managementItems.map((item) => (
-                    <a key={item.label} href={item.href}>
+                    <a key={item.label} href={item.href} className="block">
                       <button
                         className={cn(
                           "flex items-center gap-4 w-full py-3 text-left transition-colors rounded-lg px-3",
