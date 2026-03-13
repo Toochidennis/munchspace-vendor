@@ -68,7 +68,6 @@ export function getHasBusiness(): string | null {
 
 export function getBusinessId(): string | null {
   const itemStr = localStorage.getItem("businessId");
-  // console.log("item str", itemStr)
   if (!itemStr) return null;
 
   try {
@@ -100,7 +99,6 @@ export function setAccessToken(token: string | null) {
 
 export function getAccessToken(): string | null {
   const itemStr = localStorage.getItem("accessToken");
-  // console.log("item str", itemStr)
   if (!itemStr) return null;
 
   try {

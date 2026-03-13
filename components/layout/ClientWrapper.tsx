@@ -28,8 +28,6 @@ export default function ClientWrapper({
       async function ensureValidAccessToken() {
         // Check if access token exists in localStorage
         const currentToken = getAccessToken();
-        // console.log("access token", currentToken);
-        // console.log("refresh token", localStorage.getItem("refreshToken"));
 
         if (!currentToken) {
           // No access token → attempt refresh using refresh token cookie

@@ -267,8 +267,10 @@ const Charges = () => {
     try {
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/charges/${deleteCandidate.id}`,
-        { method: "DELETE" },
+        { method: "DELETE", body: JSON.stringify({}) },
       );
+
+      const resData = await res.json();
 
       if (!res.ok) throw new Error("Delete failed");
 

@@ -404,12 +404,10 @@ const StoreDetails = () => {
 
         const { data } = await businessRes.json();
 
-        // console.log("Nigeria res is:", await nigeriaRes.json())
 
         if (nigeriaRes.ok) {
           const nigeriaR = await nigeriaRes.json();
           nigeriaJson = nigeriaR.data;
-          console.log("Nig JSON:", nigeriaJson);
         }
 
         if (nigeriaJson?.country && Array.isArray(nigeriaJson.states)) {
@@ -676,7 +674,6 @@ const StoreDetails = () => {
       );
 
       const data = await response.json();
-      console.log("Password change response:", data, values);
 
       if (!response.ok)
         throw new Error(data.message || "Failed to update password");
@@ -789,7 +786,6 @@ const StoreDetails = () => {
       );
 
       const resData = await res.json();
-      console.log("Address update response:", resData);
 
       if (!res.ok) throw new Error("Address update failed");
 

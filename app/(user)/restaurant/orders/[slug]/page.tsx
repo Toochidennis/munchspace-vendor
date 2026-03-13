@@ -113,7 +113,6 @@ export default function OrderDetailsPage() {
         }
 
         const json = await response.json();
-        console.log("response", json);
 
         if (!json.success || !json.data) {
           throw new Error("Invalid response format");

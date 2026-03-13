@@ -536,7 +536,6 @@ export default function OrdersPage() {
                 "all",
                 "pending",
                 "preparing",
-                "ready",
                 "completed",
                 "cancelled",
                 "returned",
