@@ -31,7 +31,7 @@ type VendorProfile = {
   createdAt: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 export default function RestaurantSidebar() {

@@ -56,7 +56,7 @@ import { refreshAccessToken } from "@/app/lib/api";
 //  Authenticated Fetch (same as in orders page)
 // ────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_MUNCHSPACE_API_BASE || "";
+const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || "";
 
