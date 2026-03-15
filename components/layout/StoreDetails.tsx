@@ -18,6 +18,8 @@ import {
   X,
   EyeOff,
   Eye,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -54,15 +56,69 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
-import { X as XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import { format } from "date-fns";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
 import { Skeleton } from "../ui/skeleton";
+import { refreshAccessToken } from "@/app/lib/api";
 
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || " ";
+// ────────────────────────────────────────────────
+//  Constants from .env
+// ────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
+const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
+
+async function authenticatedFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let token = getAccessToken();
+
+  if (!token) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+  }
+
+  const headers: HeadersInit = {
+    "x-api-key": API_KEY,
+    Authorization: `Bearer ${token}`,
+    ...init.headers,
+  };
+
+  if (!(init.body instanceof FormData)) {
+    (headers as any)["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, { ...init, headers });
+
+  if (response.status === 401) {
+    const refreshOk = await refreshAccessToken();
+    if (!refreshOk) throw new Error("Session expired");
+    token = getAccessToken();
+
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  return response;
+}
+
+// ────────────────────────────────────────────────
+//  Schema & Types (unchanged)
+// ────────────────────────────────────────────────
 
 const daysOfWeek = [
   "Monday",
@@ -161,9 +217,6 @@ type StoreInfoDisplayValues = {
 
 type Option = { value: string; label: string };
 
-const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
-
 const StoreDetails = () => {
   const { storeImage, setStoreImage, setAddress } = useStore();
   const [previousLogoUrl, setPreviousLogoUrl] = useState<string | null>(null);
@@ -178,6 +231,10 @@ const StoreDetails = () => {
   const [updatingHours, setUpdatingHours] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
+
   // Visibility states for eye icons
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -201,6 +258,7 @@ const StoreDetails = () => {
   const [lgas, setLgas] = useState<Option[]>([]);
   const [lgasLoading, setLgasLoading] = useState(false);
   const [lgasError, setLgasError] = useState("");
+
   const [countryOpen, setCountryOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
   const [lgaOpen, setLgaOpen] = useState(false);
@@ -272,94 +330,20 @@ const StoreDetails = () => {
     },
   });
 
-  useEffect(() => {
-    if (!isAddressModalOpen) return;
-
-    async function initMap() {
-      try {
-        setOptions({
-          key: GOOGLE_API_KEY,
-          libraries: ["places"],
-        });
-
-        const [{ Map }, placesLib] = await Promise.all([
-          importLibrary("maps"),
-          importLibrary("places"),
-        ]);
-
-        const mapDiv = document.getElementById("map");
-        if (!mapDiv) return;
-
-        const initialCenter = { lat: 6.5244, lng: 3.3792 };
-
-        const newMap = new Map(mapDiv, {
-          center: initialCenter,
-          zoom: 12,
-        });
-
-        const newMarker = new google.maps.Marker({
-          position: initialCenter,
-          map: newMap,
-          draggable: true,
-        });
-
-        newMarker.addListener("dragend", (e: any) => {
-          if (e.latLng) {
-            addressForm.setValue("latitude", e.latLng.lat());
-            addressForm.setValue("longitude", e.latLng.lng());
-          }
-        });
-
-        newMap.addListener("click", (e: any) => {
-          if (e.latLng) {
-            newMarker.setPosition(e.latLng);
-            addressForm.setValue("latitude", e.latLng.lat());
-            addressForm.setValue("longitude", e.latLng.lng());
-          }
-        });
-
-        const searchInput = document.getElementById(
-          "location-search",
-        ) as HTMLInputElement;
-        if (searchInput) {
-          const autocomplete = new placesLib.Autocomplete(searchInput);
-
-          autocomplete.addListener("place_changed", () => {
-            const place = autocomplete.getPlace();
-            if (place.geometry?.location) {
-              newMap.setCenter(place.geometry.location);
-              newMap.setZoom(15);
-              newMarker.setPosition(place.geometry.location);
-              addressForm.setValue("latitude", place.geometry.location.lat());
-              addressForm.setValue("longitude", place.geometry.location.lng());
-            }
-          });
-        }
-      } catch (err) {
-        console.error("Google Maps init failed:", err);
-        toast.error("Failed to load map. Please check your API key.");
-      }
-    }
-
-    initMap();
-  }, [isAddressModalOpen, addressForm]);
-
+  // ────────────────────────────────────────────────
+  // Fetch all initial data (business types, brand types, etc.)
+  // ────────────────────────────────────────────────
   useEffect(() => {
     const fetchAllData = async () => {
-      try {
-        setLoading(true);
+      setLoading(true);
+      setFetchNetworkError(null);
 
+      try {
         const token = getAccessToken();
-        if (!token) {
-          toast.error("Authentication required");
-          return;
-        }
+        if (!token) throw new Error("Authentication required");
 
         const businessId = getBusinessId();
-        if (!businessId) {
-          toast.error("No business ID found");
-          return;
-        }
+        if (!businessId) throw new Error("No business ID found");
 
         const headers = {
           Authorization: `Bearer ${token}`,
@@ -368,42 +352,36 @@ const StoreDetails = () => {
 
         const [btRes, brRes, soRes, businessRes, nigeriaRes] =
           await Promise.all([
-            fetch("https://dev.api.munchspace.io/api/v1/meta/business-types", {
-              headers,
+            authenticatedFetch(`${API_BASE}/meta/business-types`, {
+              method: "GET",
             }),
-            fetch("https://dev.api.munchspace.io/api/v1/meta/brand-types", {
-              headers,
+            authenticatedFetch(`${API_BASE}/meta/brand-types`, {
+              method: "GET",
             }),
-            fetch(
-              "https://dev.api.munchspace.io/api/v1/meta/service-operations",
-              {
-                headers,
-              },
+            authenticatedFetch(`${API_BASE}/meta/service-operations`, {
+              method: "GET",
+            }),
+            authenticatedFetch(
+              `${API_BASE}/vendors/me/businesses/${businessId}`,
+              { method: "GET" },
             ),
-            fetch(
-              `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
-              { headers },
-            ),
-            fetch(`https://dev.api.munchspace.io/api/v1/meta/nigeria-states`, {
-              headers,
+            authenticatedFetch(`${API_BASE}/meta/nigeria-states`, {
+              method: "GET",
             }),
           ]);
 
-        let btData = btRes.ok ? (await btRes.json()).data || [] : [];
-        let brData = brRes.ok ? (await brRes.json()).data || [] : [];
-        let soData = soRes.ok ? (await soRes.json()).data || [] : [];
+        const btData = btRes.ok ? (await btRes.json()).data || [] : [];
+        const brData = brRes.ok ? (await brRes.json()).data || [] : [];
+        const soData = soRes.ok ? (await soRes.json()).data || [] : [];
         let nigeriaJson: any = null;
 
         setBusinessTypeOptions(btData);
         setBrandTypeOptions(brData);
         setServiceOperationOptions(soData);
 
-        if (!businessRes.ok) {
-          throw new Error("Failed to fetch business data");
-        }
+        if (!businessRes.ok) throw new Error("Failed to fetch business data");
 
         const { data } = await businessRes.json();
-
 
         if (nigeriaRes.ok) {
           const nigeriaR = await nigeriaRes.json();
@@ -427,6 +405,7 @@ const StoreDetails = () => {
             end: hours?.closeTime || "20:00",
           };
         });
+
         form.reset({ workingHours });
 
         const transformAddress = (apiAddr: any) => {
@@ -440,7 +419,6 @@ const StoreDetails = () => {
               postalCode: undefined,
             };
           }
-
           return {
             country: apiAddr.country?.name || "",
             state: apiAddr.state?.name || "",
@@ -497,9 +475,18 @@ const StoreDetails = () => {
         if (data.logoUrl) {
           setStoreImage(data.logoUrl);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Fetch error:", err);
-        toast.error("Could not load store information");
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load store information. Please check your internet connection.",
+          );
+        } else {
+          toast.error("Could not load store information");
+        }
       } finally {
         setLoading(false);
       }
@@ -508,44 +495,117 @@ const StoreDetails = () => {
     fetchAllData();
   }, [form, storeForm, addressForm]);
 
+  // ────────────────────────────────────────────────
+  // Google Maps initialization (unchanged)
+  // ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isAddressModalOpen) return;
+
+    async function initMap() {
+      try {
+        setOptions({
+          key: process.env.NEXT_PUBLIC_MAP_API || "",
+          libraries: ["places"],
+        });
+
+        const [{ Map }, placesLib] = await Promise.all([
+          importLibrary("maps"),
+          importLibrary("places"),
+        ]);
+
+        const mapDiv = document.getElementById("map");
+        if (!mapDiv) return;
+
+        const initialCenter = { lat: 6.5244, lng: 3.3792 };
+        const newMap = new Map(mapDiv, {
+          center: initialCenter,
+          zoom: 12,
+        });
+
+        const newMarker = new google.maps.Marker({
+          position: initialCenter,
+          map: newMap,
+          draggable: true,
+        });
+
+        newMarker.addListener("dragend", (e: any) => {
+          if (e.latLng) {
+            addressForm.setValue("latitude", e.latLng.lat());
+            addressForm.setValue("longitude", e.latLng.lng());
+          }
+        });
+
+        newMap.addListener("click", (e: any) => {
+          if (e.latLng) {
+            newMarker.setPosition(e.latLng);
+            addressForm.setValue("latitude", e.latLng.lat());
+            addressForm.setValue("longitude", e.latLng.lng());
+          }
+        });
+
+        const searchInput = document.getElementById(
+          "location-search",
+        ) as HTMLInputElement;
+        if (searchInput) {
+          const autocomplete = new placesLib.Autocomplete(searchInput);
+          autocomplete.addListener("place_changed", () => {
+            const place = autocomplete.getPlace();
+            if (place.geometry?.location) {
+              newMap.setCenter(place.geometry.location);
+              newMap.setZoom(15);
+              newMarker.setPosition(place.geometry.location);
+              addressForm.setValue("latitude", place.geometry.location.lat());
+              addressForm.setValue("longitude", place.geometry.location.lng());
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Google Maps init failed:", err);
+        toast.error("Failed to load map. Please check your API key.");
+      }
+    }
+
+    initMap();
+  }, [isAddressModalOpen, addressForm]);
+
+  // ────────────────────────────────────────────────
+  // Load LGAs when state changes (using authenticatedFetch)
+  // ────────────────────────────────────────────────
   useEffect(() => {
     const selectedStateId = addressForm.watch("state");
 
-    // Immediately reset everything when state changes
     addressForm.setValue("lga", "");
     setLgas([]);
     setLgasError("");
-    setLgasLoading(true); // show loading right away
+    setLgasLoading(true);
 
     if (!selectedStateId || !nigeriaData?.states) {
       setLgasLoading(false);
       return;
     }
 
-    // We'll use this to detect if this is still the relevant fetch
     let isCurrent = true;
 
-    async function loadLgas() {
+    const loadLgas = async () => {
       try {
-        const selectedState = nigeriaData?.states.find(
+        const selectedState = nigeriaData.states.find(
           (s) => s.id === selectedStateId,
         );
         if (!selectedState) throw new Error("State not found");
 
-        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(selectedState.id)}&stateCode=${encodeURIComponent(selectedState.code)}`;
+        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(
+          selectedState.id,
+        )}&stateCode=${encodeURIComponent(selectedState.code)}`;
 
-        const response = await fetch(url, {
-          headers: { "x-api-key": API_KEY },
-        });
+        const response = await authenticatedFetch(url, { method: "GET" });
 
-        if (!isCurrent) return; // ← prevent stale update
+        if (!isCurrent) return;
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
 
         const json = await response.json();
-
         const rawArray = Array.isArray(json)
           ? json
           : (json.data ?? json.lgas ?? json.items ?? []);
@@ -560,30 +620,31 @@ const StoreDetails = () => {
         if (!isCurrent) return;
 
         setLgas(normalized);
-        setLgasError(""); // explicitly clear on success
-
+        setLgasError("");
         if (normalized.length === 1) {
           addressForm.setValue("lga", normalized[0].value);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (!isCurrent) return;
         console.error("LGA fetch failed:", err);
-        // setLgasError("Could not load LGAs for the selected state.");
+        setLgasError("Could not load LGAs for the selected state.");
       } finally {
         if (isCurrent) {
           setLgasLoading(false);
         }
       }
-    }
+    };
 
     loadLgas();
 
-    // Cleanup: mark previous fetches as stale
     return () => {
       isCurrent = false;
     };
-  }, [addressForm.watch("state"), nigeriaData]);
+  }, [addressForm.watch("state"), nigeriaData, addressForm]);
 
+  // ────────────────────────────────────────────────
+  // Image Upload (now using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -593,16 +654,13 @@ const StoreDetails = () => {
       toast.error("File size exceeds 2MB limit");
       return;
     }
-
     if (!["image/png", "image/jpeg", "image/jpg"].includes(file.type)) {
       toast.error("Only PNG and JPEG images are allowed");
       return;
     }
 
-    // Save current image for rollback
     setPreviousLogoUrl(storeImage);
 
-    // Optimistic preview
     const reader = new FileReader();
     reader.onloadend = () => {
       setStoreImage(reader.result as string);
@@ -610,23 +668,19 @@ const StoreDetails = () => {
     reader.readAsDataURL(file);
 
     try {
-      const token = await getAccessToken();
+      const token = getAccessToken();
       if (!token) throw new Error("Authentication required");
 
-      const businessId = await getBusinessId();
+      const businessId = getBusinessId();
       if (!businessId) throw new Error("No business ID found");
 
       const formData = new FormData();
       formData.append("logo", file);
 
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
           body: formData,
         },
       );
@@ -645,60 +699,60 @@ const StoreDetails = () => {
       } else {
         toast.warning("Image uploaded, but no new URL returned");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Logo upload failed:", err);
       toast.error("Could not update store image");
-      // Revert preview
       setStoreImage(previousLogoUrl ?? "/images/store-placeholder.png");
     }
   };
 
-  const onPasswordSubmit = async (values: any) => {
+  // ────────────────────────────────────────────────
+  // Password Change (using authenticatedFetch)
+  // ────────────────────────────────────────────────
+  const onPasswordSubmit: SubmitHandler<PasswordFormValues> = async (
+    values,
+  ) => {
     setIsSubmitting(true);
+
     try {
       const token = getAccessToken();
-      const response = await fetch(
-        "https://dev.api.munchspace.io/api/v1/auth/password/change",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
-          body: JSON.stringify({
-            currentPassword: values.currentPassword,
-            newPassword: values.newPassword,
-          }),
-        },
-      );
+      if (!token) throw new Error("Authentication required");
 
-      const data = await response.json();
+      const res = await authenticatedFetch(`${API_BASE}/auth/password/change`, {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword,
+        }),
+      });
 
-      if (!response.ok)
-        throw new Error(data.message || "Failed to update password");
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || "Failed to update password");
 
       toast.success("Password updated successfully");
       logout();
       setIsPasswordModalOpen(false);
       passwordForm.reset();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error.message || "Failed to update password");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const onStoreSubmit = async (data: StoreInfoEditValues) => {
+  // ────────────────────────────────────────────────
+  // Store Info Update (using authenticatedFetch)
+  // ────────────────────────────────────────────────
+  const onStoreSubmit: SubmitHandler<StoreInfoEditValues> = async (data) => {
     try {
-      const token = await getAccessToken();
+      const token = getAccessToken();
       if (!token) return toast.error("Authentication required");
 
-      const businessId = await getBusinessId();
+      const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
-
       formData.append("displayName", data.storeName);
       formData.append("email", data.email);
       formData.append("phone", data.phone);
@@ -713,14 +767,10 @@ const StoreDetails = () => {
         formData.append("serviceOperationIds[]", id);
       });
 
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
           body: formData,
         },
       );
@@ -746,12 +796,15 @@ const StoreDetails = () => {
 
       storeForm.reset(data);
       setIsStoreModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       toast.error("Could not save changes");
     }
   };
 
+  // ────────────────────────────────────────────────
+  // Address Update (using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const onAddressSubmit: SubmitHandler<AddressEditValues> = async (data) => {
     try {
       const token = getAccessToken();
@@ -761,38 +814,34 @@ const StoreDetails = () => {
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
-
-      formData.append("address[countryId]", "cmlzf6q8v004z01poe6yusjpr");
+      formData.append("address[countryId]", "cmlzf6q8v004z01poe6yusjpr"); // Nigeria ID
       formData.append("address[stateId]", data.state);
       formData.append("address[lgaId]", data.lga);
       formData.append("address[streetName]", data.streetName);
       formData.append("address[city]", data.city);
+
       if (data.postalCode)
         formData.append("address[postalCode]", data.postalCode.toString());
 
       formData.append("address[latitude]", data.latitude.toString());
       formData.append("address[longitude]", data.longitude.toString());
 
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
           body: formData,
         },
       );
 
       const resData = await res.json();
-
       if (!res.ok) throw new Error("Address update failed");
 
       const stateName =
         nigeriaData?.states.find((s) => s.id === data.state)?.name || "";
       const lgaName = lgas?.find((s) => s.value === data.lga)?.label || "";
       const formattedAddress = `${data.streetName}, ${data.city}, ${stateName}`;
+
       setAddress(formattedAddress);
 
       setStoreInfo((prev) => ({
@@ -809,16 +858,19 @@ const StoreDetails = () => {
         latitude: data.latitude,
         longitude: data.longitude,
       }));
-      toast.success("Address updated successfully");
 
+      toast.success("Address updated successfully");
       addressForm.reset(data);
       setIsAddressModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       toast.error("Could not update address");
     }
   };
 
+  // ────────────────────────────────────────────────
+  // Working Hours Update (using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const handleUpdateWorkingHours = async () => {
     try {
       setUpdatingHours(true);
@@ -840,21 +892,16 @@ const StoreDetails = () => {
         }));
 
       const formData = new FormData();
-
       apiWorkingHours.forEach((hour, index) => {
         formData.append(`workingHours[${index}][day]`, hour.day);
         formData.append(`workingHours[${index}][openTime]`, hour.openTime);
         formData.append(`workingHours[${index}][closeTime]`, hour.closeTime);
       });
 
-      const res = await fetch(
-        `https://dev.api.munchspace.io/api/v1/vendors/me/businesses/${businessId}`,
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}`,
         {
           method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-api-key": API_KEY,
-          },
           body: formData,
         },
       );
@@ -862,7 +909,7 @@ const StoreDetails = () => {
       if (!res.ok) throw new Error("Failed to update working hours");
 
       toast.success("Working hours updated successfully");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       toast.error("Could not update working hours");
     } finally {
@@ -883,6 +930,25 @@ const StoreDetails = () => {
     form.setValue(`workingHours.${day}.start`, "08:00");
     form.setValue(`workingHours.${day}.end`, "20:00");
   };
+
+  if (fetchNetworkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
+        <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   if (loading) {
     return <StoreSkeleton />;
@@ -1036,14 +1102,6 @@ const StoreDetails = () => {
                   .join(", ") || "—"}
               </p>
             </div>
-            {/* <div>
-              <p className="text-gray-500 mb-1 text-sm">Coordinates</p>
-              <p className="font-medium text-slate-700">
-                {storeInfo.latitude && storeInfo.longitude
-                  ? `${storeInfo.latitude.toFixed(6)}, ${storeInfo.longitude.toFixed(6)}`
-                  : "—"}
-              </p>
-            </div> */}
           </div>
         </Card>
       </div>
@@ -1080,7 +1138,6 @@ const StoreDetails = () => {
                           />
                           <span className="font-medium">{day}</span>
                         </div>
-
                         <div className="flex justify-between whitespace-nowrap w-full items-center gap-3">
                           <span className="text-sm text-muted-foreground">
                             {formatTime(start)} - {formatTime(end)}
@@ -1189,11 +1246,7 @@ const StoreDetails = () => {
 
       {/* Password Modal */}
       <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
-        <DialogContent
-          className="max-w-md bg-white rounded-2xl border-none shadow-2xl overflow-hidden"
-          // Applying your global preference for the backdrop overlay via data attributes or global CSS is recommended,
-          // but here is the structure based on your provided JSX.
-        >
+        <DialogContent className="max-w-md bg-white rounded-2xl border-none shadow-2xl overflow-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
               Change Password
@@ -1204,7 +1257,6 @@ const StoreDetails = () => {
               onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
               className="space-y-6"
             >
-              {/* Current Password */}
               <FormField
                 control={passwordForm.control}
                 name="currentPassword"
@@ -1241,7 +1293,6 @@ const StoreDetails = () => {
                 )}
               />
 
-              {/* New Password */}
               <FormField
                 control={passwordForm.control}
                 name="newPassword"
@@ -1274,7 +1325,6 @@ const StoreDetails = () => {
                 )}
               />
 
-              {/* Confirm Password */}
               <FormField
                 control={passwordForm.control}
                 name="confirmPassword"
@@ -1435,7 +1485,7 @@ const StoreDetails = () => {
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
-                              variant={"outline"}
+                              variant="outline"
                               className={cn(
                                 "w-full h-12 pl-3 text-left font-normal",
                                 !field.value && "text-muted-foreground",
@@ -1692,6 +1742,7 @@ const StoreDetails = () => {
                           </Command>
                         </PopoverContent>
                       </Popover>
+
                       <div className="flex flex-wrap gap-2 mt-2">
                         {(storeForm.watch("serviceOperations") ?? []).map(
                           (value) => {
@@ -1719,7 +1770,7 @@ const StoreDetails = () => {
                                     )
                                   }
                                 >
-                                  <XIcon className="w-4 font-black" />
+                                  <X className="w-4 font-black" />
                                 </span>
                               </Badge>
                             );
@@ -1795,7 +1846,7 @@ const StoreDetails = () => {
                               variant="outline"
                               role="combobox"
                               className="w-full justify-between h-12 font-normal"
-                              disabled={true} // or remove disabled if you want to allow change later
+                              disabled={true}
                             >
                               {nigeriaData?.country.name || "Nigeria"}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1803,7 +1854,6 @@ const StoreDetails = () => {
                           </FormControl>
                         </PopoverTrigger>
                       </Popover>
-                      {/* Hidden input to satisfy form */}
                       <input
                         type="hidden"
                         {...field}
@@ -1813,6 +1863,7 @@ const StoreDetails = () => {
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={addressForm.control}
                   name="state"
@@ -1896,7 +1947,6 @@ const StoreDetails = () => {
                       <FormLabel className="font-normal text-slate-500">
                         LGA <span className="text-munchred">*</span>
                       </FormLabel>
-
                       <Popover open={lgaOpen} onOpenChange={setLgaOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -1931,7 +1981,6 @@ const StoreDetails = () => {
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
-
                         <PopoverContent
                           className="w-full p-0 max-h-[min(400px,80vh)] overflow-hidden"
                           align="start"
@@ -1969,7 +2018,6 @@ const StoreDetails = () => {
                           </Command>
                         </PopoverContent>
                       </Popover>
-
                       {lgasError && (
                         <p className="text-sm text-red-500 mt-1">{lgasError}</p>
                       )}
