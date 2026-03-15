@@ -206,8 +206,6 @@ export default function LoginPage() {
           otp: code,
         }),
       });
-      const resData = await response.json();
-      console.log("OTP Verify Response:", resData);
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
