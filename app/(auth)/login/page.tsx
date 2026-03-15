@@ -206,6 +206,8 @@ export default function LoginPage() {
           otp: code,
         }),
       });
+      const resData = await response.json();
+      console.log("OTP Verify Response:", resData);
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
@@ -223,7 +225,7 @@ export default function LoginPage() {
         setFirstName(res.data.vendor.firstName);
         // Immediately redirect to dashboard
         window.location.href = "/restaurant/dashboard";
-      } else if (response.status === 401) {
+      } else if (response.status === 400 || response.status === 401) {
         setOtpError("Invalid or expired OTP.");
       } else {
         setOtpError("Verification failed. Please try again.");
@@ -403,7 +405,7 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <div className="flex justify-between gap-3">
+              <div className="grid grid-cols-6 justify-between gap-1">
                 {otp.map((digit, index) => (
                   <Input
                     key={index}
