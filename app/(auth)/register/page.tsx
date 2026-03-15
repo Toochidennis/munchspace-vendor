@@ -278,7 +278,7 @@ export default function RegisterPage() {
         }`;
         // Go to success step (setup store prompt) instead of redirecting
         setStep(3);
-      } else if (response.status === 400) {
+      } else if (response.status === 400){
         setOtpError("Invalid or expired OTP.");
       } else {
         setOtpError("An error occurred during verification.");
