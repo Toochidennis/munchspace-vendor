@@ -278,7 +278,7 @@ export default function RegisterPage() {
         }`;
         // Go to success step (setup store prompt) instead of redirecting
         setStep(3);
-      } else if (response.status === 400 || response.status === 401) {
+      } else if (response.status === 400){
         setOtpError("Invalid or expired OTP.");
       } else {
         setOtpError("An error occurred during verification.");
@@ -640,7 +640,7 @@ export default function RegisterPage() {
                   Enter the verification code sent to {savedEmail}
                 </p>
               </div>
-              <div className="grid grid-cols-6 justify-between gap-1">
+              <div className="grid grid-cols-6 justify-between gap-3">
                 {otp.map((digit, index) => (
                   <Input
                     key={index}
