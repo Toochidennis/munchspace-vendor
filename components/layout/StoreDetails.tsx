@@ -835,6 +835,7 @@ const StoreDetails = () => {
       );
 
       const resData = await res.json();
+      console.log("Address update response:", resData);
       if (!res.ok) throw new Error("Address update failed");
 
       const stateName =
@@ -957,11 +958,11 @@ const StoreDetails = () => {
   return (
     <div>
       {/* Store Image Upload */}
-      <Card className="p-4 md:p-8 bg-white border-gray-100 shadow-none">
+      <Card className="p-3 md:p-8 bg-white border-gray-100 shadow-none">
         <div className="flex items-center gap-4">
           <div className="flex gap-8">
             <div className="relative group">
-              <div className="w-24 h-24 rounded-xl overflow-hidden bg-gray-200">
+              <div className="w-19 md:w-24 h-19 md:h-24 rounded-xl overflow-hidden bg-gray-200">
                 <img
                   src={storeImage}
                   alt="Store"
@@ -1000,7 +1001,7 @@ const StoreDetails = () => {
 
       {/* Store Information Display */}
       <div className="space-y-6 mt-6">
-        <Card className="p-8 border-gray-100 shadow-none">
+        <Card className="p-3 md:p-8 border-gray-100 shadow-none">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-semibold text-gray-900">
               Store Information
@@ -1075,7 +1076,7 @@ const StoreDetails = () => {
           </div>
         </Card>
 
-        <Card className="p-8 border-gray-100 shadow-none">
+        <Card className="p-3 md:p-8 border-gray-100 shadow-none">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-semibold text-gray-900">Address</h2>
             <Button
@@ -1106,7 +1107,7 @@ const StoreDetails = () => {
         </Card>
       </div>
 
-      <Card className="md:p-8 p-2 py-4 mt-6 border-gray-100 shadow-none">
+      <Card className="p-3 md:p-8 py-4 mt-6 border-gray-100 shadow-none">
         <Accordion type="single" collapsible>
           <AccordionItem value="working-hours">
             <AccordionTrigger className="text-xl font-bold text-gray-900">
@@ -1226,7 +1227,7 @@ const StoreDetails = () => {
         </Accordion>
       </Card>
 
-      <Card className="p-8 mt-6 border-gray-100 shadow-none flex justify-between">
+      <Card className="p-3 md:p-8 mt-6 border-gray-100 shadow-none flex justify-between">
         <div className="flex justify-between items-center w-full">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Change Password</h2>

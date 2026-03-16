@@ -93,7 +93,7 @@ const initialCharges: Charge[] = [
 
 export default function AccountSettingsPage() {
   return (
-    <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0">
+    <div className="min-h-screen p-4 md:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto">
         {/* Page Title */}
         <div>
