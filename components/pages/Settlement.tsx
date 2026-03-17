@@ -387,11 +387,11 @@ export default function EarningsPage() {
         </div>
 
         {activeTab === "earnings" && (
-          <div className="mt-10">
+          <div className="mt-6">
             {isLoadingAccount ? (
-              <Skeleton className="h-[120px] w-full rounded-md" />
+              <Skeleton className="h-30 w-full rounded-md" />
             ) : account ? (
-              <div className="bg-gray-100 rounded-xl p-5">
+              <div className="bg-gray-50 rounded-xl p-5">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   Earnings
                 </h2>
@@ -432,13 +432,6 @@ export default function EarningsPage() {
                   <p className="text-gray-600">{account.accountNumber}</p>
                   <p className="text-sm text-gray-500">{account.accountName}</p>
                 </div>
-                <Button
-                  variant="outline"
-                  className="border-red-600 text-red-600 hover:bg-red-50 rounded-md"
-                  onClick={() => setIsDeleteOpen(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" /> Delete
-                </Button>
               </div>
             ) : (
               <div className="flex justify-center">
@@ -595,39 +588,6 @@ export default function EarningsPage() {
           </Form>
         )}
       </CustomModal>
-
-      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="sm:max-w-sm rounded-2xl border-none shadow-xl p-0 overflow-hidden bg-black/40 backdrop-blur-[2px]">
-          <div className="bg-white m-4 rounded-2xl p-6">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-bold">
-                Remove Account?
-              </DialogTitle>
-              <DialogDescription>
-                This will remove your current settlement account. You will need
-                to add a new one to receive payouts.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="flex gap-3 mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setIsDeleteOpen(false)}
-                className="rounded-md w-full"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={confirmDelete}
-                disabled={isDeleting}
-                className="rounded-md w-full bg-red-600 hover:bg-red-700"
-              >
-                {isDeleting ? "Removing..." : "Yes, Remove"}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

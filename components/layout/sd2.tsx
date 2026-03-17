@@ -56,7 +56,6 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
-import { X as XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import { format } from "date-fns";
@@ -71,13 +70,17 @@ import { refreshAccessToken } from "@/app/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_MAP_API || "";
+
+// ────────────────────────────────────────────────
+//  Authenticated Fetch (with token refresh on 401)
+// ────────────────────────────────────────────────
 
 async function authenticatedFetch(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
   let token = getAccessToken();
+
   if (!token) {
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
@@ -100,14 +103,22 @@ async function authenticatedFetch(
     const refreshOk = await refreshAccessToken();
     if (!refreshOk) throw new Error("Session expired");
     token = getAccessToken();
+
     response = await fetch(url, {
       ...init,
-      headers: { ...headers, Authorization: `Bearer ${token}` },
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
     });
   }
 
   return response;
 }
+
+// ────────────────────────────────────────────────
+//  Schema & Types (unchanged)
+// ────────────────────────────────────────────────
 
 const daysOfWeek = [
   "Monday",
@@ -247,6 +258,7 @@ const StoreDetails = () => {
   const [lgas, setLgas] = useState<Option[]>([]);
   const [lgasLoading, setLgasLoading] = useState(false);
   const [lgasError, setLgasError] = useState("");
+
   const [countryOpen, setCountryOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
   const [lgaOpen, setLgaOpen] = useState(false);
@@ -318,46 +330,70 @@ const StoreDetails = () => {
     },
   });
 
+  // ────────────────────────────────────────────────
+  // Fetch all initial data (business types, brand types, etc.)
+  // ────────────────────────────────────────────────
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true);
       setFetchNetworkError(null);
 
       try {
+        const token = getAccessToken();
+        if (!token) throw new Error("Authentication required");
+
         const businessId = getBusinessId();
         if (!businessId) throw new Error("No business ID found");
 
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "x-api-key": API_KEY,
+        };
+
         const [btRes, brRes, soRes, businessRes, nigeriaRes] =
           await Promise.all([
-            authenticatedFetch(`${API_BASE}/meta/business-types`),
-            authenticatedFetch(`${API_BASE}/meta/brand-types`),
-            authenticatedFetch(`${API_BASE}/meta/service-operations`),
+            authenticatedFetch(`${API_BASE}/meta/business-types`, {
+              method: "GET",
+            }),
+            authenticatedFetch(`${API_BASE}/meta/brand-types`, {
+              method: "GET",
+            }),
+            authenticatedFetch(`${API_BASE}/meta/service-operations`, {
+              method: "GET",
+            }),
             authenticatedFetch(
               `${API_BASE}/vendors/me/businesses/${businessId}`,
+              { method: "GET" },
             ),
-            authenticatedFetch(`${API_BASE}/meta/nigeria-states`),
+            authenticatedFetch(`${API_BASE}/meta/nigeria-states`, {
+              method: "GET",
+            }),
           ]);
 
-        const btJson = await btRes.json();
-        const brJson = await brRes.json();
-        const soJson = await soRes.json();
-        const businessJson = await businessRes.json();
-        const nigeriaJson = await nigeriaRes.json();
+        const btData = btRes.ok ? (await btRes.json()).data || [] : [];
+        const brData = brRes.ok ? (await brRes.json()).data || [] : [];
+        const soData = soRes.ok ? (await soRes.json()).data || [] : [];
+        let nigeriaJson: any = null;
 
-        setBusinessTypeOptions(btJson.data || []);
-        setBrandTypeOptions(brJson.data || []);
-        setServiceOperationOptions(soJson.data || []);
+        setBusinessTypeOptions(btData);
+        setBrandTypeOptions(brData);
+        setServiceOperationOptions(soData);
 
-        if (
-          nigeriaJson?.data?.country &&
-          Array.isArray(nigeriaJson.data.states)
-        ) {
-          setNigeriaData(nigeriaJson.data);
+        if (!businessRes.ok) throw new Error("Failed to fetch business data");
+
+        const { data } = await businessRes.json();
+
+        if (nigeriaRes.ok) {
+          const nigeriaR = await nigeriaRes.json();
+          nigeriaJson = nigeriaR.data;
+        }
+
+        if (nigeriaJson?.country && Array.isArray(nigeriaJson.states)) {
+          setNigeriaData(nigeriaJson);
+          setStatesLoading(false);
         } else {
           setStatesError("Failed to load Nigerian states.");
         }
-
-        const data = businessJson.data;
 
         const workingHours: Record<string, any> = {};
         daysOfWeek.forEach((uiDay) => {
@@ -373,7 +409,7 @@ const StoreDetails = () => {
         form.reset({ workingHours });
 
         const transformAddress = (apiAddr: any) => {
-          if (!apiAddr)
+          if (!apiAddr) {
             return {
               country: "",
               state: "",
@@ -382,6 +418,7 @@ const StoreDetails = () => {
               city: "",
               postalCode: undefined,
             };
+          }
           return {
             country: apiAddr.country?.name || "",
             state: apiAddr.state?.name || "",
@@ -421,13 +458,13 @@ const StoreDetails = () => {
           businessType: data.businessType?.id || "",
           brandType: data.brandType?.id || "",
           serviceOperations:
-            data.serviceOperations?.map((op: any) => op.id) || [],
+            data.serviceOperations?.map((op: MetaItem) => op.id) || [],
         });
 
         addressForm.reset({
           country: "Nigeria",
-          state: data.address?.state?.id || "",
-          lga: data.address?.lga?.id || "",
+          state: data.address?.state?.id || "", // ← use .id
+          lga: data.address?.lga?.id || "", // ← use .id
           streetName: data.address?.streetName || "",
           city: data.address?.city || "",
           postalCode: data.address?.postalCode
@@ -438,10 +475,8 @@ const StoreDetails = () => {
         });
 
         if (data.logoUrl) {
-          setStoreImage(data.logoUrl)
-          setPreviousLogoUrl(data.logoUrl);
-        };
-
+          setStoreImage(data.logoUrl);
+        }
       } catch (err: any) {
         console.error("Fetch error:", err);
         if (
@@ -449,7 +484,7 @@ const StoreDetails = () => {
           err.message?.includes("Network")
         ) {
           setFetchNetworkError(
-            "Unable to load store details. Please check your internet connection.",
+            "Unable to load store information. Please check your internet connection.",
           );
         } else {
           toast.error("Could not load store information");
@@ -460,95 +495,21 @@ const StoreDetails = () => {
     };
 
     fetchAllData();
-  }, [form, storeForm, addressForm, setStoreImage]);
+  }, [form, storeForm, addressForm]);
 
   // ────────────────────────────────────────────────
-  //  LGA loading (using authenticatedFetch)
+  // Google Maps initialization (unchanged)
   // ────────────────────────────────────────────────
-
-  useEffect(() => {
-    const selectedStateId = addressForm.watch("state");
-    addressForm.setValue("lga", "");
-    setLgas([]);
-    setLgasError("");
-    setLgasLoading(true);
-
-    if (!selectedStateId || !nigeriaData?.states) {
-      setLgasLoading(false);
-      return;
-    }
-
-    let isCurrent = true;
-
-    async function loadLgas() {
-      try {
-        const selectedState = nigeriaData?.states.find(
-          (s) => s.id === selectedStateId,
-        );
-        if (!selectedState) throw new Error("State not found");
-
-        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(selectedState.id)}&stateCode=${encodeURIComponent(selectedState.code)}`;
-
-        const response = await authenticatedFetch(url);
-
-        if (!isCurrent) return;
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const json = await response.json();
-        const rawArray = Array.isArray(json)
-          ? json
-          : (json.data ?? json.lgas ?? json.items ?? []);
-
-        const normalized = rawArray
-          .map((item: any) => ({
-            value: String(item.id || item.lgaId || item.code || ""),
-            label: item.name || item.lgaName || item.label || String(item),
-          }))
-          .filter((opt: any) => opt.value && opt.label.trim());
-
-        if (!isCurrent) return;
-
-        setLgas(normalized);
-        setLgasError("");
-        if (normalized.length === 1) {
-          addressForm.setValue("lga", normalized[0].value);
-        }
-      } catch (err: any) {
-        if (!isCurrent) return;
-        console.error("LGA fetch failed:", err);
-        if (
-          err.message?.includes("fetch") ||
-          err.message?.includes("Network")
-        ) {
-          setFetchNetworkError(
-            "Unable to load LGA options. Please check your connection.",
-          );
-        } else {
-          setLgasError("Could not load LGAs for the selected state.");
-        }
-      } finally {
-        if (isCurrent) setLgasLoading(false);
-      }
-    }
-
-    loadLgas();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [addressForm.watch("state"), nigeriaData, addressForm]);
-
-  // ────────────────────────────────────────────────
-  //  Google Maps (unchanged)
-  // ────────────────────────────────────────────────
-
   useEffect(() => {
     if (!isAddressModalOpen) return;
 
     async function initMap() {
       try {
-        setOptions({ key: GOOGLE_API_KEY, libraries: ["places"] });
+        setOptions({
+          key: process.env.NEXT_PUBLIC_MAP_API || "",
+          libraries: ["places"],
+        });
+
         const [{ Map }, placesLib] = await Promise.all([
           importLibrary("maps"),
           importLibrary("places"),
@@ -558,7 +519,10 @@ const StoreDetails = () => {
         if (!mapDiv) return;
 
         const initialCenter = { lat: 6.5244, lng: 3.3792 };
-        const newMap = new Map(mapDiv, { center: initialCenter, zoom: 12 });
+        const newMap = new Map(mapDiv, {
+          center: initialCenter,
+          zoom: 12,
+        });
 
         const newMarker = new google.maps.Marker({
           position: initialCenter,
@@ -607,13 +571,87 @@ const StoreDetails = () => {
   }, [isAddressModalOpen, addressForm]);
 
   // ────────────────────────────────────────────────
-  //  Handlers (updated to use authenticatedFetch)
+  // Load LGAs when state changes (using authenticatedFetch)
   // ────────────────────────────────────────────────
+  useEffect(() => {
+    const selectedStateId = addressForm.watch("state");
 
+    addressForm.setValue("lga", "");
+    setLgas([]);
+    setLgasError("");
+    setLgasLoading(true);
+
+    if (!selectedStateId || !nigeriaData?.states) {
+      setLgasLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+
+    const loadLgas = async () => {
+      try {
+        const selectedState = nigeriaData.states.find(
+          (s) => s.id === selectedStateId,
+        );
+        if (!selectedState) throw new Error("State not found");
+
+        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(
+          selectedState.id,
+        )}&stateCode=${encodeURIComponent(selectedState.code)}`;
+
+        const response = await authenticatedFetch(url, { method: "GET" });
+
+        if (!isCurrent) return;
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const json = await response.json();
+        const rawArray = Array.isArray(json)
+          ? json
+          : (json.data ?? json.lgas ?? json.items ?? []);
+
+        const normalized = rawArray
+          .map((item: any) => ({
+            value: String(item.id || item.lgaId || item.code || ""),
+            label: item.name || item.lgaName || item.label || String(item),
+          }))
+          .filter((opt: any) => opt.value && opt.label.trim());
+
+        if (!isCurrent) return;
+
+        setLgas(normalized);
+        setLgasError("");
+        if (normalized.length === 1) {
+          addressForm.setValue("lga", normalized[0].value);
+        }
+      } catch (err: any) {
+        if (!isCurrent) return;
+        console.error("LGA fetch failed:", err);
+        setLgasError("Could not load LGAs for the selected state.");
+      } finally {
+        if (isCurrent) {
+          setLgasLoading(false);
+        }
+      }
+    };
+
+    loadLgas();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [addressForm.watch("state"), nigeriaData, addressForm]);
+
+  // ────────────────────────────────────────────────
+  // Image Upload (now using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Client-side validation
     if (file.size > 2 * 1024 * 1024) {
       toast.error("File size exceeds 2MB limit");
       return;
@@ -623,12 +661,18 @@ const StoreDetails = () => {
       return;
     }
 
-    // setPreviousLogoUrl(storeImage);
+    setPreviousLogoUrl(storeImage);
+
     const reader = new FileReader();
-    reader.onloadend = () => setStoreImage(reader.result as string);
+    reader.onloadend = () => {
+      setStoreImage(reader.result as string);
+    };
     reader.readAsDataURL(file);
 
     try {
+      const token = getAccessToken();
+      if (!token) throw new Error("Authentication required");
+
       const businessId = getBusinessId();
       if (!businessId) throw new Error("No business ID found");
 
@@ -637,7 +681,10 @@ const StoreDetails = () => {
 
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}`,
-        { method: "PATCH", body: formData },
+        {
+          method: "PATCH",
+          body: formData,
+        },
       );
 
       if (!res.ok) {
@@ -647,26 +694,34 @@ const StoreDetails = () => {
 
       const responseData = await res.json();
       const newLogoUrl = responseData?.data?.logoUrl;
+
       if (newLogoUrl) {
         setStoreImage(newLogoUrl);
         toast.success("Store image updated successfully");
       } else {
-        toast.warning("Image uploaded");
+        toast.warning("Image uploaded, but no new URL returned");
       }
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Logo upload failed:", err);
       toast.error("Could not update store image");
       setStoreImage(previousLogoUrl ?? "/images/store-placeholder.png");
     }
   };
 
+  // ────────────────────────────────────────────────
+  // Password Change (using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const onPasswordSubmit: SubmitHandler<PasswordFormValues> = async (
     values,
   ) => {
     setIsSubmitting(true);
+
     try {
+      const token = getAccessToken();
+      if (!token) throw new Error("Authentication required");
+
       const res = await authenticatedFetch(`${API_BASE}/auth/password/change`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           currentPassword: values.currentPassword,
           newPassword: values.newPassword,
@@ -682,14 +737,20 @@ const StoreDetails = () => {
       setIsPasswordModalOpen(false);
       passwordForm.reset();
     } catch (error: any) {
-      toast.error(error.message || "Failed to change password");
+      toast.error(error.message || "Failed to update password");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // ────────────────────────────────────────────────
+  // Store Info Update (using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const onStoreSubmit: SubmitHandler<StoreInfoEditValues> = async (data) => {
     try {
+      const token = getAccessToken();
+      if (!token) return toast.error("Authentication required");
+
       const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
@@ -703,13 +764,17 @@ const StoreDetails = () => {
       );
       formData.append("businessTypeId", data.businessType);
       formData.append("brandTypeId", data.brandType);
-      data.serviceOperations.forEach((id) =>
-        formData.append("serviceOperationIds[]", id),
-      );
+
+      data.serviceOperations.forEach((id) => {
+        formData.append("serviceOperationIds[]", id);
+      });
 
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}`,
-        { method: "PATCH", body: formData },
+        {
+          method: "PATCH",
+          body: formData,
+        },
       );
 
       if (!res.ok) throw new Error("Update failed");
@@ -733,37 +798,47 @@ const StoreDetails = () => {
 
       storeForm.reset(data);
       setIsStoreModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       toast.error("Could not save changes");
     }
   };
 
+  // ────────────────────────────────────────────────
+  // Address Update (using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const onAddressSubmit: SubmitHandler<AddressEditValues> = async (data) => {
     try {
+      const token = getAccessToken();
+      if (!token) return toast.error("Authentication required");
+
       const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
-      formData.append("address[countryId]", "cmlzf6q8v004z01poe6yusjpr"); // Nigeria ID
+      formData.append("address[countryId]", nigeriaData?.country?.id || ""); // Nigeria ID
       formData.append("address[stateId]", data.state);
       formData.append("address[lgaId]", data.lga);
       formData.append("address[streetName]", data.streetName);
       formData.append("address[city]", data.city);
+
       if (data.postalCode)
         formData.append("address[postalCode]", data.postalCode.toString());
+
       formData.append("address[latitude]", data.latitude.toString());
       formData.append("address[longitude]", data.longitude.toString());
 
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}`,
-        { method: "PATCH", body: formData },
+        {
+          method: "PATCH",
+          body: formData,
+        },
       );
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || "Address update failed");
-      }
+      const resData = await res.json();
+      console.log("Address update response:", resData);
+      if (!res.ok) throw new Error("Address update failed");
 
       const stateName =
         nigeriaData?.states.find((s) => s.id === data.state)?.name || "";
@@ -790,19 +865,27 @@ const StoreDetails = () => {
       toast.success("Address updated successfully");
       addressForm.reset(data);
       setIsAddressModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       toast.error("Could not update address");
     }
   };
 
+  // ────────────────────────────────────────────────
+  // Working Hours Update (using authenticatedFetch)
+  // ────────────────────────────────────────────────
   const handleUpdateWorkingHours = async () => {
     try {
       setUpdatingHours(true);
+
+      const token = getAccessToken();
+      if (!token) return toast.error("Authentication required");
+
       const businessId = getBusinessId();
       if (!businessId) return toast.error("No business ID found");
 
       const workingHoursData = form.getValues("workingHours");
+
       const apiWorkingHours = daysOfWeek
         .filter((day) => workingHoursData[day].enabled)
         .map((day) => ({
@@ -820,13 +903,16 @@ const StoreDetails = () => {
 
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}`,
-        { method: "PATCH", body: formData },
+        {
+          method: "PATCH",
+          body: formData,
+        },
       );
 
       if (!res.ok) throw new Error("Failed to update working hours");
 
       toast.success("Working hours updated successfully");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       toast.error("Could not update working hours");
     } finally {
@@ -850,7 +936,7 @@ const StoreDetails = () => {
 
   if (fetchNetworkError) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center">
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">
           Connection Error
@@ -870,14 +956,15 @@ const StoreDetails = () => {
   if (loading) {
     return <StoreSkeleton />;
   }
+
   return (
     <div>
       {/* Store Image Upload */}
-      <Card className="md:p-8 bg-white border-gray-100 shadow-none">
+      <Card className="p-3 md:p-8 bg-white border-gray-100 shadow-none">
         <div className="flex items-center gap-4">
           <div className="flex gap-8">
             <div className="relative group">
-              <div className="w-24 h-24 rounded-xl overflow-hidden bg-gray-200">
+              <div className="w-19 md:w-24 h-19 md:h-24 rounded-xl overflow-hidden bg-gray-200">
                 <img
                   src={storeImage}
                   alt="Store"
@@ -915,8 +1002,8 @@ const StoreDetails = () => {
       </Card>
 
       {/* Store Information Display */}
-      <div className="space-y-6">
-        <Card className="p-8 border-gray-100 shadow-none">
+      <div className="space-y-6 mt-6">
+        <Card className="p-3 md:p-8 border-gray-100 shadow-none">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-semibold text-gray-900">
               Store Information
@@ -991,7 +1078,7 @@ const StoreDetails = () => {
           </div>
         </Card>
 
-        <Card className="p-8 border-gray-100 shadow-none">
+        <Card className="p-3 md:p-8 border-gray-100 shadow-none">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-semibold text-gray-900">Address</h2>
             <Button
@@ -1018,19 +1105,11 @@ const StoreDetails = () => {
                   .join(", ") || "—"}
               </p>
             </div>
-            {/* <div>
-              <p className="text-gray-500 mb-1 text-sm">Coordinates</p>
-              <p className="font-medium text-slate-700">
-                {storeInfo.latitude && storeInfo.longitude
-                  ? `${storeInfo.latitude.toFixed(6)}, ${storeInfo.longitude.toFixed(6)}`
-                  : "—"}
-              </p>
-            </div> */}
           </div>
         </Card>
       </div>
 
-      <Card className="md:p-8 p-2 py-4 border-gray-100 shadow-none">
+      <Card className="p-3 md:p-8 py-4 mt-6 border-gray-100 shadow-none">
         <Accordion type="single" collapsible>
           <AccordionItem value="working-hours">
             <AccordionTrigger className="text-xl font-bold text-gray-900">
@@ -1062,7 +1141,6 @@ const StoreDetails = () => {
                           />
                           <span className="font-medium">{day}</span>
                         </div>
-
                         <div className="flex justify-between whitespace-nowrap w-full items-center gap-3">
                           <span className="text-sm text-muted-foreground">
                             {formatTime(start)} - {formatTime(end)}
@@ -1151,7 +1229,7 @@ const StoreDetails = () => {
         </Accordion>
       </Card>
 
-      <Card className="p-8 border-gray-100 shadow-none flex justify-between">
+      <Card className="p-3 md:p-8 mt-6 border-gray-100 shadow-none flex justify-between">
         <div className="flex justify-between items-center w-full">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Change Password</h2>
@@ -1171,11 +1249,7 @@ const StoreDetails = () => {
 
       {/* Password Modal */}
       <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
-        <DialogContent
-          className="max-w-md bg-white rounded-2xl border-none shadow-2xl overflow-hidden"
-          // Applying your global preference for the backdrop overlay via data attributes or global CSS is recommended,
-          // but here is the structure based on your provided JSX.
-        >
+        <DialogContent className="max-w-md bg-white rounded-2xl border-none shadow-2xl overflow-hidden">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
               Change Password
@@ -1186,7 +1260,6 @@ const StoreDetails = () => {
               onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
               className="space-y-6"
             >
-              {/* Current Password */}
               <FormField
                 control={passwordForm.control}
                 name="currentPassword"
@@ -1223,7 +1296,6 @@ const StoreDetails = () => {
                 )}
               />
 
-              {/* New Password */}
               <FormField
                 control={passwordForm.control}
                 name="newPassword"
@@ -1256,7 +1328,6 @@ const StoreDetails = () => {
                 )}
               />
 
-              {/* Confirm Password */}
               <FormField
                 control={passwordForm.control}
                 name="confirmPassword"
@@ -1417,7 +1488,7 @@ const StoreDetails = () => {
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
-                              variant={"outline"}
+                              variant="outline"
                               className={cn(
                                 "w-full h-12 pl-3 text-left font-normal",
                                 !field.value && "text-muted-foreground",
@@ -1674,6 +1745,7 @@ const StoreDetails = () => {
                           </Command>
                         </PopoverContent>
                       </Popover>
+
                       <div className="flex flex-wrap gap-2 mt-2">
                         {(storeForm.watch("serviceOperations") ?? []).map(
                           (value) => {
@@ -1701,7 +1773,7 @@ const StoreDetails = () => {
                                     )
                                   }
                                 >
-                                  <XIcon className="w-4 font-black" />
+                                  <X className="w-4 font-black" />
                                 </span>
                               </Badge>
                             );
@@ -1777,7 +1849,7 @@ const StoreDetails = () => {
                               variant="outline"
                               role="combobox"
                               className="w-full justify-between h-12 font-normal"
-                              disabled={true} // or remove disabled if you want to allow change later
+                              disabled={true}
                             >
                               {nigeriaData?.country.name || "Nigeria"}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1785,7 +1857,6 @@ const StoreDetails = () => {
                           </FormControl>
                         </PopoverTrigger>
                       </Popover>
-                      {/* Hidden input to satisfy form */}
                       <input
                         type="hidden"
                         {...field}
@@ -1795,6 +1866,7 @@ const StoreDetails = () => {
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={addressForm.control}
                   name="state"
@@ -1838,6 +1910,9 @@ const StoreDetails = () => {
                                   key={s.id}
                                   value={s.name}
                                   onSelect={() => {
+                                     setStoreInfo({...storeInfo,
+                                       address: {...storeInfo.address, lga: ""}
+                                     });
                                     addressForm.setValue("state", s.id);
                                     addressForm.clearErrors("state");
                                     setStateOpen(false);
@@ -1878,7 +1953,6 @@ const StoreDetails = () => {
                       <FormLabel className="font-normal text-slate-500">
                         LGA <span className="text-munchred">*</span>
                       </FormLabel>
-
                       <Popover open={lgaOpen} onOpenChange={setLgaOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -1893,7 +1967,7 @@ const StoreDetails = () => {
                                 statesLoading
                               }
                             >
-                              <span className="truncate">
+                              {/* <span className="truncate">
                                 {lgasLoading
                                   ? "Loading LGAs..."
                                   : addressForm.watch("lga") &&
@@ -1908,12 +1982,38 @@ const StoreDetails = () => {
                                           addressForm.watch("lga"),
                                       )!.label
                                     : "Select LGA"}
+                              </span> */}
+                              <span className="truncate">
+                                {lgasLoading
+                                  ? "Loading LGAs..."
+                                  : addressForm.watch("lga") &&
+                                      lgas.some(
+                                        (opt) =>
+                                          opt.value ===
+                                          addressForm.watch("lga"),
+                                      )
+                                    ? lgas.find(
+                                        (opt) =>
+                                          opt.value ===
+                                          addressForm.watch("lga"),
+                                      )!.label
+                                    : storeInfo.address?.lga ||
+                                      "Select LGA"}{" "}
                               </span>
+                              {/* <span className="truncate">
+                                {addressForm.watch("state")
+                                  ? nigeriaData?.states.find(
+                                      (s) =>
+                                        s.id === addressForm.watch("state"),
+                                    )?.name || "Select state"
+                                  : statesLoading
+                                    ? "Loading states..."
+                                    : "Select state"}
+                              </span> */}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
-
                         <PopoverContent
                           className="w-full p-0 max-h-[min(400px,80vh)] overflow-hidden"
                           align="start"
@@ -1951,7 +2051,6 @@ const StoreDetails = () => {
                           </Command>
                         </PopoverContent>
                       </Popover>
-
                       {lgasError && (
                         <p className="text-sm text-red-500 mt-1">{lgasError}</p>
                       )}

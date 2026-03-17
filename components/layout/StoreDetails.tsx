@@ -331,6 +331,80 @@ const StoreDetails = () => {
   });
 
   // ────────────────────────────────────────────────
+  // Load LGAs when state changes (using authenticatedFetch)
+  // ────────────────────────────────────────────────
+  useEffect(() => {
+    const selectedStateId = addressForm.watch("state");
+
+    // addressForm.setValue("lga", "");
+    setLgas([]);
+    setLgasError("");
+    setLgasLoading(true);
+
+    if (!selectedStateId || !nigeriaData?.states) {
+      setLgasLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+
+    const loadLgas = async () => {
+      try {
+        const selectedState = nigeriaData.states.find(
+          (s) => s.id === selectedStateId,
+        );
+        if (!selectedState) throw new Error("State not found");
+
+        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(
+          selectedState.id,
+        )}&stateCode=${encodeURIComponent(selectedState.code)}`;
+
+        const response = await authenticatedFetch(url, { method: "GET" });
+
+        if (!isCurrent) return;
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const json = await response.json();
+        const rawArray = Array.isArray(json)
+          ? json
+          : (json.data ?? json.lgas ?? json.items ?? []);
+
+        const normalized = rawArray
+          .map((item: any) => ({
+            value: String(item.id || item.lgaId || item.code || ""),
+            label: item.name || item.lgaName || item.label || String(item),
+          }))
+          .filter((opt: any) => opt.value && opt.label.trim());
+
+        if (!isCurrent) return;
+
+        setLgas(normalized);
+        setLgasError("");
+        if (normalized.length === 1) {
+          addressForm.setValue("lga", normalized[0].value);
+        }
+      } catch (err: any) {
+        if (!isCurrent) return;
+        console.error("LGA fetch failed:", err);
+        setLgasError("Could not load LGAs for the selected state.");
+      } finally {
+        if (isCurrent) {
+          setLgasLoading(false);
+        }
+      }
+    };
+
+    loadLgas();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [addressForm.watch("state"), nigeriaData, addressForm]);
+
+  // ────────────────────────────────────────────────
   // Fetch all initial data (business types, brand types, etc.)
   // ────────────────────────────────────────────────
   useEffect(() => {
@@ -463,14 +537,17 @@ const StoreDetails = () => {
 
         addressForm.reset({
           country: "Nigeria",
-          state: data.address?.state || "",
-          lga: data.address?.lga || "",
+          state: data.address?.state?.id || "", // ← use .id
+          lga: data.address?.lga?.id || "", // ← use .id
           streetName: data.address?.streetName || "",
           city: data.address?.city || "",
-          postalCode: data.address?.postalCode || "",
-          latitude: data.latitude || 0,
-          longitude: data.longitude || 0,
+          postalCode: data.address?.postalCode
+            ? Number(data.address.postalCode)
+            : 0,
+          latitude: data.address?.latitude || 0,
+          longitude: data.address?.longitude || 0,
         });
+
 
         if (data.logoUrl) {
           setStoreImage(data.logoUrl);
@@ -567,80 +644,6 @@ const StoreDetails = () => {
 
     initMap();
   }, [isAddressModalOpen, addressForm]);
-
-  // ────────────────────────────────────────────────
-  // Load LGAs when state changes (using authenticatedFetch)
-  // ────────────────────────────────────────────────
-  useEffect(() => {
-    const selectedStateId = addressForm.watch("state");
-
-    addressForm.setValue("lga", "");
-    setLgas([]);
-    setLgasError("");
-    setLgasLoading(true);
-
-    if (!selectedStateId || !nigeriaData?.states) {
-      setLgasLoading(false);
-      return;
-    }
-
-    let isCurrent = true;
-
-    const loadLgas = async () => {
-      try {
-        const selectedState = nigeriaData.states.find(
-          (s) => s.id === selectedStateId,
-        );
-        if (!selectedState) throw new Error("State not found");
-
-        const url = `${API_BASE}/meta/lgas?stateId=${encodeURIComponent(
-          selectedState.id,
-        )}&stateCode=${encodeURIComponent(selectedState.code)}`;
-
-        const response = await authenticatedFetch(url, { method: "GET" });
-
-        if (!isCurrent) return;
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const json = await response.json();
-        const rawArray = Array.isArray(json)
-          ? json
-          : (json.data ?? json.lgas ?? json.items ?? []);
-
-        const normalized = rawArray
-          .map((item: any) => ({
-            value: String(item.id || item.lgaId || item.code || ""),
-            label: item.name || item.lgaName || item.label || String(item),
-          }))
-          .filter((opt: any) => opt.value && opt.label.trim());
-
-        if (!isCurrent) return;
-
-        setLgas(normalized);
-        setLgasError("");
-        if (normalized.length === 1) {
-          addressForm.setValue("lga", normalized[0].value);
-        }
-      } catch (err: any) {
-        if (!isCurrent) return;
-        console.error("LGA fetch failed:", err);
-        setLgasError("Could not load LGAs for the selected state.");
-      } finally {
-        if (isCurrent) {
-          setLgasLoading(false);
-        }
-      }
-    };
-
-    loadLgas();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [addressForm.watch("state"), nigeriaData, addressForm]);
 
   // ────────────────────────────────────────────────
   // Image Upload (now using authenticatedFetch)
@@ -814,7 +817,7 @@ const StoreDetails = () => {
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
-      formData.append("address[countryId]", "cmlzf6q8v004z01poe6yusjpr"); // Nigeria ID
+      formData.append("address[countryId]", nigeriaData?.country?.id || ""); // Nigeria ID
       formData.append("address[stateId]", data.state);
       formData.append("address[lgaId]", data.lga);
       formData.append("address[streetName]", data.streetName);
@@ -1908,6 +1911,13 @@ const StoreDetails = () => {
                                   key={s.id}
                                   value={s.name}
                                   onSelect={() => {
+                                    setStoreInfo({
+                                      ...storeInfo,
+                                      address: {
+                                        ...storeInfo.address,
+                                        lga: "",
+                                      },
+                                    });
                                     addressForm.setValue("state", s.id);
                                     addressForm.clearErrors("state");
                                     setStateOpen(false);
@@ -1962,7 +1972,7 @@ const StoreDetails = () => {
                                 statesLoading
                               }
                             >
-                              <span className="truncate">
+                              {/* <span className="truncate">
                                 {lgasLoading
                                   ? "Loading LGAs..."
                                   : addressForm.watch("lga") &&
@@ -1977,7 +1987,34 @@ const StoreDetails = () => {
                                           addressForm.watch("lga"),
                                       )!.label
                                     : "Select LGA"}
+                              </span> */}
+                              <span className="truncate">
+                                {lgasLoading
+                                  ? "Loading LGAs..."
+                                  : addressForm.watch("lga") &&
+                                      lgas.some(
+                                        (opt) =>
+                                          opt.value ===
+                                          addressForm.watch("lga"),
+                                      )
+                                    ? lgas.find(
+                                        (opt) =>
+                                          opt.value ===
+                                          addressForm.watch("lga"),
+                                      )!.label
+                                    : storeInfo.address?.lga ||
+                                      "Select LGA"}{" "}
                               </span>
+                              {/* <span className="truncate">
+                                {addressForm.watch("state")
+                                  ? nigeriaData?.states.find(
+                                      (s) =>
+                                        s.id === addressForm.watch("state"),
+                                    )?.name || "Select state"
+                                  : statesLoading
+                                    ? "Loading states..."
+                                    : "Select state"}
+                              </span> */}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </FormControl>
@@ -2111,7 +2148,7 @@ const StoreDetails = () => {
       </Dialog>
     </div>
   );
-};
+};;
 
 export default StoreDetails;
 
