@@ -181,25 +181,40 @@ export default function RegisterPage() {
           password: values.password,
         }),
       });
-      if (response.status === 201) {
+
+      const resData = await response.json();
+
+      if (response.status === 201 && resData.success && resData.data) {
         setSavedEmail(values.email);
-        setStep(2);
-        setResendCooldown(60);
-        // Start initial cooldown
-        setCurrentWaitTime(60);
+
+        if (resData.data.requiresOtp) {
+          // Go to OTP step and start cooldown (OTP request is sent automatically)
+          setStep(2);
+          setResendCooldown(60);
+          setCurrentWaitTime(60);
+        } else {
+          // No OTP required → store tokens immediately and go to success
+          const { accessToken, refreshToken } = resData.data;
+
+          setBusinessId(resData.data.vendor.businessId);
+          setAccessToken(accessToken);
+          document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
+            60 * 60 * 24 * 30
+          }`;
+
+          setStep(3);
+        }
       } else if (response.status === 400) {
-        const errorData = await response.json();
         form.setError("root", {
-          message: errorData.message || "Invalid input data.",
+          message: resData.message || "Invalid input data.",
         });
       } else if (response.status === 401) {
         form.setError("root", { message: "Invalid or missing API key." });
       } else if (response.status === 409) {
         form.setError("email", { message: "User already exists." });
       } else {
-        const errorData = await response.json().catch(() => ({}));
         form.setError("root", {
-          message: errorData.message || "An unexpected error occurred.",
+          message: resData.message || "An unexpected error occurred.",
         });
       }
     } catch (error) {
@@ -227,9 +242,7 @@ export default function RegisterPage() {
       });
       if (response.ok) {
         setOtp(["", "", "", "", "", ""]);
-        // Clear OTP
         otpRefs.current[0]?.focus();
-        // Exponential backoff: double the wait time
         const newWaitTime = currentWaitTime * 2;
         setCurrentWaitTime(newWaitTime);
         setResendCooldown(newWaitTime);
@@ -276,7 +289,7 @@ export default function RegisterPage() {
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30
         }`;
-        // Go to success step (setup store prompt) instead of redirecting
+        // Go to success step
         setStep(3);
       } else if (response.status === 400) {
         setOtpError("Invalid or expired OTP.");
