@@ -7,7 +7,7 @@ import {
   Camera,
   Plus,
   Trash2,
-  Calendar,
+  CalendarIcon,
   ArrowLeft,
   Loader2,
   AlertCircle,
@@ -28,7 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Select,
   SelectContent,
@@ -42,6 +42,7 @@ import {
   useFieldArray,
   Controller,
   SubmitHandler,
+  Control,
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -57,7 +58,7 @@ const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // ────────────────────────────────────────────────
-//  Authenticated Fetch (with token refresh on 401)
+//  Authenticated Fetch
 // ────────────────────────────────────────────────
 
 async function authenticatedFetch(
@@ -102,7 +103,7 @@ async function authenticatedFetch(
 }
 
 // ────────────────────────────────────────────────
-//  Schema & Types (unchanged)
+//  Schema & Types
 // ────────────────────────────────────────────────
 
 const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
@@ -211,7 +212,10 @@ const formSchema = z.object({
         if (!data?.startsAt || !data?.endsAt) return true;
         return data.endsAt >= data.startsAt;
       },
-      { message: "End date cannot be before start date", path: ["endsAt"] },
+      {
+        message: "End date & time cannot be before start date & time",
+        path: ["endsAt"],
+      },
     ),
 });
 
@@ -223,6 +227,179 @@ type MenuCategory = {
   label: string;
   description: string;
 };
+
+// ────────────────────────────────────────────────
+//  Date + Time Picker Component
+// ────────────────────────────────────────────────
+
+type DateTimePickerFieldProps = {
+  control: Control<any>;
+  name: string;
+  minDate?: Date;
+  error?: any;
+};
+
+function DateTimePickerField({
+  control,
+  name,
+  minDate = new Date(),
+  error,
+}: DateTimePickerFieldProps) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field }) => {
+        const value = field.value as Date | undefined;
+
+        const handleDateSelect = (selectedDate: Date | undefined) => {
+          if (!selectedDate) return;
+
+          const newDate = new Date(selectedDate);
+
+          // Preserve existing time if any
+          if (value) {
+            newDate.setHours(value.getHours(), value.getMinutes(), 0, 0);
+          } else {
+            newDate.setHours(0, 0, 0, 0);
+          }
+
+          // For end field: same-day selection → ensure time is not earlier than start
+          if (name === "discount.endsAt") {
+            const startValue = control._formValues.discount?.startsAt as
+              | Date
+              | undefined;
+            if (startValue) {
+              const startDayStart = new Date(startValue);
+              startDayStart.setHours(0, 0, 0, 0);
+
+              const selectedDayStart = new Date(selectedDate);
+              selectedDayStart.setHours(0, 0, 0, 0);
+
+              if (
+                selectedDayStart.getTime() === startDayStart.getTime() &&
+                newDate < startValue
+              ) {
+                newDate.setHours(
+                  startValue.getHours(),
+                  startValue.getMinutes(),
+                  0,
+                  0,
+                );
+              }
+            }
+          }
+
+          field.onChange(newDate);
+        };
+
+        const handleTimeChange = (part: "hours" | "minutes", val: string) => {
+          if (!value) return;
+          const newDate = new Date(value);
+          if (part === "hours") newDate.setHours(Number(val));
+          if (part === "minutes") newDate.setMinutes(Number(val));
+          field.onChange(newDate);
+        };
+
+        return (
+          <>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal h-12",
+                    !value && "text-muted-foreground",
+                    error && "border-red-600 focus-visible:ring-red-600",
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {value
+                    ? format(value, "dd/MM/yyyy HH:mm")
+                    : "Pick date & time"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <div className="flex divide-x">
+                  <Calendar
+                    mode="single"
+                    selected={value}
+                    onSelect={handleDateSelect}
+                    initialFocus
+                    disabled={(date) => {
+                      // Allow same day, disable only dates before the min day
+                      const minDay = new Date(minDate);
+                      minDay.setHours(0, 0, 0, 0);
+                      return date < minDay;
+                    }}
+                    className="rounded-md"
+                  />
+                  <div className="p-3 flex flex-col gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Hour</Label>
+                      <Select
+                        value={
+                          value
+                            ? String(value.getHours()).padStart(2, "0")
+                            : "00"
+                        }
+                        onValueChange={(v) => handleTimeChange("hours", v)}
+                      >
+                        <SelectTrigger className="w-20 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <SelectItem
+                              key={i}
+                              value={String(i).padStart(2, "0")}
+                            >
+                              {String(i).padStart(2, "0")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Minute</Label>
+                      <Select
+                        value={
+                          value
+                            ? String(value.getMinutes()).padStart(2, "0")
+                            : "00"
+                        }
+                        onValueChange={(v) => handleTimeChange("minutes", v)}
+                      >
+                        <SelectTrigger className="w-20 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 12 }, (_, i) => i * 5).map(
+                            (m) => (
+                              <SelectItem
+                                key={m}
+                                value={String(m).padStart(2, "0")}
+                              >
+                                {String(m).padStart(2, "0")}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            {error && (
+              <p className="text-red-600 text-sm mt-1">{error.message}</p>
+            )}
+          </>
+        );
+      }}
+    />
+  );
+}
 
 export default function CreateMenuPage() {
   const [activeTab, setActiveTab] = useState<
@@ -257,6 +434,7 @@ export default function CreateMenuPage() {
 
   const image = watch("image");
   const discountType = watch("discount.type");
+  const startDate = watch("discount.startsAt");
 
   const {
     fields: variantFields,
@@ -269,6 +447,25 @@ export default function CreateMenuPage() {
     append: appendAddon,
     remove: removeAddon,
   } = useFieldArray({ control, name: "addons" });
+
+  // Reset endsAt when startsAt becomes later
+  useEffect(() => {
+    const subscription = watch((value, { name }) => {
+      if (name === "discount.startsAt") {
+        const newStart = value.discount?.startsAt as Date | undefined;
+        const currentEnd = value.discount?.endsAt as Date | undefined;
+
+        if (newStart && currentEnd && currentEnd < newStart) {
+          setValue("discount.endsAt", undefined, {
+            shouldValidate: true,
+            shouldDirty: true,
+          });
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [watch, setValue]);
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -399,14 +596,11 @@ export default function CreateMenuPage() {
       if (data.discount.startsAt) {
         formData.append(
           "discount[startsAt]",
-          format(data.discount.startsAt, "yyyy-MM-dd"),
+          data.discount.startsAt.toISOString(),
         );
       }
       if (data.discount.endsAt) {
-        formData.append(
-          "discount[endsAt]",
-          format(data.discount.endsAt, "yyyy-MM-dd"),
-        );
+        formData.append("discount[endsAt]", data.discount.endsAt.toISOString());
       }
     }
 
@@ -429,7 +623,7 @@ export default function CreateMenuPage() {
         toast.success("Menu item created successfully");
         router.push("/restaurant/menu");
       } else {
-        toast.error(responseData?.message || "Failed to create menu item");
+        toast.error(responseData?.error || "Failed to create menu item");
       }
     } catch (err: any) {
       console.error("Create error:", err);
@@ -1019,48 +1213,15 @@ export default function CreateMenuPage() {
                           errors.discount?.startsAt && "text-red-600",
                         )}
                       >
-                        Start Date <span className="text-red-600">*</span>
+                        Start Date & Time{" "}
+                        <span className="text-red-600">*</span>
                       </Label>
-                      <Controller
+                      <DateTimePickerField
                         control={control}
                         name="discount.startsAt"
-                        render={({ field }) => (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  "w-full justify-start text-left font-normal h-12",
-                                  !field.value && "text-muted-foreground",
-                                  errors.discount?.startsAt && "border-red-600",
-                                )}
-                              >
-                                <Calendar className="mr-2 h-4 w-4" />
-                                {field.value
-                                  ? format(field.value, "dd/MM/yyyy")
-                                  : "DD/MM/YYYY"}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <CalendarComponent
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                initialFocus
-                                disabled={(date) =>
-                                  date <
-                                  new Date(new Date().setHours(0, 0, 0, 0))
-                                }
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
+                        minDate={new Date()}
+                        error={errors.discount?.startsAt}
                       />
-                      {errors.discount?.startsAt && (
-                        <p className="text-red-600 text-sm">
-                          {errors.discount.startsAt.message}
-                        </p>
-                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -1069,53 +1230,14 @@ export default function CreateMenuPage() {
                           errors.discount?.endsAt && "text-red-600",
                         )}
                       >
-                        End Date <span className="text-red-600">*</span>
+                        End Date & Time <span className="text-red-600">*</span>
                       </Label>
-                      <Controller
+                      <DateTimePickerField
                         control={control}
                         name="discount.endsAt"
-                        render={({ field }) => (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  "w-full justify-start text-left font-normal h-12",
-                                  !field.value && "text-muted-foreground",
-                                  errors.discount?.endsAt && "border-red-600",
-                                )}
-                              >
-                                <Calendar className="mr-2 h-4 w-4" />
-                                {field.value
-                                  ? format(field.value, "dd/MM/yyyy")
-                                  : "DD/MM/YYYY"}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <CalendarComponent
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                initialFocus
-                                disabled={(date) => {
-                                  const start = watch("discount.startsAt");
-                                  return (
-                                    date <
-                                      new Date(
-                                        new Date().setHours(0, 0, 0, 0),
-                                      ) || (start ? date < start : false)
-                                  );
-                                }}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
+                        minDate={startDate ?? new Date()}
+                        error={errors.discount?.endsAt}
                       />
-                      {errors.discount?.endsAt && (
-                        <p className="text-red-600 text-sm">
-                          {errors.discount.endsAt.message}
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>

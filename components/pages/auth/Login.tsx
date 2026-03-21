@@ -18,59 +18,89 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { hasBusiness, setAccessToken, setBusinessId, setFirstName } from "@/app/lib/auth";
+import {
+  hasBusiness,
+  setAccessToken,
+  setBusinessId,
+  setFirstName,
+} from "@/app/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
-// Step 1: Email + Password schema
-const loginSchema = z.object({
-  identifier: z.string({
-    message: "Please enter a valid email address or phone number.",
-  }),
-  password: z
-    .string()
-    .min(8, { message: "Password must be at least 8 characters." }),
+// ── Schemas ────────────────────────────────────────────────
+
+const emailSchema = z.object({
+  identifier: z.string().min(1, "Please enter your email or phone number."),
 });
 
-type LoginValues = z.infer<typeof loginSchema>;
+const passwordSchema = z.object({
+  password: z.string().min(1, "Please enter your password."),
+});
+
+type EmailValues = z.infer<typeof emailSchema>;
+type PasswordValues = z.infer<typeof passwordSchema>;
+
+type InnerAuthData = {
+  nextStep?: string;
+  hasPassword: boolean;
+  requiresOtp: boolean;
+  message?: string;
+  vendor?: {
+    hasBusiness: boolean;
+    businessId: string;
+  };
+  customer?: boolean;
+  admin?: boolean;
+};
+
+type OtpVerifyData = {
+  accessToken: string;
+  refreshToken: string;
+  vendor?: {
+    hasBusiness: boolean;
+    businessId: string;
+  };
+  customer?: boolean;
+  admin?: boolean;
+};
+
+type ApiResponse<T = any> = {
+  success: boolean;
+  statusCode: number;
+  data?: T;
+  message?: string;
+};
 
 export default function LoginPage() {
-  const [step, setStep] = useState<1 | 2>(1);
-  // 1: Login form, 2: OTP
+  const [step, setStep] = useState<"email" | "password" | "otp">("email");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [savedIdentifier, setSavedIdentifier] = useState("");
+  const [noPasswordMessage, setNoPasswordMessage] = useState("");
   const [otpError, setOtpError] = useState("");
 
-  // Resend OTP logic
   const [resendCooldown, setResendCooldown] = useState(0);
-  // seconds remaining
-  const [currentWaitTime, setCurrentWaitTime] = useState(60); // initial 60 seconds
+  const [currentWaitTime, setCurrentWaitTime] = useState(60);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 
-  const form = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      identifier: "",
-      password: "",
-    },
+  const emailForm = useForm<EmailValues>({
+    resolver: zodResolver(emailSchema),
+    defaultValues: { identifier: "" },
   });
 
-  // Countdown timer effect
+  const passwordForm = useForm<PasswordValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: { password: "" },
+  });
+
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setInterval(() => {
-      setResendCooldown((prev) => {
-        if (prev <= 1) {
-          return 0;
-        }
-        return prev - 1;
-      });
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
-
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
@@ -101,60 +131,86 @@ export default function LoginPage() {
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const pastedData = e.clipboardData.getData("text").slice(0, 6);
-    if (!/^\d+$/.test(pastedData)) return;
+    const pasted = e.clipboardData.getData("text").slice(0, 6);
+    if (!/^\d+$/.test(pasted)) return;
 
     const newOtp = [...otp];
-    pastedData.split("").forEach((char, idx) => {
-      if (idx < 6) newOtp[idx] = char;
+    pasted.split("").forEach((char, i) => {
+      if (i < 6) newOtp[i] = char;
     });
     setOtp(newOtp);
 
-    // Focus the last filled input or the first empty one
-    const nextIndex = Math.min(pastedData.length, 5);
-    otpRefs.current[nextIndex]?.focus();
+    const next = Math.min(pasted.length, 5);
+    otpRefs.current[next]?.focus();
   };
 
-  async function onLoginSubmit(values: LoginValues) {
+  // ── Handlers ───────────────────────────────────────────────
+
+  async function onEmailSubmit(values: EmailValues) {
     setIsLoading(true);
+    setNoPasswordMessage("");
     setOtpError("");
+
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": API_KEY,
         },
-        body: JSON.stringify({
-          identifier: values.identifier,
-          password: values.password,
-        }),
+        body: JSON.stringify({ identifier: values.identifier }),
       });
 
-      if (response.status === 200) {
-        setSavedIdentifier(values.identifier);
-        setStep(2);
-        setResendCooldown(60); // Start initial 60-second cooldown
-        setCurrentWaitTime(60);
-      } else if (response.status === 401) {
-        form.setError("root", { message: "Invalid credentials." });
-      } else {
-        form.setError("root", { message: "An unexpected error occurred." });
+      // ── Important: check HTTP status first ───────────────────────
+      if (res.status === 401) {
+        emailForm.setError("root", {
+          message: "No account found with this email or phone number.",
+        });
+        setIsLoading(false);
+        return;
       }
-    } catch (error) {
-      form.setError("root", { message: "Network error. Please try again." });
+
+      const apiRes: ApiResponse<InnerAuthData> = await res.json();
+
+      if (!apiRes.success || !apiRes.data) {
+        let errorMessage =
+          apiRes.message || "An unexpected error occurred. Please try again.";
+
+        // Optional: refine other common backend messages if needed
+        if (apiRes.message?.toLowerCase().includes("invalid")) {
+          errorMessage = "Please enter a valid email address or phone number.";
+        }
+
+        emailForm.setError("root", { message: errorMessage });
+        return;
+      }
+
+      const data = apiRes.data;
+      setSavedIdentifier(values.identifier);
+
+      if (!data.hasPassword) {
+        setNoPasswordMessage(
+          "You were registered as a customer. Please reset your password to set a new one.",
+        );
+        return;
+      }
+
+      setStep("password");
+    } catch (err) {
+      emailForm.setError("root", {
+        message:
+          "Unable to connect to the server. Please check your internet connection and try again.",
+      });
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function handleResendOtp() {
-    if (resendCooldown > 0) return;
+  async function onPasswordSubmit(values: PasswordValues) {
     setIsLoading(true);
-    setOtpError("");
 
     try {
-      const response = await fetch(`${API_BASE}/auth/otp/request`, {
+      const res = await fetch(`${API_BASE}/auth/login/password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -162,28 +218,59 @@ export default function LoginPage() {
         },
         body: JSON.stringify({
           identifier: savedIdentifier,
+          password: values.password,
         }),
       });
-      if (response.ok) {
-        setOtp(["", "", "", "", "", ""]);
-        // Clear previous OTP input
-        otpRefs.current[0]?.focus();
-        // Refocus first input
 
-        // Exponential backoff: double the wait time
-        const newWaitTime = currentWaitTime * 2;
-        setCurrentWaitTime(newWaitTime);
-        setResendCooldown(newWaitTime);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setOtpError(
-          errorData.message || "Failed to resend OTP. Please try again.",
-        );
+      const apiRes: ApiResponse<InnerAuthData> = await res.json();
+
+      if (!apiRes.success || !apiRes.data) {
+        passwordForm.setError("root", {
+          message: apiRes.message || "Incorrect password. Please try again.",
+        });
+        return;
       }
-    } catch (error) {
-      setOtpError("Network error. Please try again.");
+
+      const data = apiRes.data;
+
+      if (data.requiresOtp) {
+        // Request OTP now that password is accepted
+        await requestOtp(); // this will start cooldown & show OTP screen
+        setStep("otp");
+      } else {
+        completeSignIn(data);
+      }
+    } catch {
+      passwordForm.setError("root", {
+        message: "Network error. Please try again.",
+      });
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function requestOtp() {
+    try {
+      const res = await fetch(`${API_BASE}/auth/otp/request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+        },
+        body: JSON.stringify({ identifier: savedIdentifier }),
+      });
+
+      const apiRes: ApiResponse = await res.json();
+
+      if (!apiRes.success) {
+        setOtpError(apiRes.message || "Failed to send verification code.");
+      } else {
+        setResendCooldown(60);
+        setCurrentWaitTime(60);
+        setOtp(["", "", "", "", "", ""]);
+      }
+    } catch {
+      setOtpError("Failed to request verification code. Please try again.");
     }
   }
 
@@ -195,7 +282,7 @@ export default function LoginPage() {
     setOtpError("");
 
     try {
-      const response = await fetch(`${API_BASE}/auth/otp/verify`, {
+      const res = await fetch(`${API_BASE}/auth/otp/verify`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -206,43 +293,68 @@ export default function LoginPage() {
           otp: code,
         }),
       });
-      if (response.status === 200) {
-        const res = await response.json();
-        const { accessToken, refreshToken } = res.data;
-        // Save business id in memory
-        setBusinessId(res.data.vendor.businessId);
-        // Save hasBusiness in memory
-        res.data.vendor.hasBusiness
-          ? hasBusiness(true)
-          : hasBusiness(null);
-        // Save tokens only after successful OTP verification
-        setAccessToken(accessToken);
-        document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
-          60 * 60 * 24 * 30
-          }`;
-        setFirstName(res.data.vendor.firstName);
-        // Immediately redirect to dashboard
-        window.location.href = "/restaurant/dashboard";
-      } else if (response.status === 400) {
-        setOtpError("Invalid or expired OTP.");
-      } else {
-        setOtpError("Verification failed. Please try again.");
+
+      const apiRes: ApiResponse<OtpVerifyData> = await res.json();
+
+      if (!apiRes.success || !apiRes.data) {
+        setOtpError(
+          apiRes.message ||
+            "Invalid or expired code. Please check and try again.",
+        );
+        return;
       }
-    } catch (error) {
+
+      completeSignIn(apiRes.data);
+    } catch {
       setOtpError("Network error. Please try again.");
     } finally {
       setIsLoading(false);
     }
   }
 
+  function completeSignIn(data: any) {
+    if (!data.accessToken || !data.refreshToken) {
+      console.warn("Missing tokens in final response");
+      return;
+    }
+
+    setAccessToken(data.accessToken);
+
+    document.cookie = `refreshToken=${data.refreshToken}; path=/; secure; samesite=strict; max-age=${60 * 60 * 24 * 30}`;
+
+    if (data.vendor?.hasBusiness) {
+      setBusinessId(data.vendor.businessId);
+      hasBusiness(true);
+    } else {
+      hasBusiness(null);
+    }
+
+    // If firstName is available in any response:
+    // setFirstName(data.vendor?.firstName || "");
+
+    window.location.href = "/restaurant/dashboard";
+  }
+
+  async function handleResendOtp() {
+    if (resendCooldown > 0) return;
+    setIsLoading(true);
+    setOtpError("");
+
+    await requestOtp();
+
+    setIsLoading(false);
+  }
+
+  // ── Render ─────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen grid md:grid-cols-2">
-      {/* Left Side: Large Image */}
+      {/* Left: Hero Image */}
       <div className="w-full relative hidden md:block">
         <div className="fixed w-1/2 pe-5">
           <Link href="/">
             <Image
-              src={"/images/logo.svg"}
+              src="/images/logo.svg"
               width={100}
               height={75}
               alt="logo"
@@ -250,7 +362,7 @@ export default function LoginPage() {
             />
           </Link>
           <Image
-            src={"/images/auth/hero.png"}
+            src="/images/auth/hero.png"
             width={500}
             height={900}
             alt="hero"
@@ -259,12 +371,12 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right Side: Multi-Step Form */}
+      {/* Right: Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
         <div className="w-full max-w-md space-y-8">
           <Link href="/">
             <Image
-              src={"/images/logo.svg"}
+              src="/images/logo.svg"
               width={100}
               height={75}
               alt="logo"
@@ -272,8 +384,8 @@ export default function LoginPage() {
             />
           </Link>
 
-          {/* Step 1: Email + Password */}
-          {step === 1 && (
+          {/* EMAIL STEP */}
+          {step === "email" && (
             <>
               <div>
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
@@ -284,13 +396,13 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <Form {...form}>
+              <Form {...emailForm}>
                 <form
-                  onSubmit={form.handleSubmit(onLoginSubmit)}
+                  onSubmit={emailForm.handleSubmit(onEmailSubmit)}
                   className="space-y-6"
                 >
                   <FormField
-                    control={form.control}
+                    control={emailForm.control}
                     name="identifier"
                     render={({ field }) => (
                       <FormItem>
@@ -303,7 +415,6 @@ export default function LoginPage() {
                         <FormControl>
                           <Input
                             placeholder="Email / Phone number"
-                            type="text"
                             className="h-12 placeholder:text-gray-400"
                             {...field}
                           />
@@ -313,8 +424,63 @@ export default function LoginPage() {
                     )}
                   />
 
+                  {noPasswordMessage && (
+                    <p className="text-sm text-amber-600 text-center pt-2">
+                      {noPasswordMessage}
+                    </p>
+                  )}
+
+                  {emailForm.formState.errors.root && (
+                    <p className="text-sm text-red-500 text-center">
+                      {emailForm.formState.errors.root.message}
+                    </p>
+                  )}
+
+                  <Button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-full"
+                  >
+                    {isLoading ? (
+                      <LoaderCircle className="animate-spin" />
+                    ) : (
+                      "Continue"
+                    )}
+                  </Button>
+                </form>
+              </Form>
+
+              <p className="text-center text-sm text-muted-foreground">
+                Don't have an account?{" "}
+                <Link
+                  href="/register"
+                  className="font-medium underline text-munchprimary hover:text-munchprimaryDark hover:underline"
+                >
+                  Signup
+                </Link>
+              </p>
+            </>
+          )}
+
+          {/* PASSWORD STEP */}
+          {step === "password" && (
+            <>
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight font-rubik">
+                  Enter your password
+                </h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  for {savedIdentifier}
+                </p>
+              </div>
+
+              <Form {...passwordForm}>
+                <form
+                  onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
+                  className="space-y-6"
+                >
                   <FormField
-                    control={form.control}
+                    control={passwordForm.control}
                     name="password"
                     render={({ field }) => (
                       <FormItem>
@@ -350,9 +516,9 @@ export default function LoginPage() {
                     )}
                   />
 
-                  {form.formState.errors.root && (
+                  {passwordForm.formState.errors.root && (
                     <p className="text-sm text-red-500 text-center">
-                      {form.formState.errors.root.message}
+                      {passwordForm.formState.errors.root.message}
                     </p>
                   )}
 
@@ -373,33 +539,23 @@ export default function LoginPage() {
                     {isLoading ? (
                       <LoaderCircle className="animate-spin" />
                     ) : (
-                      "Login"
+                      "Continue"
                     )}
                   </Button>
                 </form>
               </Form>
-
-              <p className="text-center text-sm text-muted-foreground">
-                Don't have an account?{" "}
-                <Link
-                  href="/register"
-                  className="font-medium underline text-munchprimary hover:text-munchprimaryDark hover:underline"
-                >
-                  Signup
-                </Link>
-              </p>
             </>
           )}
 
-          {/* Step 2: OTP Verification */}
-          {step === 2 && (
+          {/* OTP STEP */}
+          {step === "otp" && (
             <div className="space-y-8">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
-                  Verify your email / phone number
+                  Verify your account
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Enter the verification code sent to {savedIdentifier}
+                  Enter the code sent to {savedIdentifier}
                 </p>
               </div>
 
@@ -407,9 +563,7 @@ export default function LoginPage() {
                 {otp.map((digit, index) => (
                   <Input
                     key={index}
-                    ref={(el) => {
-                      otpRefs.current[index] = el;
-                    }}
+                    ref={(el) => {otpRefs.current[index] = el}}
                     value={digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
@@ -451,8 +605,8 @@ export default function LoginPage() {
                   className="text-munchprimary hover:text-munchprimaryDark p-0 h-auto font-medium"
                 >
                   {resendCooldown > 0
-                    ? `Resend OTP in ${formatTime(resendCooldown)}`
-                    : "Resend OTP"}
+                    ? `Resend in ${formatTime(resendCooldown)}`
+                    : "Resend code"}
                 </Button>
               </div>
             </div>
