@@ -55,16 +55,13 @@ type RegisterValues = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  // 1: Register, 2: OTP, 3: Success
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [savedEmail, setSavedEmail] = useState("");
   const [otpError, setOtpError] = useState("");
-  // Resend OTP logic
-  const [resendCooldown, setResendCooldown] = useState(0); // seconds
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [currentWaitTime, setCurrentWaitTime] = useState(60);
-  // initial 60 seconds
 
   const form = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
@@ -79,7 +76,6 @@ export default function RegisterPage() {
   });
   const password = form.watch("password");
 
-  // Password strength checks
   const hasLength = password.length >= 8;
   const hasUppercase = /[A-Z]/.test(password);
   const hasNumber = /[0-9]/.test(password);
@@ -91,21 +87,14 @@ export default function RegisterPage() {
     (hasSpecial ? 1 : 0);
   const strengthLabels = ["Too Weak", "Weak", "Fair", "Good", "Strong"];
 
-  // OTP state and refs
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 
-  // Countdown timer effect
   useEffect(() => {
     if (resendCooldown <= 0) return;
 
     const timer = setInterval(() => {
-      setResendCooldown((prev) => {
-        if (prev <= 1) {
-          return 0;
-        }
-        return prev - 1;
-      });
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
 
     return () => clearInterval(timer);
@@ -147,21 +136,43 @@ export default function RegisterPage() {
     });
     setOtp(newOtp);
 
-    // Focus the last filled input or the first empty one
     const nextIndex = Math.min(pastedData.length, 5);
     otpRefs.current[nextIndex]?.focus();
   };
 
+  // ── New helper: request OTP ───────────────────────────────────────
+  async function requestOtp() {
+    try {
+      const res = await fetch(`${API_BASE}/auth/otp/request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": API_KEY,
+        },
+        body: JSON.stringify({ identifier: savedEmail }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn("OTP request failed:", err.message || res.status);
+        // We don't block the flow — user can still try to resend
+      } else {
+        setResendCooldown(60);
+        setCurrentWaitTime(60);
+        setOtp(["", "", "", "", "", ""]);
+      }
+    } catch (err) {
+      console.warn("OTP request network error", err);
+    }
+  }
+
   async function onRegisterSubmit(values: RegisterValues) {
     setIsLoading(true);
-    // Normalize phone number
+
     let normalizedPhone = values.phone.trim();
-    // Remove leading zero if present
     if (normalizedPhone.startsWith("0")) {
       normalizedPhone = normalizedPhone.substring(1);
     }
-
-    // Add +234 if it doesn't already start with +
     if (!normalizedPhone.startsWith("+")) {
       normalizedPhone = "+234" + normalizedPhone;
     }
@@ -188,12 +199,10 @@ export default function RegisterPage() {
         setSavedEmail(values.email);
 
         if (resData.data.requiresOtp) {
-          // Go to OTP step and start cooldown (OTP request is sent automatically)
+          // ── Changed: request OTP before showing the screen ────────
+          await requestOtp();
           setStep(2);
-          setResendCooldown(60);
-          setCurrentWaitTime(60);
         } else {
-          // No OTP required → store tokens immediately and go to success
           const { accessToken, refreshToken } = resData.data;
 
           setBusinessId(resData.data.vendor.businessId);
@@ -229,34 +238,14 @@ export default function RegisterPage() {
     setIsLoading(true);
     setOtpError("");
 
-    try {
-      const response = await fetch(`${API_BASE}/auth/otp/request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          identifier: savedEmail,
-        }),
-      });
-      if (response.ok) {
-        setOtp(["", "", "", "", "", ""]);
-        otpRefs.current[0]?.focus();
-        const newWaitTime = currentWaitTime * 2;
-        setCurrentWaitTime(newWaitTime);
-        setResendCooldown(newWaitTime);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setOtpError(
-          errorData.message || "Failed to resend OTP. Please try again.",
-        );
-      }
-    } catch (error) {
-      setOtpError("Network error. Please try again.");
-    } finally {
-      setIsLoading(false);
+    await requestOtp(); // reuse the same helper
+
+    if (resendCooldown === 0) {
+      // If request failed and didn't set cooldown → show error
+      setOtpError("Failed to resend code. Please try again.");
     }
+
+    setIsLoading(false);
   }
 
   async function onOtpSubmit() {
@@ -278,18 +267,17 @@ export default function RegisterPage() {
           otp: code,
         }),
       });
+
       if (response.status === 200) {
         const res = await response.json();
         const { accessToken, refreshToken } = res.data;
 
-        // Save business ID in memory
         setBusinessId(res.data.vendor.businessId);
-        // Store tokens
         setAccessToken(accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30
         }`;
-        // Go to success step
+
         setStep(3);
       } else if (response.status === 400) {
         setOtpError("Invalid or expired OTP.");
@@ -340,7 +328,6 @@ export default function RegisterPage() {
             />
           </Link>
 
-          {/* Step 1: Registration Form */}
           {step === 1 && (
             <>
               <div>
@@ -642,7 +629,6 @@ export default function RegisterPage() {
             </>
           )}
 
-          {/* Step 2: OTP Verification */}
           {step === 2 && (
             <div className="space-y-8">
               <div>
@@ -708,7 +694,6 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {/* Step 3: Success */}
           {step === 3 && (
             <div className="space-y-8">
               <div>
