@@ -1,17 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  TrendingUp,
-  TrendingDown,
+  AlertCircle,
+  RefreshCw,
+  ChevronRight,
   ShoppingBag,
   Users,
   Percent,
-  ChevronRight,
-  AlertCircle,
-  RefreshCw,
 } from "lucide-react";
 import {
   Bar,
@@ -58,7 +55,6 @@ export const metadata: Metadata = {
   title: "Vendor Dashboard",
   description:
     "Monitor your restaurant's performance, manage active orders, and track your logistics in real-time on the munchspace dashboard.",
-  // Since the dashboard contains private vendor data, we prevent search engines from indexing it
   robots: {
     index: false,
     follow: false,
@@ -83,7 +79,7 @@ const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // ────────────────────────────────────────────────
-//  Authenticated Fetch (with token refresh on 401)
+//  Authenticated Fetch
 // ────────────────────────────────────────────────
 
 async function authenticatedFetch(
@@ -128,7 +124,7 @@ async function authenticatedFetch(
 }
 
 // ────────────────────────────────────────────────
-//  Component
+//  Main Component
 // ────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -145,9 +141,7 @@ export default function DashboardPage() {
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
-    null,
-  );
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(null);
 
   useEffect(() => {
     setFirstName(getFirstName());
@@ -204,12 +198,9 @@ export default function DashboardPage() {
         setData(transformed);
       } catch (err: any) {
         console.error("Dashboard fetch failed:", err);
-        if (
-          err.message?.includes("fetch") ||
-          err.message?.includes("Network")
-        ) {
+        if (err.message?.includes("fetch") || err.message?.includes("Network")) {
           setFetchNetworkError(
-            "Unable to load dashboard data. Please check your internet connection.",
+            "Unable to load dashboard data. Please check your internet connection."
           );
         } else {
           toast.error("Failed to load dashboard", {
@@ -239,7 +230,6 @@ export default function DashboardPage() {
     fetchDashboard();
   }, [period]);
 
-  // Color palette for best selling progress bar (unchanged)
   const colorPalette = [
     "bg-blue-500",
     "bg-green-500",
@@ -248,13 +238,33 @@ export default function DashboardPage() {
     "bg-red-500",
   ];
 
+  // Status Badge Colors (including "Ready")
+  const getStatusBadgeClass = (status: string): string => {
+    const s = status.toLowerCase().trim();
+
+    switch (s) {
+      case "pending":
+        return "bg-blue-100 text-blue-700 border border-blue-200";
+      case "preparing":
+        return "bg-amber-100 text-amber-700 border border-amber-200";
+      case "ready":
+        return "bg-purple-100 text-purple-700 border border-purple-200";
+      case "cancelled":
+        return "bg-red-100 text-red-700 border border-red-200";
+      case "returned":
+        return "bg-orange-100 text-orange-700 border border-orange-200";
+      case "completed":
+        return "bg-green-100 text-green-700 border border-green-200";
+      default:
+        return "bg-gray-100 text-gray-700 border border-gray-200";
+    }
+  };
+
   if (fetchNetworkError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
-        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
-          Connection Error
-        </h2>
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">Connection Error</h2>
         <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
         <Button
           onClick={() => window.location.reload()}
@@ -354,7 +364,7 @@ export default function DashboardPage() {
       : data.bestSelling;
   const totalSales = top5Items.reduce(
     (sum: number, item: any) => sum + item.sales,
-    0,
+    0
   );
 
   return (
@@ -389,7 +399,6 @@ export default function DashboardPage() {
 
         {/* Store Traffic + KPI Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          {/* Store Traffic Chart */}
           <div className="overflow-x-auto scrollbar-custom scrollbar-no-arrows pb-2 md:col-span-3">
             <Card className="md:col-span-3 rounded-lg pb-0 pe-4 shadow-none md:min-w-130 border-gray-100">
               <CardHeader>
@@ -409,8 +418,7 @@ export default function DashboardPage() {
                     />
                     <p className="text-center text-sm px-5 md:px-20 mb-4">
                       This space will feature a bar chart showcasing the number
-                      of customers who visited your store once data is
-                      available.
+                      of customers who visited your store once data is available.
                     </p>
                   </div>
                 ) : (
@@ -450,9 +458,7 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.totalOrdersTrend > 0
-                        ? "text-green-600"
-                        : "text-red-600",
+                      data.kpis.totalOrdersTrend > 0 ? "text-green-600" : "text-red-600"
                     )}
                   >
                     {data.kpis.totalOrdersTrend > 0 ? "+" : ""}
@@ -464,10 +470,7 @@ export default function DashboardPage() {
                     {data.kpis.totalOrders.toLocaleString()}
                   </p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
-                      style={{ width: "75%" }}
-                    />
+                    <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: "75%" }} />
                   </div>
                 </CardContent>
               </Card>
@@ -481,9 +484,7 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.totalReturnsTrend > 0
-                        ? "text-green-600"
-                        : "text-red-600",
+                      data.kpis.totalReturnsTrend > 0 ? "text-green-600" : "text-red-600"
                     )}
                   >
                     {data.kpis.totalReturnsTrend > 0 ? "+" : ""}
@@ -493,10 +494,7 @@ export default function DashboardPage() {
                 <CardContent>
                   <p className="text-2xl font-bold">{data.kpis.totalReturns}</p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div
-                      className="bg-purple-600 h-2 rounded-full transition-all"
-                      style={{ width: "40%" }}
-                    />
+                    <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: "40%" }} />
                   </div>
                 </CardContent>
               </Card>
@@ -510,9 +508,7 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.newCustomersTrend > 0
-                        ? "text-green-600"
-                        : "text-red-600",
+                      data.kpis.newCustomersTrend > 0 ? "text-green-600" : "text-red-600"
                     )}
                   >
                     {data.kpis.newCustomersTrend > 0 ? "+" : ""}
@@ -522,10 +518,7 @@ export default function DashboardPage() {
                 <CardContent>
                   <p className="text-2xl font-bold">{data.kpis.newCustomers}</p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div
-                      className="bg-yellow-600 h-2 rounded-full transition-all"
-                      style={{ width: "65%" }}
-                    />
+                    <div className="bg-yellow-600 h-2 rounded-full transition-all" style={{ width: "65%" }} />
                   </div>
                 </CardContent>
               </Card>
@@ -539,9 +532,7 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.totalDiscountTrend > 0
-                        ? "text-green-600"
-                        : "text-red-600",
+                      data.kpis.totalDiscountTrend > 0 ? "text-green-600" : "text-red-600"
                     )}
                   >
                     {data.kpis.totalDiscountTrend > 0 ? "+" : ""}
@@ -549,14 +540,9 @@ export default function DashboardPage() {
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-2xl font-bold">
-                    {data.kpis.totalDiscount}
-                  </p>
+                  <p className="text-2xl font-bold">{data.kpis.totalDiscount}</p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div
-                      className="bg-red-600 h-2 rounded-full transition-all"
-                      style={{ width: "85%" }}
-                    />
+                    <div className="bg-red-600 h-2 rounded-full transition-all" style={{ width: "85%" }} />
                   </div>
                 </CardContent>
               </Card>
@@ -564,14 +550,12 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Best Selling Items - Top 5 with Single Progress Bar */}
+        {/* Best Selling Items */}
         <Card className="border-transparent shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg">Best selling Items</CardTitle>
-              <CardDescription>
-                Know your best selling items and maintain it.
-              </CardDescription>
+              <CardDescription>Know your best selling items and maintain it.</CardDescription>
             </div>
             <Link href="/restaurant/dashboard/items">
               <Button variant="outline" size="sm" className="gap-2">
@@ -582,20 +566,15 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {/* Single Progress Bar with Stacked Segments */}
               <div className="w-full bg-gray-200 h-2">
                 <div className="flex h-full">
                   {top5Items.map((item: any, index: number) => {
-                    const percentage =
-                      totalSales > 0 ? (item.sales / totalSales) * 100 : 0;
+                    const percentage = totalSales > 0 ? (item.sales / totalSales) * 100 : 0;
                     const color = colorPalette[index % colorPalette.length];
                     return (
                       <div
                         key={item.name}
-                        className={cn(
-                          "h-full flex items-center justify-center text-white text-xs font-medium",
-                          color,
-                        )}
+                        className={cn("h-full flex items-center justify-center text-white text-xs font-medium", color)}
                         style={{ width: `${percentage}%` }}
                       />
                     );
@@ -607,15 +586,10 @@ export default function DashboardPage() {
                   {top5Items.map((item: any, index: number) => {
                     const color = colorPalette[index % colorPalette.length];
                     return (
-                      <div
-                        key={item.name}
-                        className={cn("h-full flex gap-3 text-xs")}
-                      >
+                      <div key={item.name} className="flex gap-3 text-xs">
                         <div>
                           <div className="flex items-center gap-1">
-                            <span
-                              className={cn("w-3 h-3 rounded-full", color)}
-                            ></span>
+                            <span className={cn("w-3 h-3 rounded-full", color)}></span>
                             <p className="font-bold text-sm">{item.sales}</p>
                           </div>
                           <div className="flex items-center gap-1">
@@ -632,14 +606,12 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Orders */}
+        {/* Recent Orders - Custom Status Colors */}
         <Card className="border-gray-100 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg">Recent orders</CardTitle>
-              <CardDescription>
-                See your items that are sold recently.
-              </CardDescription>
+              <CardDescription>See your items that are sold recently.</CardDescription>
             </div>
             <Link href="/restaurant/orders">
               <Button variant="outline" size="sm" className="gap-2">
@@ -649,6 +621,7 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent>
+            {/* Desktop Table */}
             <div className="hidden md:block">
               <Table className="rounded">
                 <TableHeader className="bg-gray-100 py-2">
@@ -664,44 +637,22 @@ export default function DashboardPage() {
                   {data.recentOrders.map((order: any) => (
                     <TableRow
                       key={order.code}
-                      style={{ paddingTop: "10px", paddingBottom: "10px" }}
                       className="font-medium border-gray-100 text-base hover:bg-white"
                     >
-                      <TableCell
-                        className="ps-4"
-                        style={{ paddingTop: "25px", paddingBottom: "25px" }}
-                      >
-                        {order.code}
-                      </TableCell>
-                      <TableCell
-                        style={{ paddingTop: "25px", paddingBottom: "25px" }}
-                      >
-                        {order.date}
-                      </TableCell>
-                      <TableCell
-                        style={{ paddingTop: "25px", paddingBottom: "25px" }}
-                      >
-                        ₦{order.price}
-                      </TableCell>
-                      <TableCell>
+                      <TableCell className="ps-4 py-6">{order.code}</TableCell>
+                      <TableCell className="py-6">{order.date}</TableCell>
+                      <TableCell className="py-6">₦{order.price}</TableCell>
+                      <TableCell className="py-6">
                         <Badge
                           className={cn(
-                            "rounded px-4 py-1.5",
-                            order.status.toLowerCase().includes("pending") &&
-                              "bg-blue-100 text-blue-500 border border-blue-200",
-                            order.status.toLowerCase().includes("preparing") &&
-                              "bg-yellow-100 text-yellow-700 border border-yellow-200",
-                            order.status.toLowerCase().includes("completed") &&
-                              "bg-green-100 text-green-500 border border-green-200",
-                            (order.status.toLowerCase().includes("cancel") ||
-                              order.status.toLowerCase().includes("return")) &&
-                              "bg-red-100 text-red-400 border border-red-200",
+                            "rounded px-4 py-1.5 font-medium",
+                            getStatusBadgeClass(order.status)
                           )}
                         >
                           {order.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right py-6">
                         <Link href={`/restaurant/orders/${order.id}`}>
                           <Button variant="outline" className="border-gray-200">
                             View Details
@@ -713,7 +664,8 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             </div>
-            {/* Mobile view */}
+
+            {/* Mobile View */}
             <div className="md:hidden">
               {data.recentOrders.map((order: any, index: number) => (
                 <Link
@@ -723,30 +675,24 @@ export default function DashboardPage() {
                   <div
                     className={cn(
                       "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50",
-                      data.recentOrders.length - 1 === index && "border-0",
+                      data.recentOrders.length - 1 === index && "border-0"
                     )}
                   >
-                    <div className="flex flex-col mb-2">
-                      <span
+                    <div className="flex flex-col">
+                      <Badge
                         className={cn(
-                          "py-1.5",
-                          order.status === "Completed" && "text-green-500",
-                          order.status === "Pending" && "text-blue-500",
-                          order.status === "Cancelled" && "text-red-400",
+                          "w-fit mb-3 text-sm font-medium",
+                          getStatusBadgeClass(order.status)
                         )}
                       >
                         {order.status}
-                      </span>
+                      </Badge>
                       <span className="font-medium">{order.code}</span>
                     </div>
                     <div className="text-right">
-                      <p className="text-gray-600 mb-2 text-sm">{order.date}</p>
-                      <p className="text-gray-900 font-semibold text-xl mb-2">
-                        N{order.price}
-                      </p>
-                      <p className="text-gray-600 mb-2 text-xs">
-                        order channel: Store
-                      </p>
+                      <p className="text-gray-600 text-sm mb-1">{order.date}</p>
+                      <p className="text-gray-900 font-semibold text-xl">N{order.price}</p>
+                      <p className="text-gray-600 text-xs mt-1">order channel: Store</p>
                     </div>
                   </div>
                 </Link>

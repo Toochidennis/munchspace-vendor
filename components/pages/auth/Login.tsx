@@ -41,36 +41,7 @@ const passwordSchema = z.object({
 type EmailValues = z.infer<typeof emailSchema>;
 type PasswordValues = z.infer<typeof passwordSchema>;
 
-type InnerAuthData = {
-  nextStep?: string;
-  hasPassword: boolean;
-  requiresOtp: boolean;
-  message?: string;
-  vendor?: {
-    hasBusiness: boolean;
-    businessId: string;
-  };
-  customer?: boolean;
-  admin?: boolean;
-};
-
-type OtpVerifyData = {
-  accessToken: string;
-  refreshToken: string;
-  vendor?: {
-    hasBusiness: boolean;
-    businessId: string;
-  };
-  customer?: boolean;
-  admin?: boolean;
-};
-
-type ApiResponse<T = any> = {
-  success: boolean;
-  statusCode: number;
-  data?: T;
-  message?: string;
-};
+// ── Handlers ───────────────────────────────────────────────
 
 export default function LoginPage() {
   const [step, setStep] = useState<"email" | "password" | "otp">("email");
@@ -144,8 +115,6 @@ export default function LoginPage() {
     otpRefs.current[next]?.focus();
   };
 
-  // ── Handlers ───────────────────────────────────────────────
-
   async function onEmailSubmit(values: EmailValues) {
     setIsLoading(true);
     setNoPasswordMessage("");
@@ -170,7 +139,7 @@ export default function LoginPage() {
         return;
       }
 
-      const apiRes: ApiResponse<InnerAuthData> = await res.json();
+      const apiRes = await res.json();
 
       if (!apiRes.success || !apiRes.data) {
         let errorMessage =
@@ -188,14 +157,36 @@ export default function LoginPage() {
       const data = apiRes.data;
       setSavedIdentifier(values.identifier);
 
-      if (!data.hasPassword) {
-        setNoPasswordMessage(
-          "You were registered as a customer. Please reset your password to set a new one.",
-        );
-        return;
+      // New auth flow logic based on response structure
+      if (data.availableMethods) {
+        // Response contains availableMethods → multi-step selection
+        if (data.availableMethods.includes("password")) {
+          setStep("password");
+        } else if (data.availableMethods.includes("otp")) {
+          // Only OTP available → request OTP directly and go to OTP screen
+          await requestOtp();
+          setStep("otp");
+        } else {
+          // Fallback
+          emailForm.setError("root", {
+            message: "No supported authentication method available.",
+          });
+        }
+      } else {
+        // No availableMethods → direct token response (login immediately)
+        if (data.accessToken && data.refreshToken) {
+          completeSignIn(data);
+        } else if (!data.hasPassword) {
+          setNoPasswordMessage(
+            "You were registered as a customer. Please reset your password to set a new one.",
+          );
+        } else {
+          // Fallback for unexpected structure
+          emailForm.setError("root", {
+            message: "Unexpected response from server. Please try again.",
+          });
+        }
       }
-
-      setStep("password");
     } catch (err) {
       emailForm.setError("root", {
         message:
@@ -222,7 +213,7 @@ export default function LoginPage() {
         }),
       });
 
-      const apiRes: ApiResponse<InnerAuthData> = await res.json();
+      const apiRes = await res.json();
 
       if (!apiRes.success || !apiRes.data) {
         passwordForm.setError("root", {
@@ -233,9 +224,19 @@ export default function LoginPage() {
 
       const data = apiRes.data;
 
-      if (data.requiresOtp) {
-        // Request OTP now that password is accepted
-        await requestOtp(); // this will start cooldown & show OTP screen
+      // After password, check structure for next action
+      if (data.availableMethods) {
+        if (data.availableMethods.includes("otp")) {
+          await requestOtp();
+          setStep("otp");
+        } else {
+          // No further OTP required
+          completeSignIn(data);
+        }
+      } else if (data.accessToken && data.refreshToken) {
+        completeSignIn(data);
+      } else if (data.requiresOtp) {
+        await requestOtp();
         setStep("otp");
       } else {
         completeSignIn(data);
@@ -260,7 +261,7 @@ export default function LoginPage() {
         body: JSON.stringify({ identifier: savedIdentifier }),
       });
 
-      const apiRes: ApiResponse = await res.json();
+      const apiRes = await res.json();
 
       if (!apiRes.success) {
         setOtpError(apiRes.message || "Failed to send verification code.");
@@ -294,7 +295,7 @@ export default function LoginPage() {
         }),
       });
 
-      const apiRes: ApiResponse<OtpVerifyData> = await res.json();
+      const apiRes = await res.json();
 
       if (!apiRes.success || !apiRes.data) {
         setOtpError(
