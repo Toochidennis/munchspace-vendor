@@ -28,13 +28,6 @@ import { cn } from "@/lib/utils";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
   Form,
   FormControl,
   FormField,
@@ -547,7 +540,6 @@ const StoreDetails = () => {
           latitude: data.address?.latitude || 0,
           longitude: data.address?.longitude || 0,
         });
-
 
         if (data.logoUrl) {
           setStoreImage(data.logoUrl);
@@ -1249,573 +1241,547 @@ const StoreDetails = () => {
       </Card>
 
       {/* Password Modal */}
-      <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
-        <DialogContent className="max-w-md bg-white rounded-2xl border-none shadow-2xl overflow-hidden">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold">
-              Change Password
-            </DialogTitle>
-          </DialogHeader>
-          <Form {...passwordForm}>
-            <form
-              onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
-              className="space-y-6"
-            >
-              <FormField
-                control={passwordForm.control}
-                name="currentPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="font-normal text-slate-500">
-                      Current Password
-                      <span className="-ms-1 pt-1 text-xl text-munchred">
-                        *
-                      </span>
-                    </FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Input
-                          type={showCurrent ? "text" : "password"}
-                          className="h-12 rounded-md pr-10"
-                          {...field}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowCurrent(!showCurrent)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        >
-                          {showCurrent ? (
-                            <EyeOff size={18} />
-                          ) : (
-                            <Eye size={18} />
-                          )}
-                        </button>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+      <CustomDialog
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        title="Change Password"
+        maxWidth="max-w-md"
+      >
+        <Form {...passwordForm}>
+          <form
+            onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}
+            className="space-y-6"
+          >
+            <FormField
+              control={passwordForm.control}
+              name="currentPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-normal text-slate-500">
+                    Current Password
+                    <span className="-ms-1 pt-1 text-xl text-munchred">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input
+                        type={showCurrent ? "text" : "password"}
+                        className="h-12 rounded-md pr-10"
+                        {...field}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrent(!showCurrent)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                      >
+                        {showCurrent ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <FormField
-                control={passwordForm.control}
-                name="newPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="font-normal text-slate-500">
-                      New Password
-                      <span className="-ms-1 pt-1 text-xl text-munchred">
-                        *
-                      </span>
-                    </FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Input
-                          type={showNew ? "text" : "password"}
-                          className="h-12 rounded-md pr-10"
-                          {...field}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowNew(!showNew)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        >
-                          {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </button>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormField
+              control={passwordForm.control}
+              name="newPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-normal text-slate-500">
+                    New Password
+                    <span className="-ms-1 pt-1 text-xl text-munchred">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input
+                        type={showNew ? "text" : "password"}
+                        className="h-12 rounded-md pr-10"
+                        {...field}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNew(!showNew)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                      >
+                        {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <FormField
-                control={passwordForm.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="font-normal text-slate-500">
-                      Confirm New Password
-                      <span className="-ms-1 pt-1 text-xl text-munchred">
-                        *
-                      </span>
-                    </FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Input
-                          type={showConfirm ? "text" : "password"}
-                          className="h-12 rounded-md pr-10"
-                          {...field}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirm(!showConfirm)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        >
-                          {showConfirm ? (
-                            <EyeOff size={18} />
-                          ) : (
-                            <Eye size={18} />
-                          )}
-                        </button>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormField
+              control={passwordForm.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-normal text-slate-500">
+                    Confirm New Password
+                    <span className="-ms-1 pt-1 text-xl text-munchred">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input
+                        type={showConfirm ? "text" : "password"}
+                        className="h-12 rounded-md pr-10"
+                        {...field}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirm(!showConfirm)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                      >
+                        {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <DialogFooter className="gap-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsPasswordModalOpen(false)}
-                  className="px-6 bg-gray-100 h-10 text-black rounded-md"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-md"
-                >
-                  {isSubmitting ? "Updating..." : "Update Password"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+            <div className="border-t border-gray-200 pt-4 flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsPasswordModalOpen(false)}
+                className="px-6 bg-gray-100 h-10 text-black rounded-md">
+
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-md"
+              >
+                {isSubmitting ? "Updating..." : "Update Password"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </CustomDialog>
 
       {/* Store Info Update Modal */}
-      <Dialog open={isStoreModalOpen} onOpenChange={setIsStoreModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold">
-              Update Store Information
-            </DialogTitle>
-          </DialogHeader>
-          <Form {...storeForm}>
-            <form
-              onSubmit={storeForm.handleSubmit(onStoreSubmit)}
-              className="space-y-6"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={storeForm.control}
-                  name="storeName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Store Name
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Store Name"
-                          className="h-12"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+      <CustomDialog
+        isOpen={isStoreModalOpen}
+        onClose={() => setIsStoreModalOpen(false)}
+        title="Update Store Information"
+        maxWidth="max-w-2xl"
+      >
+        <Form {...storeForm}>
+          <form
+            onSubmit={storeForm.handleSubmit(onStoreSubmit)}
+            className="space-y-6"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={storeForm.control}
+                name="storeName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-normal text-slate-500">
+                      Store Name
+                      <span className="-ms-1 pt-1 text-xl text-munchred">
+                        *
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Store Name"
+                        className="h-12"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                <FormField
-                  control={storeForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Email
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          placeholder="Email"
-                          className="h-12"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <FormField
+                control={storeForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-normal text-slate-500">
+                      Email
+                      <span className="-ms-1 pt-1 text-xl text-munchred">
+                        *
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        placeholder="Email"
+                        className="h-12"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                <FormField
-                  control={storeForm.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Phone
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Phone"
-                          className="h-12"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <FormField
+                control={storeForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-normal text-slate-500">
+                      Phone
+                      <span className="-ms-1 pt-1 text-xl text-munchred">
+                        *
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="Phone" className="h-12" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                <FormField
-                  control={storeForm.control}
-                  name="establishedDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-normal text-slate-500">
-                        Established Date
-                        <span className="-ms-1 pt-1 text-xl text-munchred">
-                          *
-                        </span>
-                      </FormLabel>
-                      <Popover
-                        open={datePopoverOpen}
-                        onOpenChange={setDatePopoverOpen}
+              <FormField
+                control={storeForm.control}
+                name="establishedDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-normal text-slate-500">
+                      Established Date
+                      <span className="-ms-1 pt-1 text-xl text-munchred">
+                        *
+                      </span>
+                    </FormLabel>
+                    <Popover
+                      open={datePopoverOpen}
+                      onOpenChange={setDatePopoverOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full h-12 pl-3 text-left font-normal",
+                              !field.value && "text-muted-foreground",
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                            <ChevronsUpDown className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={(date) => {
+                            field.onChange(date);
+                            setDatePopoverOpen(false);
+                          }}
+                          disabled={(date) =>
+                            date > new Date() || date < new Date("1900-01-01")
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Business Type */}
+              <FormField
+                control={storeForm.control}
+                name="businessType"
+                render={({ field }) => (
+                  <FormItem className="mb-5 md:col-span-2">
+                    <FormLabel className="font-normal text-slate-500">
+                      Business Type <span className="text-munchred">*</span>
+                    </FormLabel>
+                    <Popover
+                      open={businessTypeOpen}
+                      onOpenChange={setBusinessTypeOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                          >
+                            <span className="truncate">
+                              {field.value
+                                ? businessTypeOptions.find(
+                                    (o) => o.id === field.value,
+                                  )?.label || "Select business type"
+                                : "Select business type"}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-full p-0"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
                       >
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full h-12 pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground",
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                              <ChevronsUpDown className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={(date) => {
-                              field.onChange(date);
-                              setDatePopoverOpen(false);
-                            }}
-                            disabled={(date) =>
-                              date > new Date() || date < new Date("1900-01-01")
-                            }
-                            initialFocus
+                        <Command>
+                          <CommandInput
+                            autoFocus={false}
+                            placeholder="Search business type..."
                           />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Business Type */}
-                <FormField
-                  control={storeForm.control}
-                  name="businessType"
-                  render={({ field }) => (
-                    <FormItem className="mb-5 md:col-span-2">
-                      <FormLabel className="font-normal text-slate-500">
-                        Business Type <span className="text-munchred">*</span>
-                      </FormLabel>
-                      <Popover
-                        open={businessTypeOpen}
-                        onOpenChange={setBusinessTypeOpen}
-                      >
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
-                            >
-                              <span className="truncate">
-                                {field.value
-                                  ? businessTypeOptions.find(
-                                      (o) => o.id === field.value,
-                                    )?.label || "Select business type"
-                                  : "Select business type"}
-                              </span>
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-full p-0"
-                          onOpenAutoFocus={(e) => e.preventDefault()}
-                        >
-                          <Command>
-                            <CommandInput
-                              autoFocus={false}
-                              placeholder="Search business type..."
-                            />
-                            <CommandEmpty>No type found.</CommandEmpty>
-                            <CommandGroup>
-                              {businessTypeOptions.map((option) => (
-                                <CommandItem
-                                  key={option.id}
-                                  onSelect={() => {
-                                    field.onChange(option.id);
-                                    setBusinessTypeOpen(false);
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      field.value === option.id
-                                        ? "opacity-100"
-                                        : "opacity-0",
-                                    )}
-                                  />
-                                  {option.label}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Brand Type */}
-                <FormField
-                  control={storeForm.control}
-                  name="brandType"
-                  render={({ field }) => (
-                    <FormItem className="mb-5 md:col-span-2">
-                      <FormLabel className="font-normal text-slate-500">
-                        Brand Type <span className="text-munchred">*</span>
-                      </FormLabel>
-                      <Popover
-                        open={brandTypeOpen}
-                        onOpenChange={setBrandTypeOpen}
-                      >
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
-                            >
-                              <span className="truncate">
-                                {field.value
-                                  ? brandTypeOptions.find(
-                                      (o) => o.id === field.value,
-                                    )?.label || "Select brand type"
-                                  : "Select brand type"}
-                              </span>
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-full p-0"
-                          onOpenAutoFocus={(e) => e.preventDefault()}
-                        >
-                          <Command>
-                            <CommandInput
-                              autoFocus={false}
-                              placeholder="Search brand type..."
-                            />
-                            <CommandEmpty>No type found.</CommandEmpty>
-                            <CommandGroup>
-                              {brandTypeOptions.map((option) => (
-                                <CommandItem
-                                  key={option.id}
-                                  onSelect={() => {
-                                    field.onChange(option.id);
-                                    setBrandTypeOpen(false);
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      field.value === option.id
-                                        ? "opacity-100"
-                                        : "opacity-0",
-                                    )}
-                                  />
-                                  {option.label}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Service Operations */}
-                <FormField
-                  control={storeForm.control}
-                  name="serviceOperations"
-                  render={() => (
-                    <FormItem className="mb-0 md:col-span-2">
-                      <FormLabel className="font-normal text-slate-500">
-                        Service Operations{" "}
-                        <span className="text-munchred">*</span>
-                      </FormLabel>
-                      <Popover
-                        open={serviceOperationOpen}
-                        onOpenChange={setServiceOperationOpen}
-                      >
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
-                            >
-                              <span className="truncate">
-                                {(storeForm.watch("serviceOperations") ?? [])
-                                  .length > 0
-                                  ? `${(storeForm.watch("serviceOperations") ?? []).length} selected`
-                                  : "Select service operations"}
-                              </span>
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-full p-0"
-                          onOpenAutoFocus={(e) => e.preventDefault()}
-                        >
-                          <Command>
-                            <CommandInput
-                              autoFocus={false}
-                              placeholder="Search service operation..."
-                            />
-                            <CommandEmpty>No operation found.</CommandEmpty>
-                            <CommandGroup>
-                              {serviceOperationOptions.map((option) => (
-                                <CommandItem
-                                  key={option.id}
-                                  onSelect={() => {
-                                    const current =
-                                      storeForm.getValues(
-                                        "serviceOperations",
-                                      ) ?? [];
-                                    if (current.includes(option.id)) {
-                                      storeForm.setValue(
-                                        "serviceOperations",
-                                        current.filter((v) => v !== option.id),
-                                      );
-                                    } else {
-                                      storeForm.setValue("serviceOperations", [
-                                        ...current,
-                                        option.id,
-                                      ]);
-                                    }
-                                    setServiceOperationOpen(false);
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      (
-                                        storeForm.watch("serviceOperations") ??
-                                        []
-                                      ).includes(option.id)
-                                        ? "opacity-100"
-                                        : "opacity-0",
-                                    )}
-                                  />
-                                  {option.label}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {(storeForm.watch("serviceOperations") ?? []).map(
-                          (value) => {
-                            const label =
-                              serviceOperationOptions.find(
-                                (o) => o.id === value,
-                              )?.label || value;
-                            return (
-                              <Badge
-                                key={value}
-                                variant="secondary"
-                                className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
+                          <CommandEmpty>No type found.</CommandEmpty>
+                          <CommandGroup>
+                            {businessTypeOptions.map((option) => (
+                              <CommandItem
+                                key={option.id}
+                                onSelect={() => {
+                                  field.onChange(option.id);
+                                  setBusinessTypeOpen(false);
+                                }}
                               >
-                                {label}
-                                <span
-                                  className="ml-2 cursor-pointer"
-                                  onClick={() =>
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    field.value === option.id
+                                      ? "opacity-100"
+                                      : "opacity-0",
+                                  )}
+                                />
+                                {option.label}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Brand Type */}
+              <FormField
+                control={storeForm.control}
+                name="brandType"
+                render={({ field }) => (
+                  <FormItem className="mb-5 md:col-span-2">
+                    <FormLabel className="font-normal text-slate-500">
+                      Brand Type <span className="text-munchred">*</span>
+                    </FormLabel>
+                    <Popover
+                      open={brandTypeOpen}
+                      onOpenChange={setBrandTypeOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                          >
+                            <span className="truncate">
+                              {field.value
+                                ? brandTypeOptions.find(
+                                    (o) => o.id === field.value,
+                                  )?.label || "Select brand type"
+                                : "Select brand type"}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-full p-0"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <Command>
+                          <CommandInput
+                            autoFocus={false}
+                            placeholder="Search brand type..."
+                          />
+                          <CommandEmpty>No type found.</CommandEmpty>
+                          <CommandGroup>
+                            {brandTypeOptions.map((option) => (
+                              <CommandItem
+                                key={option.id}
+                                onSelect={() => {
+                                  field.onChange(option.id);
+                                  setBrandTypeOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    field.value === option.id
+                                      ? "opacity-100"
+                                      : "opacity-0",
+                                  )}
+                                />
+                                {option.label}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Service Operations */}
+              <FormField
+                control={storeForm.control}
+                name="serviceOperations"
+                render={() => (
+                  <FormItem className="mb-0 md:col-span-2">
+                    <FormLabel className="font-normal text-slate-500">
+                      Service Operations{" "}
+                      <span className="text-munchred">*</span>
+                    </FormLabel>
+                    <Popover
+                      open={serviceOperationOpen}
+                      onOpenChange={setServiceOperationOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between font-normal h-12 hover:text-slate-400 text-slate-400 hover:bg-white"
+                          >
+                            <span className="truncate">
+                              {(storeForm.watch("serviceOperations") ?? [])
+                                .length > 0
+                                ? `${(storeForm.watch("serviceOperations") ?? []).length} selected`
+                                : "Select service operations"}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-full p-0"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <Command>
+                          <CommandInput
+                            autoFocus={false}
+                            placeholder="Search service operation..."
+                          />
+                          <CommandEmpty>No operation found.</CommandEmpty>
+                          <CommandGroup>
+                            {serviceOperationOptions.map((option) => (
+                              <CommandItem
+                                key={option.id}
+                                onSelect={() => {
+                                  const current =
+                                    storeForm.getValues("serviceOperations") ??
+                                    [];
+                                  if (current.includes(option.id)) {
                                     storeForm.setValue(
                                       "serviceOperations",
-                                      (
-                                        storeForm.getValues(
-                                          "serviceOperations",
-                                        ) ?? []
-                                      ).filter((v) => v !== value),
-                                    )
+                                      current.filter((v) => v !== option.id),
+                                    );
+                                  } else {
+                                    storeForm.setValue("serviceOperations", [
+                                      ...current,
+                                      option.id,
+                                    ]);
                                   }
-                                >
-                                  <X className="w-4 font-black" />
-                                </span>
-                              </Badge>
-                            );
-                          },
-                        )}
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                                  setServiceOperationOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    (
+                                      storeForm.watch("serviceOperations") ?? []
+                                    ).includes(option.id)
+                                      ? "opacity-100"
+                                      : "opacity-0",
+                                  )}
+                                />
+                                {option.label}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
 
-              <DialogFooter className="gap-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsStoreModalOpen(false)}
-                  className="px-6 bg-gray-100 h-10 text-black"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
-                >
-                  Update
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {(storeForm.watch("serviceOperations") ?? []).map(
+                        (value) => {
+                          const label =
+                            serviceOperationOptions.find((o) => o.id === value)
+                              ?.label || value;
+                          return (
+                            <Badge
+                              key={value}
+                              variant="secondary"
+                              className="bg-red-50 text-base px-3 py-1 font-medium items-center flex justify-between rounded-lg border-munchprimary"
+                            >
+                              {label}
+                              <span
+                                className="ml-2 cursor-pointer"
+                                onClick={() =>
+                                  storeForm.setValue(
+                                    "serviceOperations",
+                                    (
+                                      storeForm.getValues(
+                                        "serviceOperations",
+                                      ) ?? []
+                                    ).filter((v) => v !== value),
+                                  )
+                                }
+                              >
+                                <X className="w-4 font-black" />
+                              </span>
+                            </Badge>
+                          );
+                        },
+                      )}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="border-t border-gray-200 pt-4 flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsStoreModalOpen(false)}
+                className="px-6 bg-gray-100 h-10 text-black">
+
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg"
+              >
+                Update
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </CustomDialog>
 
       {/* Address Update Modal */}
-      <Dialog open={isAddressModalOpen} onOpenChange={setIsAddressModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold">
-              Update Address
-            </DialogTitle>
-          </DialogHeader>
+      <CustomDialog
+        isOpen={isAddressModalOpen}
+        onClose={() => setIsAddressModalOpen(false)}
+        title="Update Address"
+        maxWidth="max-w-2xl"
+      >
           <Form {...addressForm}>
             <form
               onSubmit={addressForm.handleSubmit(onAddressSubmit)}
@@ -2126,13 +2092,13 @@ const StoreDetails = () => {
                 )}
               />
 
-              <DialogFooter className="gap-4">
+              <div className="border-t border-gray-200 pt-4 flex justify-end gap-3">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setIsAddressModalOpen(false)}
-                  className="px-6 bg-gray-100 h-10 text-black"
-                >
+                  className="px-6 bg-gray-100 h-10 text-black">
+
                   Cancel
                 </Button>
                 <Button
@@ -2141,14 +2107,14 @@ const StoreDetails = () => {
                 >
                   Update Address
                 </Button>
-              </DialogFooter>
+              </div>
+
             </form>
           </Form>
-        </DialogContent>
-      </Dialog>
+        </CustomDialog>
     </div>
   );
-};;
+};
 
 export default StoreDetails;
 
@@ -2217,6 +2183,70 @@ const StoreSkeleton = () => {
             ))}
           </div>
         </Card>
+      </div>
+    </div>
+  );
+};
+
+const CustomDialog = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+  maxWidth = "max-w-2xl",
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  maxWidth?: string;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop: Fixed Blur & Color */}
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Modal Container: Flex layout to handle scrolling */}
+      <div
+        className={cn(
+          "relative w-full bg-white dark:bg-zinc-950 rounded-2xl shadow-2xl overflow-hidden flex flex-col",
+          "max-h-[90vh]", // Prevents modal from leaving the screen
+          maxWidth,
+        )}
+      >
+        {/* 1. Header: Fixed at the top */}
+        <div className="flex items-center justify-between p-6 border-b shrink-0">
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">
+            {title}
+          </h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="rounded-md h-8 w-8 text-zinc-500 hover:text-zinc-900"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+
+        {/* 2. Scrollable Body */}
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+          {children}
+        </div>
+
+        {/* 3. Footer: Fixed at the bottom (only shows if footer prop is provided) */}
+        {footer && (
+          <div className="p-6 border-t bg-zinc-50/50 dark:bg-zinc-900/50 shrink-0">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

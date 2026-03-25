@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 import React from 'react'
 
-const CustomModal = ({
+export default function CustomModal({
   isOpen,
   onClose,
   title,
@@ -16,18 +16,18 @@ const CustomModal = ({
   children: React.ReactNode;
   footer?: React.ReactNode;
   maxWidth?: string;
-}) => {
+}) {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/40 animate-in fade-in duration-200"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200"
         onClick={onClose}
       />
       <div
         className={cn(
-          "relative w-full bg-white shadow-xl overflow-hidden rounded animate-in zoom-in-95 duration-200",
+          "relative w-full bg-white shadow-xl overflow-hidden rounded-md animate-in zoom-in-95 duration-200",
           maxWidth,
         )}
       >
@@ -50,5 +50,3 @@ const CustomModal = ({
     </div>
   );
 }
-
-export default CustomModal

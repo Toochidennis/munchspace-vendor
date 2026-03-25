@@ -638,7 +638,7 @@ function CustomModal({
       />
       <div
         className={cn(
-          "relative w-full bg-white shadow-xl overflow-hidden rounded animate-in zoom-in-95 duration-200",
+          "relative w-full bg-white shadow-xl overflow-hidden rounded-md animate-in zoom-in-95 duration-200",
           maxWidth,
         )}
       >
