@@ -118,11 +118,15 @@ const rangeMap: Record<string, string> = {
 const getStatusBadgeClass = (status: string) => {
   const s = status.toLowerCase();
   if (s.includes("pending")) return "bg-blue-100 text-blue-700 border-blue-200";
-  if (s.includes("preparing")) return "bg-amber-100 text-amber-700 border-amber-200";
-  if (s.includes("ready")) return "bg-purple-100 text-purple-700 border-purple-200";
-  if (s.includes("completed")) return "bg-green-100 text-green-700 border-green-200";
+  if (s.includes("preparing"))
+    return "bg-amber-100 text-amber-700 border-amber-200";
+  if (s.includes("ready"))
+    return "bg-purple-100 text-purple-700 border-purple-200";
+  if (s.includes("completed"))
+    return "bg-green-100 text-green-700 border-green-200";
   if (s.includes("cancel")) return "bg-red-100 text-red-700 border-red-200";
-  if (s.includes("returned")) return "bg-orange-100 text-orange-700 border-orange-200";
+  if (s.includes("returned"))
+    return "bg-orange-100 text-orange-700 border-orange-200";
   return "bg-gray-100 text-gray-700 border-gray-200";
 };
 
@@ -167,14 +171,29 @@ export default function OrdersPage() {
 
         let apiGroup: string;
         switch (statusFilter) {
-          case "all": apiGroup = "all"; break;
-          case "pending": apiGroup = "pending"; break;
-          case "preparing": apiGroup = "preparing"; break;
-          case "ready": apiGroup = "ready"; break;
-          case "completed": apiGroup = "completed"; break;
-          case "cancelled": apiGroup = "cancelled"; break;
-          case "returned": apiGroup = "returned"; break;
-          default: apiGroup = "all";
+          case "all":
+            apiGroup = "all";
+            break;
+          case "pending":
+            apiGroup = "pending";
+            break;
+          case "preparing":
+            apiGroup = "preparing";
+            break;
+          case "ready":
+            apiGroup = "ready";
+            break;
+          case "completed":
+            apiGroup = "completed";
+            break;
+          case "cancelled":
+            apiGroup = "cancelled";
+            break;
+          case "returned":
+            apiGroup = "returned";
+            break;
+          default:
+            apiGroup = "all";
         }
 
         const query = new URLSearchParams({
@@ -190,18 +209,22 @@ export default function OrdersPage() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const json = await response.json();
+        console.log("Orders API response:", json);
 
         if (!json.success || !json.data) {
           throw new Error("Invalid API response structure");
         }
 
-        const apiData = json.data;
-        const fetchedOrders = apiData.data || [];
+        // Updated parsing for new nested structure
+        const apiData = json.data; // top-level data object
+        const fetchedOrders: Order[] = apiData.data || []; // actual orders array
+        const meta = apiData.meta || {};
+        const groups = apiData.groups || {};
 
         setOrders(fetchedOrders);
-        setTotalItems(apiData.total || 0);
+        setTotalItems(meta.total || 0); // use meta.total for pagination
 
-        const groups = apiData.groups || {};
+        // Handle counts from groups (fallback logic preserved for "ready")
         let readyCount = groups.ready ?? 0;
         if (readyCount === 0 && statusFilter === "all") {
           readyCount = fetchedOrders.filter((o: Order) =>
@@ -220,16 +243,30 @@ export default function OrdersPage() {
         });
       } catch (err: any) {
         console.error("Orders fetch failed:", err);
-        if (err.message?.includes("fetch") || err.message?.includes("Network")) {
-          setFetchNetworkError("Unable to load orders. Please check your internet connection.");
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
+          setFetchNetworkError(
+            "Unable to load orders. Please check your internet connection.",
+          );
         } else {
           toast.error("Failed to load orders", {
-            description: err.message || "The service may be temporarily unavailable.",
+            description:
+              err.message || "The service may be temporarily unavailable.",
           });
         }
         setOrders([]);
         setTotalItems(0);
-        setCounts({ all: 0, pending: 0, preparing: 0, ready: 0, completed: 0, cancelled: 0, returned: 0 });
+        setCounts({
+          all: 0,
+          pending: 0,
+          preparing: 0,
+          ready: 0,
+          completed: 0,
+          cancelled: 0,
+          returned: 0,
+        });
       } finally {
         setLoading(false);
       }
@@ -240,9 +277,10 @@ export default function OrdersPage() {
 
   const filteredOrders = useMemo(() => {
     if (!searchTerm.trim()) return orders;
-    return orders.filter((order) =>
-      order.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.orderId.toLowerCase().includes(searchTerm.toLowerCase())
+    return orders.filter(
+      (order) =>
+        order.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.orderId.toLowerCase().includes(searchTerm.toLowerCase()),
     );
   }, [orders, searchTerm]);
 
@@ -269,7 +307,15 @@ export default function OrdersPage() {
         pages.push(totalPages);
       }
     } else if (currentPage < totalPages - 4) {
-      pages.push(1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages);
+      pages.push(
+        1,
+        "...",
+        currentPage - 1,
+        currentPage,
+        currentPage + 1,
+        "...",
+        totalPages,
+      );
     } else {
       for (let i = totalPages - 4; i <= totalPages; i++) {
         if (i > 0) pages.push(i);
@@ -281,6 +327,8 @@ export default function OrdersPage() {
     }
     return pages;
   };
+
+  // ... (SkeletonRow, SkeletonMobileCard, showFullEmptyState, showFilteredEmpty, PaginationControls remain unchanged)
 
   const SkeletonRow = () => (
     <TableRow>
@@ -316,8 +364,13 @@ export default function OrdersPage() {
     </div>
   );
 
-  const showFullEmptyState = !loading && totalItems === 0 && statusFilter === "all" && searchTerm === "";
-  const showFilteredEmpty = !loading && (totalItems === 0 || filteredOrders.length === 0) && !showFullEmptyState && !fetchNetworkError;
+  const showFullEmptyState =
+    !loading && totalItems === 0 && statusFilter === "all" && searchTerm === "";
+  const showFilteredEmpty =
+    !loading &&
+    (totalItems === 0 || filteredOrders.length === 0) &&
+    !showFullEmptyState &&
+    !fetchNetworkError;
 
   const PaginationControls = () => (
     <div className="flex items-center justify-center mx-2 gap-5 text-sm mt-auto pt-6">
@@ -338,7 +391,9 @@ export default function OrdersPage() {
             <div className="flex items-center gap-2">
               {getPageNumbers().map((p, i) =>
                 p === "..." ? (
-                  <span key={i} className="text-gray-500 px-2">...</span>
+                  <span key={i} className="text-gray-500 px-2">
+                    ...
+                  </span>
                 ) : (
                   <Button
                     key={i}
@@ -348,7 +403,8 @@ export default function OrdersPage() {
                     disabled={loading}
                     className={cn(
                       "min-w-8 md:min-w-10",
-                      currentPage === p && "bg-orange-500 hover:bg-orange-600 text-white",
+                      currentPage === p &&
+                        "bg-orange-500 hover:bg-orange-600 text-white",
                     )}
                   >
                     {p}
@@ -388,16 +444,20 @@ export default function OrdersPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
-        <h2 className="text-2xl font-semibold text-gray-800 mb-4">Connection Error</h2>
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
         <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
-        <Button onClick={() => window.location.reload()} className="gap-2 bg-munchprimary hover:bg-munchprimaryDark">
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
           <RefreshCw className="h-4 w-4" />
           Refresh Page
         </Button>
       </div>
     );
   }
-
   return (
     <div className="min-h-screen p-5 md:p-8 mt-10 md:mt-0 flex flex-col">
       {showFullEmptyState ? (
@@ -412,8 +472,12 @@ export default function OrdersPage() {
               priority
             />
           </div>
-          <h2 className="text-2xl font-medium text-orange-500 mb-4">You don't have any orders yet</h2>
-          <p className="text-gray-600 max-w-md">Orders from customers will appear here once they are placed.</p>
+          <h2 className="text-2xl font-medium text-orange-500 mb-4">
+            You don't have any orders yet
+          </h2>
+          <p className="text-gray-600 max-w-md">
+            Orders from customers will appear here once they are placed.
+          </p>
         </div>
       ) : (
         <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col space-y-8">
@@ -450,7 +514,8 @@ export default function OrdersPage() {
             <button
               className={cn(
                 "md:hidden border rounded-lg p-2 h-12 w-12 flex items-center justify-center",
-                showSearchMobile && "bg-orange-500 text-white border-orange-500",
+                showSearchMobile &&
+                  "bg-orange-500 text-white border-orange-500",
               )}
               onClick={() => setShowSearchMobile(!showSearchMobile)}
             >
@@ -490,7 +555,16 @@ export default function OrdersPage() {
 
           {/* Status Tabs - Border Fix Applied Here */}
           <div className="flex gap-8 border-b border-gray-200 overflow-x-auto items-end">
-            {(["all", "pending", "preparing", "completed", "cancelled", "returned"] as const).map((f) => (
+            {(
+              [
+                "all",
+                "pending",
+                "preparing",
+                "completed",
+                "cancelled",
+                "returned",
+              ] as const
+            ).map((f) => (
               <button
                 key={f}
                 onClick={() => {
@@ -504,7 +578,10 @@ export default function OrdersPage() {
                     : "border-transparent text-gray-600 hover:text-gray-900",
                 )}
               >
-                {f === "all" ? "All Orders" : f.charAt(0).toUpperCase() + f.slice(1)} ({counts[f]})
+                {f === "all"
+                  ? "All Orders"
+                  : f.charAt(0).toUpperCase() + f.slice(1)}{" "}
+                ({counts[f]})
               </button>
             ))}
           </div>
@@ -513,7 +590,9 @@ export default function OrdersPage() {
             {showFilteredEmpty ? (
               <div className="py-20 flex flex-col items-center justify-center text-center">
                 <AlertCircle className="h-14 w-14 text-gray-400 mb-6" />
-                <h3 className="text-xl font-medium text-gray-700 mb-3">No orders found</h3>
+                <h3 className="text-xl font-medium text-gray-700 mb-3">
+                  No orders found
+                </h3>
                 <p className="text-gray-500 max-w-md">
                   {searchTerm
                     ? `No matching orders for "${searchTerm}" in the selected period and status.`
@@ -528,20 +607,36 @@ export default function OrdersPage() {
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-gray-100">
-                            <TableHead className="ps-4 py-4 font-medium text-gray-700">Order ID</TableHead>
-                            <TableHead className="py-4 font-medium text-gray-700">Order Date</TableHead>
-                            <TableHead className="py-4 font-medium text-gray-700">₦ Total Price</TableHead>
-                            <TableHead className="py-4 font-medium text-gray-700">Status</TableHead>
+                            <TableHead className="ps-4 py-4 font-medium text-gray-700">
+                              Order ID
+                            </TableHead>
+                            <TableHead className="py-4 font-medium text-gray-700">
+                              Order Date
+                            </TableHead>
+                            <TableHead className="py-4 font-medium text-gray-700">
+                              ₦ Total Price
+                            </TableHead>
+                            <TableHead className="py-4 font-medium text-gray-700">
+                              Status
+                            </TableHead>
                             <TableHead className="py-4" />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {Array(5).fill(null).map((_, i) => <SkeletonRow key={i} />)}
+                          {Array(5)
+                            .fill(null)
+                            .map((_, i) => (
+                              <SkeletonRow key={i} />
+                            ))}
                         </TableBody>
                       </Table>
                     </div>
                     <div className="md:hidden space-y-1">
-                      {Array(5).fill(null).map((_, i) => <SkeletonMobileCard key={i} />)}
+                      {Array(5)
+                        .fill(null)
+                        .map((_, i) => (
+                          <SkeletonMobileCard key={i} />
+                        ))}
                     </div>
                   </>
                 ) : (
@@ -550,27 +645,54 @@ export default function OrdersPage() {
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-gray-100">
-                            <TableHead className="ps-4 py-4 font-medium text-gray-700">Order ID</TableHead>
-                            <TableHead className="py-4 font-medium text-gray-700">Order Date</TableHead>
-                            <TableHead className="py-4 font-medium text-gray-700">₦ Total Price</TableHead>
-                            <TableHead className="py-4 font-medium text-gray-700">Status</TableHead>
+                            <TableHead className="ps-4 py-4 font-medium text-gray-700">
+                              Order ID
+                            </TableHead>
+                            <TableHead className="py-4 font-medium text-gray-700">
+                              Order Date
+                            </TableHead>
+                            <TableHead className="py-4 font-medium text-gray-700">
+                              ₦ Total Price
+                            </TableHead>
+                            <TableHead className="py-4 font-medium text-gray-700">
+                              Status
+                            </TableHead>
                             <TableHead className="py-4" />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {filteredOrders.map((order) => (
-                            <TableRow key={order.orderId} className="hover:bg-gray-50/50">
-                              <TableCell className="ps-4 py-6 font-medium">{order.orderCode}</TableCell>
-                              <TableCell className="py-6">{new Date(order.placedAt).toLocaleString()}</TableCell>
-                              <TableCell className="py-6">₦{order.totalAmount.toLocaleString()}</TableCell>
+                            <TableRow
+                              key={order.orderId}
+                              className="hover:bg-gray-50/50"
+                            >
+                              <TableCell className="ps-4 py-6 font-medium">
+                                {order.orderCode}
+                              </TableCell>
                               <TableCell className="py-6">
-                                <Badge variant="outline" className={cn("px-4 py-1.5 rounded text-sm font-medium", getStatusBadgeClass(order.status))}>
+                                {new Date(order.placedAt).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="py-6">
+                                ₦{order.totalAmount.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="py-6">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "px-4 py-1.5 rounded text-sm font-medium",
+                                    getStatusBadgeClass(order.status),
+                                  )}
+                                >
                                   {order.status.replace(/_/g, " ")}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right py-6">
-                                <Link href={`/restaurant/orders/${order.orderId}`}>
-                                  <Button variant="outline" size="sm">View Details</Button>
+                                <Link
+                                  href={`/restaurant/orders/${order.orderId}`}
+                                >
+                                  <Button variant="outline" size="sm">
+                                    View Details
+                                  </Button>
                                 </Link>
                               </TableCell>
                             </TableRow>
@@ -581,17 +703,33 @@ export default function OrdersPage() {
 
                     <div className="md:hidden divide-y divide-gray-100">
                       {filteredOrders.map((order) => (
-                        <Link key={order.orderId} href={`/restaurant/orders/${order.orderId}`}>
+                        <Link
+                          key={order.orderId}
+                          href={`/restaurant/orders/${order.orderId}`}
+                        >
                           <div className="p-4 flex justify-between items-start hover:bg-gray-50">
                             <div>
-                              <div className={cn("font-medium mb-1 text-sm", getStatusBadgeClass(order.status).split(' ')[1])}>
+                              <div
+                                className={cn(
+                                  "font-medium mb-1 text-sm",
+                                  getStatusBadgeClass(order.status).split(
+                                    " ",
+                                  )[1],
+                                )}
+                              >
                                 {order.status.replace(/_/g, " ")}
                               </div>
-                              <div className="font-medium">{order.orderCode}</div>
+                              <div className="font-medium">
+                                {order.orderCode}
+                              </div>
                             </div>
                             <div className="text-right">
-                              <div className="text-gray-500 text-sm mb-1">{new Date(order.placedAt).toLocaleString()}</div>
-                              <div className="font-bold text-lg">₦{order.totalAmount.toLocaleString()}</div>
+                              <div className="text-gray-500 text-sm mb-1">
+                                {new Date(order.placedAt).toLocaleString()}
+                              </div>
+                              <div className="font-bold text-lg">
+                                ₦{order.totalAmount.toLocaleString()}
+                              </div>
                             </div>
                           </div>
                         </Link>
