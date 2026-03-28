@@ -13,25 +13,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Input } from "@/components/ui/input";
-import {
   Table,
   TableBody,
   TableCell,
@@ -55,16 +36,17 @@ import {
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { toast } from "sonner";
 import { refreshAccessToken } from "@/app/lib/api";
+import { Input } from "@/components/ui/input";
 
 // ────────────────────────────────────────────────
-//  Constants from .env
+//  Constants
 // ────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // ────────────────────────────────────────────────
-//  Authenticated Fetch (with token refresh on 401)
+//  Authenticated Fetch
 // ────────────────────────────────────────────────
 
 async function authenticatedFetch(
@@ -112,29 +94,21 @@ async function authenticatedFetch(
 }
 
 // ────────────────────────────────────────────────
-//  Schema & Types (unchanged)
+//  Types
 // ────────────────────────────────────────────────
 
-const menuItemSchema = z.object({
-  name: z.string().min(1, "Menu name is required"),
-  description: z.string().min(1, "Description is required"),
-  costPrice: z.string().min(1, "Cost price is required"),
-  sellingPrice: z.string().min(1, "Selling price is required"),
-});
-type MenuItemFormValues = z.infer<typeof menuItemSchema>;
-
 interface MenuItem {
-  id: number;
+  id: string;
   name: string;
   image: string;
   description: string;
-  costPrice: string;
   sellingPrice: string;
-  available: boolean;
+  isAvailable: boolean;
+  isSoldOut: boolean;
 }
 
 // ────────────────────────────────────────────────
-//  Custom Modal (kept as-is from your original)
+//  Custom Modal
 // ────────────────────────────────────────────────
 
 function CustomModal({
@@ -193,7 +167,6 @@ function CustomModal({
 export default function MenuPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [period, setPeriod] = useState<"last30" | "last7" | "today">("last30");
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -205,8 +178,8 @@ export default function MenuPage() {
   const [deleteCandidate, setDeleteCandidate] = useState<MenuItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Availability toggle loading states (per item)
-  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+  // Toggle loading states
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
   );
@@ -220,16 +193,6 @@ export default function MenuPage() {
       maximumFractionDigits: 2,
     })}`;
   };
-
-  const form = useForm<MenuItemFormValues>({
-    resolver: zodResolver(menuItemSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      costPrice: "",
-      sellingPrice: "",
-    },
-  });
 
   // Fetch menu items
   useEffect(() => {
@@ -250,22 +213,26 @@ export default function MenuPage() {
         });
 
         if (!res.ok) {
-          throw new Error(`API error: ${res.status} ${res.statusText}`);
+          throw new Error(`API error: ${res.status}`);
         }
 
-        const data = await res.json();
-        const mappedItems: MenuItem[] = (data.items || data.data || []).map(
-          (apiItem: any) => ({
-            id: apiItem.id || apiItem.menu_item_id,
-            name: apiItem.name || apiItem.item_name || "Unnamed",
-            image: apiItem.imageUrl || "/images/placeholder.png",
-            description: apiItem.description || "No description",
-            sellingPrice: String(
-              apiItem.sellingPrice || apiItem.selling_price || "0.00",
-            ),
-            available: apiItem.available ?? apiItem.is_available ?? true,
-          }),
-        );
+        const json = await res.json();
+
+        // Correct parsing based on your API structure
+        const apiItems = json.data?.data || json.data || [];
+
+        const mappedItems: MenuItem[] = apiItems.map((apiItem: any) => ({
+          id: apiItem.id,
+          name: apiItem.name || "Unnamed Item",
+          image: apiItem.imageUrl || "/images/placeholder.png",
+          description: apiItem.description || "No description available",
+          sellingPrice: String(
+            apiItem.sellingPrice || apiItem.discountedPrice || "0",
+          ),
+          isAvailable: Boolean(apiItem.isAvailable),
+          isSoldOut: Boolean(apiItem.isSoldOut),
+        }));
+
         setItems(mappedItems);
       } catch (err: any) {
         console.error("Menu fetch failed:", err);
@@ -277,11 +244,7 @@ export default function MenuPage() {
             "Unable to load menu items. Please check your internet connection.",
           );
         } else {
-          const msg =
-            err.message?.includes("expired") || err.message?.includes("refresh")
-              ? "Your session has expired. Please sign in again."
-              : "Failed to load menu items. Please try again later.";
-          setError(msg);
+          setError("Failed to load menu items. Please try again later.");
         }
       } finally {
         setLoading(false);
@@ -289,22 +252,24 @@ export default function MenuPage() {
     };
 
     fetchMenuItems();
-  }, [period]);
+  }, []);
 
-  const handleToggleAvailability = async (id: number) => {
+  const handleToggleAvailability = async (id: string) => {
     const item = items.find((i) => i.id === id);
     if (!item) return;
 
-    const newAvailable = !item.available;
+    const newAvailable = !item.isAvailable;
 
+    // Optimistic update
     setTogglingIds((prev) => new Set([...prev, id]));
     setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, available: newAvailable } : i)),
+      prev.map((i) => (i.id === id ? { ...i, isAvailable: newAvailable } : i)),
     );
 
     try {
       const businessId = getBusinessId();
       if (!businessId) throw new Error("Business ID not found");
+
       const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${id}/availability`;
 
       const res = await authenticatedFetch(url, {
@@ -321,14 +286,13 @@ export default function MenuPage() {
       );
     } catch (err: any) {
       console.error("Availability toggle failed:", err);
+      // Revert optimistic update on error
       setItems((prev) =>
-        prev.map((i) => (i.id === id ? { ...i, available: !newAvailable } : i)),
+        prev.map((i) =>
+          i.id === id ? { ...i, isAvailable: !newAvailable } : i,
+        ),
       );
-      const msg =
-        err.message?.includes("expired") || err.message?.includes("refresh")
-          ? "Session expired. Please sign in again."
-          : "Failed to update availability. Please try again.";
-      toast.error(msg);
+      toast.error("Failed to update availability. Please try again.");
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -349,16 +313,16 @@ export default function MenuPage() {
     try {
       const businessId = getBusinessId();
       if (!businessId) throw new Error("Business ID not found");
+
       const url = `${API_BASE}/vendors/me/businesses/${businessId}/menu/items/${itemId}`;
 
       const res = await authenticatedFetch(url, {
         method: "DELETE",
-        body: JSON.stringify({}),
       });
 
-      if (!res.ok) {
-        throw new Error(`Delete failed: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+      const json = await res.json();
+      console.log("delete response:", json);
 
       toast.success("Menu item deleted successfully");
       setIsDeleteDialogOpen(false);
@@ -366,11 +330,7 @@ export default function MenuPage() {
     } catch (err: any) {
       console.error("Delete error:", err);
       setItems(previousItems);
-      const msg =
-        err.message?.includes("expired") || err.message?.includes("refresh")
-          ? "Session expired. Please sign in again."
-          : "Failed to delete menu item.";
-      toast.error(msg);
+      toast.error("Failed to delete menu item.");
     } finally {
       setIsDeleting(false);
     }
@@ -381,6 +341,7 @@ export default function MenuPage() {
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedItems = filteredItems.slice(
@@ -416,18 +377,25 @@ export default function MenuPage() {
         pages.push("...");
         pages.push(totalPages);
       }
-    } else if (currentPage > 5 && currentPage < totalPages - 4) {
-      pages.push(1);
-      pages.push("...");
-      pages.push(currentPage - 1, currentPage, currentPage + 1);
-      pages.push("...");
-      pages.push(totalPages);
+    } else if (currentPage < totalPages - 4) {
+      pages.push(
+        1,
+        "...",
+        currentPage - 1,
+        currentPage,
+        currentPage + 1,
+        "...",
+        totalPages,
+      );
     } else {
-      pages.push(1);
-      pages.push("...");
-      for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+      for (let i = totalPages - 4; i <= totalPages; i++) {
+        if (i > 0) pages.push(i);
+      }
+      if (totalPages > 5) {
+        pages.unshift("...");
+        pages.unshift(1);
+      }
     }
-
     return pages;
   };
 
@@ -463,9 +431,10 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen p-5 md:p-8 mt-10 md:mt-0 flex flex-col">
-      <div className="max-w-7xl mx-auto flex-1 w-full">
+    <div className="min-h-screen p-5 md:px-8 mt-10 md:mt-0 flex flex-col">
+      <div className="max-w-7xl min-h-[calc(100vh-5rem)] mx-auto flex-1 w-full">
         <div className="space-y-8">
+          {/* Header */}
           <div className="flex justify-between items-center mb-8 md:mb-15">
             <h1 className="text-3xl font-bold text-gray-900">Menu</h1>
             <div className="md:flex items-center hidden gap-6">
@@ -478,7 +447,7 @@ export default function MenuPage() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="pl-10 w-full h-12 md:min-w-90 rounded-md"
+                  className="pl-10 w-full h-12 rounded-md"
                 />
               </div>
               <Link href="/restaurant/menu/new">
@@ -509,7 +478,7 @@ export default function MenuPage() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="pl-10 w-full h-12 md:min-w-90 rounded-md"
+                  className="pl-10 w-full h-12 rounded-md"
                 />
               </div>
               <Link href="/restaurant/menu/new" className="w-full">
@@ -528,28 +497,16 @@ export default function MenuPage() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50">
-                        <TableHead
-                          className="text-gray-700 ps-4"
-                          style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                        >
+                        <TableHead className="text-gray-700 ps-4">
                           Item
                         </TableHead>
-                        <TableHead
-                          className="text-gray-700 text-center"
-                          style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                        >
+                        <TableHead className="text-gray-700 text-center">
                           Selling Price
                         </TableHead>
-                        <TableHead
-                          className="text-gray-700 text-center"
-                          style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                        >
+                        <TableHead className="text-gray-700 text-center">
                           Availability
                         </TableHead>
-                        <TableHead
-                          className="text-gray-700 text-right pe-4"
-                          style={{ paddingTop: "15px", paddingBottom: "15px" }}
-                        >
+                        <TableHead className="text-gray-700 text-right pe-4">
                           Action
                         </TableHead>
                       </TableRow>
@@ -587,21 +544,21 @@ export default function MenuPage() {
                           </TableCell>
                           <TableCell className="text-center">
                             <Switch
-                              checked={item.available}
+                              checked={item.isAvailable}
                               onCheckedChange={() =>
                                 handleToggleAvailability(item.id)
                               }
                               disabled={togglingIds.has(item.id)}
                               className={cn(
-                                item.available &&
+                                item.isAvailable &&
                                   "data-[state=checked]:bg-orange-500",
                                 togglingIds.has(item.id) &&
                                   "opacity-60 cursor-wait",
                               )}
                             />
                           </TableCell>
-                          <TableCell className="text-right pe-2 gap-2">
-                            <div className="flex items-center justify-end">
+                          <TableCell className="text-right pe-2">
+                            <div className="flex items-center justify-end gap-1">
                               <Link href={`/restaurant/menu/${item.id}`}>
                                 <Button
                                   variant="ghost"
@@ -670,31 +627,33 @@ export default function MenuPage() {
                               {formatPrice(item.sellingPrice)}
                             </span>
                             <Switch
-                              checked={item.available}
+                              checked={item.isAvailable}
                               onCheckedChange={() =>
                                 handleToggleAvailability(item.id)
                               }
                               disabled={togglingIds.has(item.id)}
                               className={cn(
-                                item.available &&
+                                item.isAvailable &&
                                   "data-[state=checked]:bg-orange-500",
                                 togglingIds.has(item.id) &&
                                   "opacity-60 cursor-wait",
                               )}
                             />
                             <div className="flex gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="hover:bg-gray-100 h-8 w-8 p-0 rounded-md"
-                              >
-                                <Image
-                                  src="/images/Edit.svg"
-                                  alt="Edit"
-                                  width={30}
-                                  height={30}
-                                />
-                              </Button>
+                              <Link href={`/restaurant/menu/${item.id}`}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="hover:bg-gray-100 h-8 w-8 p-0 rounded-md"
+                                >
+                                  <Image
+                                    src="/images/Edit.svg"
+                                    alt="Edit"
+                                    width={30}
+                                    height={30}
+                                  />
+                                </Button>
+                              </Link>
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -730,11 +689,11 @@ export default function MenuPage() {
                 </h2>
                 <p className="text-center text-gray-600 max-w-md">
                   {searchTerm
-                    ? `Your search for "${searchTerm}" does not match any items in your menu. Try a different keyword.`
+                    ? `Your search for "${searchTerm}" does not match any items in your menu.`
                     : "You're just a few clicks away from setting up and running your store. Start by adding different menus."}
                 </p>
                 {!searchTerm && (
-                  <Link href={"/restaurant/menu/new"}>
+                  <Link href="/restaurant/menu/new">
                     <Button className="bg-munchprimary mt-8 hover:bg-munchprimaryDark text-white px-8 py-6 flex items-center justify-center gap-1 rounded-md">
                       <Plus strokeWidth={3} />
                       <span>Add a menu</span>
@@ -747,8 +706,9 @@ export default function MenuPage() {
         </div>
       </div>
 
+      {/* Pagination */}
       {filteredItems.length > 0 && (
-        <div className="flex items-center justify-center mx-2 gap-5 text-sm py-8 border-t border-gray-100">
+        <div className="flex items-center justify-center mx-2 gap-5 text-sm border-t border-gray-100 mt-auto pt-6">
           <p className="text-gray-600 hidden md:block">
             Total <span>{filteredItems.length}</span> items
           </p>
@@ -817,6 +777,7 @@ export default function MenuPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
       <CustomModal
         isOpen={isDeleteDialogOpen && !!deleteCandidate}
         onClose={() => setIsDeleteDialogOpen(false)}
@@ -855,10 +816,10 @@ export default function MenuPage() {
   );
 }
 
+// Skeleton Component
 const MenuSkeleton = () => {
   return (
     <div className="min-h-screen p-6 md:p-8 mt-10 md:mt-0 max-w-7xl mx-auto space-y-8">
-      {/* Header Skeleton */}
       <div className="flex justify-between items-center mb-8 md:mb-15">
         <div className="h-10 w-32 bg-gray-200 animate-pulse rounded-md" />
         <div className="hidden md:flex gap-6">
@@ -867,7 +828,7 @@ const MenuSkeleton = () => {
         </div>
       </div>
 
-      {/* Table Skeleton (Desktop) */}
+      {/* Desktop Skeleton */}
       <div className="hidden md:block border border-gray-200 rounded-md overflow-hidden">
         <div className="h-12 bg-gray-50 border-b border-gray-200" />
         {[1, 2, 3, 4, 5].map((i) => (
@@ -887,7 +848,7 @@ const MenuSkeleton = () => {
         ))}
       </div>
 
-      {/* Card Skeleton (Mobile) */}
+      {/* Mobile Skeleton */}
       <div className="md:hidden space-y-4">
         {[1, 2, 3].map((i) => (
           <div

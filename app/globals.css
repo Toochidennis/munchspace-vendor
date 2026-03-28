@@ -151,6 +151,10 @@
     outline: none !important;
   }
 
+  Link, Button{
+    cursor: pointer !important;
+  }
+
   
   @media (min-width: 1022px) {
   .scrollbar-custom::-webkit-scrollbar {

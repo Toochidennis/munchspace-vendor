@@ -17,7 +17,12 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -451,7 +456,7 @@ function MenuEditSkeleton() {
 
 export default function EditMenuPage() {
   const [activeTab, setActiveTab] = useState<
-    "details" | "sizes" | "extras" | "discounts"
+    "details" | "sizes" | "extras" | "discounts" | undefined
   >("details");
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
@@ -558,6 +563,7 @@ export default function EditMenuPage() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const { data } = await res.json();
+        console.log("Fetched menu item data:", data);
 
         const hasDiscount = !!data.discount?.type;
 
@@ -646,6 +652,7 @@ export default function EditMenuPage() {
   };
 
   const validateCurrentTab = async () => {
+    if (!activeTab) return true;
     if (activeTab === "details") {
       return await trigger([
         "name",
@@ -666,6 +673,11 @@ export default function EditMenuPage() {
     const isValid = await validateCurrentTab();
     if (!isValid) return;
 
+    if (!activeTab) {
+      setActiveTab("details");
+      return;
+    }
+
     const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex < tabOrder.length - 1) {
       setActiveTab(tabOrder[currentIndex + 1]);
@@ -675,6 +687,11 @@ export default function EditMenuPage() {
   };
 
   const handleBack = () => {
+    if (!activeTab) {
+      setActiveTab("details");
+      return;
+    }
+
     const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex > 0) {
       setActiveTab(tabOrder[currentIndex - 1]);
@@ -759,8 +776,13 @@ export default function EditMenuPage() {
         );
       }
 
+      const json = await res.json();
+      // const formObject = Object.fromEntries(formData.entries());
+      // console.log("FormData as Object:", formObject);
+      // console.log("Update API response:", json);
+
       toast.success("Menu item updated successfully");
-      router.push("/restaurant/menu");
+      // router.push("/restaurant/menu");
     } catch (err: any) {
       console.error("Update error:", err);
       const msg = err.message?.includes("expired")
@@ -820,579 +842,586 @@ export default function EditMenuPage() {
           </p>
         </div>
 
-        <Tabs value={activeTab} className="w-full">
-          <TabsList className="flex gap-10 rounded-none bg-transparent border-b border-gray-200 mb-12 pb-2 w-full justify-start">
-            <TabsTrigger
-              value="details"
-              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
-            >
+        <Accordion
+          type="single"
+          collapsible
+          value={activeTab}
+          onValueChange={(value) => {
+            setActiveTab(
+              value
+                ? (value as "details" | "sizes" | "extras" | "discounts")
+                : undefined,
+            );
+          }}
+          className="space-y-4"
+        >
+          <AccordionItem value="details">
+            <AccordionTrigger className="text-lg font-semibold text-gray-900">
               Details
-            </TabsTrigger>
-            <TabsTrigger
-              value="sizes"
-              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
-            >
-              Sizes
-            </TabsTrigger>
-            <TabsTrigger
-              value="extras"
-              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
-            >
-              Extras
-            </TabsTrigger>
-            <TabsTrigger
-              value="discounts"
-              className="disabled:opacity-100 data-[state=active]:text-munchprimary data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-4 flex-0 w-fit rounded-none cursor-default"
-            >
-              Discounts
-            </TabsTrigger>
-          </TabsList>
-
-          {/* ────────────────────────────────────────────────
-               DETAILS TAB (unchanged)
-          ──────────────────────────────────────────────── */}
-          <TabsContent value="details" className="space-y-8">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Label className={cn(errors.name && "text-red-600")}>
-                  Name <span className="text-red-600">*</span>
-                </Label>
-                <Input
-                  placeholder="Name"
-                  {...register("name")}
-                  className={cn(
-                    "h-12",
-                    errors.name && "border-red-600 focus-visible:ring-red-600",
-                  )}
-                />
-                {errors.name && (
-                  <p className="text-red-600 text-sm">{errors.name.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label className={cn(errors.description && "text-red-600")}>
-                  Description <span className="text-red-600">*</span>
-                </Label>
-                <Textarea
-                  placeholder="Description"
-                  className={cn(
-                    "min-h-32",
-                    errors.description &&
-                      "border-red-600 focus-visible:ring-red-600",
-                  )}
-                  {...register("description")}
-                />
-                {errors.description && (
-                  <p className="text-red-600 text-sm">
-                    {errors.description.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label className={cn(errors.image && "text-red-600")}>
-                  Image <span className="text-red-600">*</span>
-                </Label>
-                <label className="block cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-                  <div
-                    className={cn(
-                      "bg-gray-100 rounded-lg p-8 flex flex-col items-center justify-center gap-3 hover:border-gray-400 transition",
-                      errors.image && "border-red-600",
-                    )}
-                  >
-                    {image ? (
-                      <img
-                        src={image}
-                        alt="Menu item"
-                        width={300}
-                        height={200}
-                        className="rounded-lg object-cover max-h-64"
-                        crossOrigin="anonymous"
-                      />
-                    ) : (
-                      <>
-                        <Camera className="h-12 w-12 text-orange-500" />
-                        <p className="text-gray-600 text-center">
-                          Select an image from your media gallery
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </label>
-                {errors.image && (
-                  <p className="text-red-600 text-sm">{errors.image.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label className={cn(errors.categoryTypeId && "text-red-600")}>
-                  Category <span className="text-red-600">*</span>
-                </Label>
-                <Controller
-                  control={control}
-                  name="categoryTypeId"
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger
-                        className={cn(
-                          "h-12 w-full",
-                          errors.categoryTypeId &&
-                            "border-red-600 focus-visible:ring-red-600",
-                        )}
-                      >
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent className="w-full">
-                        {loadingCategories ? (
-                          <div className="p-4 text-center text-gray-500">
-                            Loading categories...
-                          </div>
-                        ) : categories.length > 0 ? (
-                          categories.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>
-                              {cat.label}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <div className="p-4 text-center text-gray-500">
-                            No categories available
-                          </div>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.categoryTypeId && (
-                  <p className="text-red-600 text-sm">
-                    {errors.categoryTypeId.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
+            </AccordionTrigger>
+            <AccordionContent className="space-y-8">
+              <div className="space-y-6">
                 <div className="space-y-2">
-                  <Label className={cn(errors.sellingPrice && "text-red-600")}>
-                    Selling price <span className="text-red-600">*</span>
+                  <Label className={cn(errors.name && "text-red-600")}>
+                    Name <span className="text-red-600">*</span>
                   </Label>
                   <Input
-                    type="number"
-                    min={1}
-                    step="0.01"
-                    placeholder="0.00"
-                    {...register("sellingPrice", { valueAsNumber: true })}
+                    placeholder="Name"
+                    {...register("name")}
                     className={cn(
                       "h-12",
-                      errors.sellingPrice &&
+                      errors.name &&
                         "border-red-600 focus-visible:ring-red-600",
                     )}
                   />
-                  {errors.sellingPrice && (
+                  {errors.name && (
                     <p className="text-red-600 text-sm">
-                      {errors.sellingPrice.message}
+                      {errors.name.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label className={cn(errors.description && "text-red-600")}>
+                    Description <span className="text-red-600">*</span>
+                  </Label>
+                  <Textarea
+                    placeholder="Description"
+                    className={cn(
+                      "min-h-32",
+                      errors.description &&
+                        "border-red-600 focus-visible:ring-red-600",
+                    )}
+                    {...register("description")}
+                  />
+                  {errors.description && (
+                    <p className="text-red-600 text-sm">
+                      {errors.description.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label className={cn(errors.image && "text-red-600")}>
+                    Image <span className="text-red-600">*</span>
+                  </Label>
+                  <label className="block cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                    <div
+                      className={cn(
+                        "bg-gray-100 rounded-lg p-8 flex flex-col items-center justify-center gap-3 hover:border-gray-400 transition",
+                        errors.image && "border-red-600",
+                      )}
+                    >
+                      {image ? (
+                        <img
+                          src={image}
+                          alt="Menu item"
+                          width={300}
+                          height={200}
+                          className="rounded-lg object-cover max-h-64"
+                          crossOrigin="anonymous"
+                        />
+                      ) : (
+                        <>
+                          <Camera className="h-12 w-12 text-orange-500" />
+                          <p className="text-gray-600 text-center">
+                            Select an image from your media gallery
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </label>
+                  {errors.image && (
+                    <p className="text-red-600 text-sm">
+                      {errors.image.message}
                     </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
                   <Label
-                    className={cn(errors.quantityInStock && "text-red-600")}
+                    className={cn(errors.categoryTypeId && "text-red-600")}
                   >
-                    Quantity in Stock <span className="text-red-600">*</span>
+                    Category <span className="text-red-600">*</span>
                   </Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    step={1}
-                    placeholder="0"
-                    {...register("quantityInStock", { valueAsNumber: true })}
-                    className={cn(
-                      "h-12",
-                      errors.quantityInStock &&
-                        "border-red-600 focus-visible:ring-red-600",
+                  <Controller
+                    control={control}
+                    name="categoryTypeId"
+                    render={({ field }) => (
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <SelectTrigger
+                          className={cn(
+                            "h-12 w-full",
+                            errors.categoryTypeId &&
+                              "border-red-600 focus-visible:ring-red-600",
+                          )}
+                        >
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent className="w-full">
+                          {loadingCategories ? (
+                            <div className="p-4 text-center text-gray-500">
+                              Loading categories...
+                            </div>
+                          ) : categories.length > 0 ? (
+                            categories.map((cat) => (
+                              <SelectItem key={cat.id} value={cat.id}>
+                                {cat.label}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <div className="p-4 text-center text-gray-500">
+                              No categories available
+                            </div>
+                          )}
+                        </SelectContent>
+                      </Select>
                     )}
                   />
-                  {errors.quantityInStock && (
+                  {errors.categoryTypeId && (
                     <p className="text-red-600 text-sm">
-                      {errors.quantityInStock.message}
+                      {errors.categoryTypeId.message}
                     </p>
                   )}
                 </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label
+                      className={cn(errors.sellingPrice && "text-red-600")}
+                    >
+                      Selling price <span className="text-red-600">*</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      step="0.01"
+                      placeholder="0.00"
+                      {...register("sellingPrice", { valueAsNumber: true })}
+                      className={cn(
+                        "h-12",
+                        errors.sellingPrice &&
+                          "border-red-600 focus-visible:ring-red-600",
+                      )}
+                    />
+                    {errors.sellingPrice && (
+                      <p className="text-red-600 text-sm">
+                        {errors.sellingPrice.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label
+                      className={cn(errors.quantityInStock && "text-red-600")}
+                    >
+                      Quantity in Stock <span className="text-red-600">*</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      placeholder="0"
+                      {...register("quantityInStock", { valueAsNumber: true })}
+                      className={cn(
+                        "h-12",
+                        errors.quantityInStock &&
+                          "border-red-600 focus-visible:ring-red-600",
+                      )}
+                    />
+                    {errors.quantityInStock && (
+                      <p className="text-red-600 text-sm">
+                        {errors.quantityInStock.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <Label>Availability</Label>
+                  <Controller
+                    control={control}
+                    name="isAvailable"
+                    render={({ field }) => (
+                      <RadioGroup
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <div className="flex items-center gap-8">
+                          <div className="flex items-center gap-3">
+                            <RadioGroupItem value="available" id="available" />
+                            <Label
+                              htmlFor="available"
+                              className="font-normal cursor-pointer"
+                            >
+                              Available
+                            </Label>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <RadioGroupItem
+                              value="unavailable"
+                              id="unavailable"
+                            />
+                            <Label
+                              htmlFor="unavailable"
+                              className="font-normal cursor-pointer"
+                            >
+                              Unavailable
+                            </Label>
+                          </div>
+                        </div>
+                      </RadioGroup>
+                    )}
+                  />
+                </div>
               </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="sizes">
+            <AccordionTrigger className="text-lg font-semibold text-gray-900">
+              Sizes
+            </AccordionTrigger>
+            <AccordionContent className="space-y-8">
+              <p className="text-gray-600">
+                Specify the sizes/variants for this menu item (optional).
+              </p>
+
+              {errors.variants &&
+                typeof errors.variants.message === "string" && (
+                  <p className="text-red-600 text-sm text-center">
+                    {errors.variants.message}
+                  </p>
+                )}
 
               <div className="space-y-4">
-                <Label>Availability</Label>
-                <Controller
-                  control={control}
-                  name="isAvailable"
-                  render={({ field }) => (
-                    <RadioGroup
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
-                      <div className="flex items-center gap-8">
-                        <div className="flex items-center gap-3">
-                          <RadioGroupItem value="available" id="available" />
-                          <Label
-                            htmlFor="available"
-                            className="font-normal cursor-pointer"
-                          >
-                            Available
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <RadioGroupItem
-                            value="unavailable"
-                            id="unavailable"
-                          />
-                          <Label
-                            htmlFor="unavailable"
-                            className="font-normal cursor-pointer"
-                          >
-                            Unavailable
-                          </Label>
-                        </div>
+                {variantFields.map((field, index) => (
+                  <div key={field.id} className="space-y-3 border-b pb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <Input
+                          placeholder="Size name (e.g. Small)"
+                          {...register(`variants.${index}.name`)}
+                          className="h-12"
+                        />
+                        {errors.variants?.[index]?.name && (
+                          <p className="text-red-600 text-sm mt-1">
+                            {errors.variants[index]?.name?.message}
+                          </p>
+                        )}
                       </div>
-                    </RadioGroup>
-                  )}
-                />
+                      <div className="w-32">
+                        <Input
+                          placeholder="Price"
+                          {...register(`variants.${index}.price`)}
+                          className="h-12"
+                        />
+                        {errors.variants?.[index]?.price && (
+                          <p className="text-red-600 text-sm mt-1">
+                            {errors.variants[index]?.price?.message}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeVariant(index)}
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </Button>
+                    </div>
+                    <Input
+                      placeholder="Description (optional)"
+                      {...register(`variants.${index}.description`)}
+                      className="h-12"
+                    />
+                  </div>
+                ))}
               </div>
-            </div>
-          </TabsContent>
 
-          {/* ────────────────────────────────────────────────
-               SIZES TAB (unchanged)
-          ──────────────────────────────────────────────── */}
-          <TabsContent value="sizes" className="space-y-8">
-            <p className="text-gray-600">
-              Specify the sizes/variants for this menu item (optional).
-            </p>
-
-            {errors.variants && typeof errors.variants.message === "string" && (
-              <p className="text-red-600 text-sm text-center">
-                {errors.variants.message}
-              </p>
-            )}
-
-            <div className="space-y-4">
-              {variantFields.map((field, index) => (
-                <div key={field.id} className="space-y-3 border-b pb-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <Input
-                        placeholder="Size name (e.g. Small)"
-                        {...register(`variants.${index}.name`)}
-                        className="h-12"
-                      />
-                      {errors.variants?.[index]?.name && (
-                        <p className="text-red-600 text-sm mt-1">
-                          {errors.variants[index]?.name?.message}
-                        </p>
-                      )}
-                    </div>
-                    <div className="w-32">
-                      <Input
-                        placeholder="Price"
-                        {...register(`variants.${index}.price`)}
-                        className="h-12"
-                      />
-                      {errors.variants?.[index]?.price && (
-                        <p className="text-red-600 text-sm mt-1">
-                          {errors.variants[index]?.price?.message}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeVariant(index)}
-                      className="text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </Button>
-                  </div>
-                  <Input
-                    placeholder="Description (optional)"
-                    {...register(`variants.${index}.description`)}
-                    className="h-12"
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div className="text-center">
-              <Button
-                variant="outline"
-                onClick={() =>
-                  appendVariant({ name: "", description: "", price: "" })
-                }
-                className="gap-2"
-              >
-                <Plus className="h-5 w-5 text-munchprimary" />
-                Add Variant
-              </Button>
-            </div>
-          </TabsContent>
-
-          {/* ────────────────────────────────────────────────
-               EXTRAS TAB (unchanged)
-          ──────────────────────────────────────────────── */}
-          <TabsContent value="extras" className="space-y-8">
-            <p className="text-gray-600">
-              Add any additional items customers can choose with this menu item
-              (optional).
-            </p>
-
-            {errors.addons && typeof errors.addons.message === "string" && (
-              <p className="text-red-600 text-sm text-center">
-                {errors.addons.message}
-              </p>
-            )}
-
-            <div className="space-y-4">
-              {addonFields.map((field, index) => (
-                <div key={field.id} className="space-y-3 border-b pb-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <Input
-                        placeholder="Addon name (e.g. Extra Plantain)"
-                        {...register(`addons.${index}.name`)}
-                        className="h-12"
-                      />
-                      {errors.addons?.[index]?.name && (
-                        <p className="text-red-600 text-sm mt-1">
-                          {errors.addons[index]?.name?.message}
-                        </p>
-                      )}
-                    </div>
-                    <div className="w-32">
-                      <Input
-                        placeholder="Price"
-                        {...register(`addons.${index}.price`)}
-                        className="h-12"
-                      />
-                      {errors.addons?.[index]?.price && (
-                        <p className="text-red-600 text-sm mt-1">
-                          {errors.addons[index]?.price?.message}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeAddon(index)}
-                      className="text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </Button>
-                  </div>
-                  <Input
-                    placeholder="Description (optional)"
-                    {...register(`addons.${index}.description`)}
-                    className="h-12"
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div className="text-center">
-              <Button
-                variant="outline"
-                onClick={() =>
-                  appendAddon({ name: "", description: "", price: "" })
-                }
-                className="gap-2"
-              >
-                <Plus className="h-5 w-5 text-munchprimary" />
-                Add Extra
-              </Button>
-            </div>
-          </TabsContent>
-
-          {/* ────────────────────────────────────────────────
-               DISCOUNTS TAB – now aligned with Create Menu
-          ──────────────────────────────────────────────── */}
-          <TabsContent value="discounts" className="space-y-8">
-            <p className="text-gray-600">
-              Offer a temporary price reduction to attract more orders for this
-              item (optional).
-            </p>
-
-            {!showDiscountForm ? (
               <div className="text-center">
                 <Button
                   variant="outline"
+                  onClick={() =>
+                    appendVariant({ name: "", description: "", price: "" })
+                  }
                   className="gap-2"
-                  onClick={() => {
-                    setShowDiscountForm(true);
-                    setValue("discount.type", "PERCENTAGE");
-                  }}
                 >
                   <Plus className="h-5 w-5 text-munchprimary" />
-                  Add Discount
+                  Add Variant
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-6 border border-gray-200 rounded-lg p-6 relative">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-4 right-4 text-red-600 hover:bg-red-50"
-                  onClick={() => {
-                    setShowDiscountForm(false);
-                    resetField("discount");
-                  }}
-                >
-                  <Trash2 className="h-5 w-5" />
-                </Button>
+            </AccordionContent>
+          </AccordionItem>
 
-                {errors.discount &&
-                  typeof errors.discount.message === "string" && (
-                    <p className="text-red-600 text-sm text-center">
-                      {errors.discount.message}
-                    </p>
-                  )}
+          <AccordionItem value="extras">
+            <AccordionTrigger className="text-lg font-semibold text-gray-900">
+              Extras
+            </AccordionTrigger>
+            <AccordionContent className="space-y-8">
+              <p className="text-gray-600">
+                Add any additional items customers can choose with this menu
+                item (optional).
+              </p>
 
-                <div className="space-y-6">
-                  <div className="space-y-4">
-                    <Label>Discount Type</Label>
-                    <Controller
-                      control={control}
-                      name="discount.type"
-                      render={({ field }) => (
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          value={field.value ?? ""}
-                          className="flex flex-col gap-4"
-                        >
-                          <div className="flex items-start space-x-3">
-                            <RadioGroupItem
-                              value="PERCENTAGE"
-                              id="percentage"
-                              className="mt-1"
-                            />
-                            <div>
-                              <Label
-                                htmlFor="percentage"
-                                className="cursor-pointer font-medium"
-                              >
-                                Percentage off
-                              </Label>
-                              <p className="text-sm text-gray-600">
-                                Reduce price by a percentage
-                              </p>
-                            </div>
-                          </div>
+              {errors.addons && typeof errors.addons.message === "string" && (
+                <p className="text-red-600 text-sm text-center">
+                  {errors.addons.message}
+                </p>
+              )}
 
-                          <div className="flex items-start space-x-3">
-                            <RadioGroupItem
-                              value="FLAT"
-                              id="flat"
-                              className="mt-1"
-                            />
-                            <div>
-                              <Label
-                                htmlFor="flat"
-                                className="cursor-pointer font-medium"
-                              >
-                                Flat amount off
-                              </Label>
-                              <p className="text-sm text-gray-600">
-                                ₦ amount off original price
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-start space-x-3">
-                            <RadioGroupItem
-                              value="FIXED_PRICE"
-                              id="fixed"
-                              className="mt-1"
-                            />
-                            <div>
-                              <Label
-                                htmlFor="fixed"
-                                className="cursor-pointer font-medium"
-                              >
-                                Set promo price
-                              </Label>
-                              <p className="text-sm text-gray-600">
-                                Sell at a new fixed price
-                              </p>
-                            </div>
-                          </div>
-                        </RadioGroup>
-                      )}
+              <div className="space-y-4">
+                {addonFields.map((field, index) => (
+                  <div key={field.id} className="space-y-3 border-b pb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <Input
+                          placeholder="Addon name (e.g. Extra Plantain)"
+                          {...register(`addons.${index}.name`)}
+                          className="h-12"
+                        />
+                        {errors.addons?.[index]?.name && (
+                          <p className="text-red-600 text-sm mt-1">
+                            {errors.addons[index]?.name?.message}
+                          </p>
+                        )}
+                      </div>
+                      <div className="w-32">
+                        <Input
+                          placeholder="Price"
+                          {...register(`addons.${index}.price`)}
+                          className="h-12"
+                        />
+                        {errors.addons?.[index]?.price && (
+                          <p className="text-red-600 text-sm mt-1">
+                            {errors.addons[index]?.price?.message}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeAddon(index)}
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </Button>
+                    </div>
+                    <Input
+                      placeholder="Description (optional)"
+                      {...register(`addons.${index}.description`)}
+                      className="h-12"
                     />
                   </div>
+                ))}
+              </div>
 
-                  {discountType && (
-                    <div className="space-y-2">
-                      <Label>Discount Value</Label>
-                      <div className="flex items-center gap-3">
-                        <Input
-                          type="text"
-                          placeholder="0"
-                          {...register("discount.value")}
-                          className="h-12 max-w-[200px]"
-                        />
-                        <span className="text-gray-700 font-medium min-w-[50px]">
-                          {discountType === "PERCENTAGE" ? "%" : "₦"}
-                        </span>
+              <div className="text-center">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    appendAddon({ name: "", description: "", price: "" })
+                  }
+                  className="gap-2"
+                >
+                  <Plus className="h-5 w-5 text-munchprimary" />
+                  Add Extra
+                </Button>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="discounts">
+            <AccordionTrigger className="text-lg font-semibold text-gray-900">
+              Discounts
+            </AccordionTrigger>
+            <AccordionContent className="space-y-8">
+              <p className="text-gray-600">
+                Offer a temporary price reduction to attract more orders for
+                this item (optional).
+              </p>
+
+              {!showDiscountForm ? (
+                <div className="text-center">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      setShowDiscountForm(true);
+                      setValue("discount.type", "PERCENTAGE");
+                    }}
+                  >
+                    <Plus className="h-5 w-5 text-munchprimary" />
+                    Add Discount
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-6 border border-gray-200 rounded-lg p-6 relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-4 right-4 text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      setShowDiscountForm(false);
+                      resetField("discount");
+                    }}
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </Button>
+
+                  {errors.discount &&
+                    typeof errors.discount.message === "string" && (
+                      <p className="text-red-600 text-sm text-center">
+                        {errors.discount.message}
+                      </p>
+                    )}
+
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <Label>Discount Type</Label>
+                      <Controller
+                        control={control}
+                        name="discount.type"
+                        render={({ field }) => (
+                          <RadioGroup
+                            onValueChange={field.onChange}
+                            value={field.value ?? ""}
+                            className="flex flex-col gap-4"
+                          >
+                            <div className="flex items-start space-x-3">
+                              <RadioGroupItem
+                                value="PERCENTAGE"
+                                id="percentage"
+                                className="mt-1"
+                              />
+                              <div>
+                                <Label
+                                  htmlFor="percentage"
+                                  className="cursor-pointer font-medium"
+                                >
+                                  Percentage off
+                                </Label>
+                                <p className="text-sm text-gray-600">
+                                  Reduce price by a percentage
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start space-x-3">
+                              <RadioGroupItem
+                                value="FLAT"
+                                id="flat"
+                                className="mt-1"
+                              />
+                              <div>
+                                <Label
+                                  htmlFor="flat"
+                                  className="cursor-pointer font-medium"
+                                >
+                                  Flat amount off
+                                </Label>
+                                <p className="text-sm text-gray-600">
+                                  ₦ amount off original price
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start space-x-3">
+                              <RadioGroupItem
+                                value="FIXED_PRICE"
+                                id="fixed"
+                                className="mt-1"
+                              />
+                              <div>
+                                <Label
+                                  htmlFor="fixed"
+                                  className="cursor-pointer font-medium"
+                                >
+                                  Set promo price
+                                </Label>
+                                <p className="text-sm text-gray-600">
+                                  Sell at a new fixed price
+                                </p>
+                              </div>
+                            </div>
+                          </RadioGroup>
+                        )}
+                      />
+                    </div>
+
+                    {discountType && (
+                      <div className="space-y-2">
+                        <Label>Discount Value</Label>
+                        <div className="flex items-center gap-3">
+                          <Input
+                            type="text"
+                            placeholder="0"
+                            {...register("discount.value")}
+                            className="h-12 max-w-[200px]"
+                          />
+                          <span className="text-gray-700 font-medium min-w-[50px]">
+                            {discountType === "PERCENTAGE" ? "%" : "₦"}
+                          </span>
+                        </div>
+                        {errors.discount?.value && (
+                          <p className="text-red-600 text-sm mt-1">
+                            {errors.discount.value.message}
+                          </p>
+                        )}
                       </div>
-                      {errors.discount?.value && (
-                        <p className="text-red-600 text-sm mt-1">
-                          {errors.discount.value.message}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label
-                        className={cn(
-                          errors.discount?.startsAt && "text-red-600",
-                        )}
-                      >
-                        Start Date & Time{" "}
-                        <span className="text-red-600">*</span>
-                      </Label>
-                      <DateTimePickerField
-                        control={control}
-                        name="discount.startsAt"
-                        minDate={new Date()}
-                        error={errors.discount?.startsAt}
-                      />
-                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label
+                          className={cn(
+                            errors.discount?.startsAt && "text-red-600",
+                          )}
+                        >
+                          Start Date & Time{" "}
+                          <span className="text-red-600">*</span>
+                        </Label>
+                        <DateTimePickerField
+                          control={control}
+                          name="discount.startsAt"
+                          minDate={new Date()}
+                          error={errors.discount?.startsAt}
+                        />
+                      </div>
 
-                    <div className="space-y-2">
-                      <Label
-                        className={cn(
-                          errors.discount?.endsAt && "text-red-600",
-                        )}
-                      >
-                        End Date & Time <span className="text-red-600">*</span>
-                      </Label>
-                      <DateTimePickerField
-                        control={control}
-                        name="discount.endsAt"
-                        minDate={startDate ?? new Date()}
-                        error={errors.discount?.endsAt}
-                      />
+                      <div className="space-y-2">
+                        <Label
+                          className={cn(
+                            errors.discount?.endsAt && "text-red-600",
+                          )}
+                        >
+                          End Date & Time{" "}
+                          <span className="text-red-600">*</span>
+                        </Label>
+                        <DateTimePickerField
+                          control={control}
+                          name="discount.endsAt"
+                          minDate={startDate ?? new Date()}
+                          error={errors.discount?.endsAt}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
         <div className="flex justify-end gap-2 items-center mt-12 pt-8 border-t border-gray-200">
           {!isFirstTab && (

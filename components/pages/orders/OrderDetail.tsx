@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
-import Image from "next/image";
+import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
   Accordion,
@@ -15,6 +14,7 @@ import {
 } from "@/components/ui/accordion";
 import {
   ShoppingCart,
+  ChevronLeft,
   ChevronRight,
   AlertCircle,
   RefreshCw,
@@ -22,21 +22,18 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { toast } from "sonner";
-import {
-  getAccessToken,
-  getBusinessId,
-} from "@/app/lib/auth";
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
-//  Constants from .env
+//  Constants
 // ────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // ────────────────────────────────────────────────
-//  Authenticated Fetch (with token refresh on 401)
+//  Authenticated Fetch
 // ────────────────────────────────────────────────
 
 async function authenticatedFetch(
@@ -80,21 +77,30 @@ async function authenticatedFetch(
   return response;
 }
 
+// Helper function to format date in natural words (e.g., "March 23, 2026")
+const formatDateInWords = (dateString: string): string => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+};
+
 // ────────────────────────────────────────────────
 //  Component
 // ────────────────────────────────────────────────
 
 export default function OrderDetailsPage() {
-  const slug = useParams<{ slug: string }>();
-  const orderId = slug?.slug;
+  const params = useParams<{ slug: string }>();
+  const orderId = params?.slug;
+  const router = useRouter();
 
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
   );
-
-  const [currentOrder, setCurrentOrder] = useState(1); // Keeping your placeholder logic
 
   useEffect(() => {
     const BUSINESS_ID = getBusinessId();
@@ -160,38 +166,38 @@ export default function OrderDetailsPage() {
     );
   }
 
+  // ====================== LOADING SKELETON ======================
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center p-6">
-        <div className="flex items-center gap-2 text-sm text-gray-500 mb-5 w-full mt-14 md:mt-0 max-w-3xl opacity-0">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-5 w-full mt-14 md:mt-0 max-w-3xl">
           <span>Orders</span>
           <span>/</span>
           <span className="text-gray-900 font-medium">...</span>
         </div>
+
         <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0 gap-0 animate-pulse">
-          {/* Header skeleton */}
           <CardHeader className="pb-4 mb-4">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-gray-200 rounded-lg" />
-              <div className="space-y-2">
-                <div className="h-6 w-24 bg-gray-200 rounded" />
-                <div className="h-7 w-40 bg-gray-200 rounded" />
-                <div className="h-4 w-32 bg-gray-200 rounded" />
+              <div className="space-y-2 flex-1">
+                <div className="h-5 w-20 bg-gray-200 rounded" />
+                <div className="h-8 w-56 bg-gray-200 rounded" />
+                <div className="h-4 w-48 bg-gray-200 rounded" />
               </div>
             </div>
           </CardHeader>
 
-          {/* Accordion skeleton */}
           <div className="mb-4">
             <div className="px-6 bg-gray-50 h-12 flex items-center">
-              <div className="h-5 w-40 bg-gray-200 rounded" />
+              <div className="h-5 w-48 bg-gray-200 rounded" />
             </div>
             <div className="px-6 pt-6 pb-8 space-y-6">
               <div className="grid grid-cols-2 gap-6">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="space-y-2">
                     <div className="h-4 w-24 bg-gray-200 rounded" />
-                    <div className="h-5 w-32 bg-gray-200 rounded" />
+                    <div className="h-5 w-36 bg-gray-200 rounded" />
                   </div>
                 ))}
               </div>
@@ -200,18 +206,16 @@ export default function OrderDetailsPage() {
 
           <Separator className="mb-4" />
 
-          {/* Customer's Order skeleton */}
           <div className="p-6 mb-4 space-y-6">
             <div className="h-7 w-40 bg-gray-200 rounded" />
             <div className="h-5 w-56 bg-gray-200 rounded" />
             <div className="space-y-5">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex justify-between items-start">
-                  <div className="space-y-2">
-                    <div className="h-5 w-48 bg-gray-200 rounded" />
-                    <div className="h-4 w-32 bg-gray-200 rounded" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-5 w-64 bg-gray-200 rounded" />
                   </div>
-                  <div className="h-5 w-20 bg-gray-200 rounded" />
+                  <div className="h-5 w-24 bg-gray-200 rounded" />
                 </div>
               ))}
             </div>
@@ -219,27 +223,25 @@ export default function OrderDetailsPage() {
 
           <hr className="border-dashed" />
 
-          {/* Summary skeleton */}
           <div className="p-6 bg-gray-50 py-9 space-y-6">
             <div className="h-7 w-32 bg-gray-200 rounded" />
             <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
+              {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="flex justify-between">
-                  <div className="h-5 w-32 bg-gray-200 rounded" />
-                  <div className="h-5 w-24 bg-gray-200 rounded" />
+                  <div className="h-5 w-40 bg-gray-200 rounded" />
+                  <div className="h-5 w-28 bg-gray-200 rounded" />
                 </div>
               ))}
-              <div className="h-px bg-gray-200 my-2" />
+              <div className="h-px bg-gray-200 my-3" />
               <div className="flex justify-between">
                 <div className="h-6 w-40 bg-gray-200 rounded" />
-                <div className="h-6 w-28 bg-gray-200 rounded" />
+                <div className="h-6 w-32 bg-gray-200 rounded" />
               </div>
             </div>
           </div>
 
-          {/* Footer skeleton */}
-          <div className="rounded-b-3xl px-6 py-4 flex justify-between items-center">
-            <div className="h-5 w-40 bg-gray-200 rounded" />
+          <div className="rounded-b-3xl px-6 py-6 flex justify-between items-center border-t">
+            <div className="h-10 w-32 bg-gray-200 rounded" />
             <div className="h-10 w-32 bg-gray-200 rounded" />
           </div>
         </Card>
@@ -257,35 +259,27 @@ export default function OrderDetailsPage() {
     );
   }
 
-  // Map API data to your UI-friendly structure
+  const costSummary = order.costSummary || [];
+  const previousOrderId = order.previousOrderId;
+  const nextOrderId = order.nextOrderId;
+
   const displayData = {
     id: order.orderCode,
     status: order.status.replace(/_/g, " "),
-    orderedDate: new Date(order.placedAt).toLocaleDateString(),
+    orderedDateInWords: formatDateInWords(order.placedAt), // ← Changed to words
     orderDate: new Date(order.placedAt).toLocaleString(),
     totalPrice: `₦${order.totals.total.toLocaleString()}`,
     paymentOption: order.payment?.channel || "N/A",
     orderChannel: order.orderChannel || "N/A",
     processedBy: order.processedBy || "N/A",
-    customerName: `${order.customer?.name || "N/A"}`,
+    customerName: order.customer?.name || "N/A",
     itemsCount: order.items.length,
-    nextOrderId: order.nextOrderId,
     items: order.items.map((item: any) => ({
       quantity: `${item.quantity}x`,
       name: item.name,
-      variant: "", // API doesn't provide variant – add if available later
       price: `₦${item.total.toLocaleString()}`,
       image: item.imageUrl,
     })),
-    summary: {
-      paperBagCost: "N0.00", // not in API – placeholder
-      deliveryFee: `₦${order.totals.deliveryFee?.toLocaleString() || "0"}`,
-      serviceFee: `₦${order.totals.charges?.toLocaleString() || "0"}`,
-      estimatedProduct: `₦${order.totals.subtotal.toLocaleString()}`,
-      estimatedTotal: `₦${order.totals.total.toLocaleString()}`,
-    },
-    currentOrderIndex: currentOrder,
-    totalOrders: 84, // placeholder – adjust when you have real total
     image: order.items[0]?.imageUrl || "/images/foods/egusi.png",
   };
 
@@ -297,6 +291,7 @@ export default function OrderDetailsPage() {
         <span>/</span>
         <span className="text-gray-900 font-medium">{displayData.id}</span>
       </div>
+
       <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0 gap-0">
         {/* Header */}
         <CardHeader className="pb-4 mb-4">
@@ -315,6 +310,8 @@ export default function OrderDetailsPage() {
               <Badge
                 className={cn(
                   "rounded px-4 py-1 mb-1",
+                  displayData.status.toLowerCase().includes("ready") &&
+                    "bg-purple-100 text-purple-700 border border-purple-200",
                   displayData.status.toLowerCase().includes("complete") &&
                     "bg-green-100 text-green-500 border border-green-200",
                   displayData.status.toLowerCase().includes("pending") &&
@@ -332,7 +329,7 @@ export default function OrderDetailsPage() {
                 Order {displayData.id}
               </h2>
               <p className="text-sm text-gray-500">
-                Ordered on {displayData.orderedDate}
+                Ordered on {displayData.orderedDateInWords}
               </p>
             </div>
           </div>
@@ -413,9 +410,6 @@ export default function OrderDetailsPage() {
                   <p className="font-medium text-gray-900">
                     {item.quantity} {item.name}
                   </p>
-                  {item.variant && (
-                    <p className="text-sm text-gray-500">{item.variant}</p>
-                  )}
                 </div>
                 <p className="font-medium text-gray-900">{item.price}</p>
               </div>
@@ -425,49 +419,58 @@ export default function OrderDetailsPage() {
 
         <hr className="border-dashed" />
 
-        {/* Summary */}
+        {/* Dynamic Summary */}
         <div className="p-6 bg-gray-50 py-9">
           <h3 className="text-lg font-bold text-gray-900 mb-4">Summary</h3>
           <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Items subtotal:</span>
-              <span className="font-medium text-gray-900">
-                {displayData.summary.estimatedProduct}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Delivery fee:</span>
-              <span className="font-medium text-gray-900">
-                {displayData.summary.deliveryFee}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Packaging Fee:</span>
-              <span className="font-medium text-gray-900">
-                {displayData.summary.serviceFee}
-              </span>
-            </div>
+            {costSummary.map(
+              (item: { label: string; amount: number }, index: number) => (
+                <div key={index} className="flex justify-between">
+                  <span className="text-gray-600">{item.label}:</span>
+                  <span className="font-medium text-gray-900">
+                    ₦{item.amount.toLocaleString()}
+                  </span>
+                </div>
+              ),
+            )}
+
             <Separator className="my-2" />
+
             <div className="flex justify-between text-base font-bold">
               <span className="text-gray-900">Estimated total:</span>
               <span className="text-gray-900">
-                {displayData.summary.estimatedTotal}
+                ₦{order.totals.total.toLocaleString()}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="rounded-b-3xl px-6 py-4 flex justify-between items-center">
-          <p className="text-sm text-gray-600">
-            Order {displayData.currentOrderIndex} of {displayData.totalOrders}
-          </p>
-          <Link href={`/restaurant/orders/${displayData.nextOrderId}`}>
-            <Button variant="outline" className="gap-2">
-              Next Order
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
+        {/* Footer Navigation */}
+        <div className="rounded-b-3xl px-6 py-6 flex justify-between items-center border-t">
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!previousOrderId}
+            onClick={() =>
+              previousOrderId &&
+              router.push(`/restaurant/orders/${previousOrderId}`)
+            }
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Prev Order
+          </Button>
+
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!nextOrderId}
+            onClick={() =>
+              nextOrderId && router.push(`/restaurant/orders/${nextOrderId}`)
+            }
+          >
+            Next Order
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       </Card>
     </div>
