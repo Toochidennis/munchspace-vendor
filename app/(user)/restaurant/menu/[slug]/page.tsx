@@ -12,6 +12,10 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  FileText,
+  Package,
+  Zap,
+  Tag,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -499,6 +503,11 @@ export default function EditMenuPage() {
   const image = watch("image");
   const discountType = watch("discount.type");
   const startDate = watch("discount.startsAt");
+  const name = watch("name");
+  const sellingPrice = watch("sellingPrice");
+  const variants = watch("variants");
+  const addons = watch("addons");
+  const discount = watch("discount");
 
   const {
     fields: variantFields,
@@ -860,14 +869,35 @@ export default function EditMenuPage() {
                 : undefined,
             );
           }}
-          className="space-y-6"
+          className="space-y-4"
         >
-          <Card className="border border-gray-200 shadow-sm">
+          {/* Details Section */}
+          <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
             <AccordionItem value="details" className="border-0">
-              <AccordionTrigger className="hover:no-underline px-6 py-4 text-lg font-semibold text-gray-900">
-                Details
+              <AccordionTrigger className="hover:no-underline px-4 py-3 group">
+                <div className="flex items-center gap-3 w-full">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-orange-100 group-hover:bg-orange-200 transition-colors">
+                    <FileText className="h-5 w-5 text-orange-600" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Item Details
+                    </h3>
+                    {activeTab === "details" ? (
+                      <p className="text-sm text-gray-500">
+                        Name, description, price and availability
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {name
+                          ? `${name} • ₦${sellingPrice?.toLocaleString() || "0"}`
+                          : "No item details added"}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </AccordionTrigger>
-              <AccordionContent className="space-y-8 px-6 pb-6 pt-4 border-t border-gray-200">
+              <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <Label className={cn(errors.name && "text-red-600")}>
@@ -968,7 +998,7 @@ export default function EditMenuPage() {
                         >
                           <SelectTrigger
                             className={cn(
-                              "h-12 w-full",
+                              "h-12! w-full",
                               errors.categoryTypeId &&
                                 "border-red-600 focus-visible:ring-red-600",
                             )}
@@ -1102,12 +1132,33 @@ export default function EditMenuPage() {
             </AccordionItem>
           </Card>
 
-          <Card className="border border-gray-200 shadow-sm">
+          {/* Sizes Section */}
+          <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
             <AccordionItem value="sizes" className="border-0">
-              <AccordionTrigger className="hover:no-underline px-6 py-4 text-lg font-semibold text-gray-900">
-                Sizes
+              <AccordionTrigger className="hover:no-underline px-4 py-3 group">
+                <div className="flex items-center gap-3 w-full">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
+                    <Package className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Sizes
+                    </h3>
+                    {activeTab === "sizes" ? (
+                      <p className="text-sm text-gray-500">
+                        Specify sizes/variants (optional)
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {variants && variants.length > 0
+                          ? `${variants.length} size${variants.length > 1 ? "s" : ""} added`
+                          : "No sizes added"}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </AccordionTrigger>
-              <AccordionContent className="space-y-8 px-6 pb-6 pt-4 border-t border-gray-200">
+              <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
                 <p className="text-gray-600">
                   Specify the sizes/variants for this menu item (optional).
                 </p>
@@ -1121,7 +1172,10 @@ export default function EditMenuPage() {
 
                 <div className="space-y-4">
                   {variantFields.map((field, index) => (
-                    <div key={field.id} className="space-y-3 border-b pb-4">
+                    <div
+                      key={field.id}
+                      className="bg-white border border-gray-100 rounded-lg p-4 space-y-3 hover:border-blue-200 transition-colors"
+                    >
                       <div className="flex items-center gap-4">
                         <div className="flex-1">
                           <Input
@@ -1181,12 +1235,33 @@ export default function EditMenuPage() {
             </AccordionItem>
           </Card>
 
-          <Card className="border border-gray-200 shadow-sm">
+          {/* Extras Section */}
+          <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
             <AccordionItem value="extras" className="border-0">
-              <AccordionTrigger className="hover:no-underline px-6 py-4 text-lg font-semibold text-gray-900">
-                Extras
+              <AccordionTrigger className="hover:no-underline px-4 py-3 group">
+                <div className="flex items-center gap-3 w-full">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-purple-100 group-hover:bg-purple-200 transition-colors">
+                    <Zap className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Extras
+                    </h3>
+                    {activeTab === "extras" ? (
+                      <p className="text-sm text-gray-500">
+                        Add optional items customers can choose (optional)
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {addons && addons.length > 0
+                          ? `${addons.length} extra${addons.length > 1 ? "s" : ""} added`
+                          : "No extras added"}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </AccordionTrigger>
-              <AccordionContent className="space-y-8 px-6 pb-6 pt-4 border-t border-gray-200">
+              <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
                 <p className="text-gray-600">
                   Add any additional items customers can choose with this menu
                   item (optional).
@@ -1200,7 +1275,10 @@ export default function EditMenuPage() {
 
                 <div className="space-y-4">
                   {addonFields.map((field, index) => (
-                    <div key={field.id} className="space-y-3 border-b pb-4">
+                    <div
+                      key={field.id}
+                      className="bg-white border border-gray-100 rounded-lg p-4 space-y-3 hover:border-purple-200 transition-colors"
+                    >
                       <div className="flex items-center gap-4">
                         <div className="flex-1">
                           <Input
@@ -1260,12 +1338,33 @@ export default function EditMenuPage() {
             </AccordionItem>
           </Card>
 
-          <Card className="border border-gray-200 shadow-sm">
+          {/* Discounts Section */}
+          <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
             <AccordionItem value="discounts" className="border-0">
-              <AccordionTrigger className="hover:no-underline px-6 py-4 text-lg font-semibold text-gray-900">
-                Discounts
+              <AccordionTrigger className="hover:no-underline px-4 py-3 group">
+                <div className="flex items-center gap-3 w-full">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 group-hover:bg-green-200 transition-colors">
+                    <Tag className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Discounts
+                    </h3>
+                    {activeTab === "discounts" ? (
+                      <p className="text-sm text-gray-500">
+                        Offer temporary price reductions (optional)
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {discount?.type
+                          ? `${discount.type === "PERCENTAGE" ? discount.value + "%" : "₦" + discount.value} off`
+                          : "No discount added"}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </AccordionTrigger>
-              <AccordionContent className="space-y-8 px-6 pb-6 pt-4 border-t border-gray-200">
+              <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
                 <p className="text-gray-600">
                   Offer a temporary price reduction to attract more orders for
                   this item (optional).
@@ -1286,7 +1385,7 @@ export default function EditMenuPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-6 border border-gray-200 rounded-lg p-6 relative">
+                  <div className="space-y-6 border border-green-100 bg-green-50/30 rounded-lg p-6 relative">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1308,7 +1407,7 @@ export default function EditMenuPage() {
 
                     <div className="space-y-6">
                       <div className="space-y-4">
-                        <Label>Discount Type</Label>
+                        <Label className="font-semibold">Discount Type</Label>
                         <Controller
                           control={control}
                           name="discount.type"
@@ -1318,7 +1417,7 @@ export default function EditMenuPage() {
                               value={field.value ?? ""}
                               className="flex flex-col gap-4"
                             >
-                              <div className="flex items-start space-x-3">
+                              <div className="flex items-start space-x-3 p-3 rounded-lg hover:bg-white/50 transition-colors">
                                 <RadioGroupItem
                                   value="PERCENTAGE"
                                   id="percentage"
@@ -1337,7 +1436,7 @@ export default function EditMenuPage() {
                                 </div>
                               </div>
 
-                              <div className="flex items-start space-x-3">
+                              <div className="flex items-start space-x-3 p-3 rounded-lg hover:bg-white/50 transition-colors">
                                 <RadioGroupItem
                                   value="FLAT"
                                   id="flat"
@@ -1356,7 +1455,7 @@ export default function EditMenuPage() {
                                 </div>
                               </div>
 
-                              <div className="flex items-start space-x-3">
+                              <div className="flex items-start space-x-3 p-3 rounded-lg hover:bg-white/50 transition-colors">
                                 <RadioGroupItem
                                   value="FIXED_PRICE"
                                   id="fixed"
@@ -1444,7 +1543,7 @@ export default function EditMenuPage() {
           </Card>
         </Accordion>
 
-        <div className="flex justify-end gap-2 items-center mt-12 pt-8 border-t border-gray-200">
+        <div className="flex justify-end gap-2 items-center mt-12 pt-8">
           {!isFirstTab && (
             <Button
               onClick={handleBack}

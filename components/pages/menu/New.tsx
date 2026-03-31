@@ -122,8 +122,8 @@ const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().min(1, "Description is required"),
-  image: z.string().min(1, "Please upload an image"),
-  categoryTypeId: z.string().min(1, "Category is required"),
+  image: z.string().default("").refine((val) => val.length > 0, "Please upload an image"),
+  categoryTypeId: z.string().default("").refine((val) => val.length > 0, "Category is required"),
   sellingPrice: z
     .number("Selling price is required")
     .min(1, "Selling price must be at least 1")
@@ -446,6 +446,11 @@ export default function CreateMenuPage() {
   const image = watch("image");
   const discountType = watch("discount.type");
   const startDate = watch("discount.startsAt");
+  const name = watch("name");
+  const sellingPrice = watch("sellingPrice");
+  const variants = watch("variants");
+  const addons = watch("addons");
+  const discount = watch("discount");
 
   const {
     fields: variantFields,
@@ -729,9 +734,17 @@ export default function CreateMenuPage() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Item Details
                     </h3>
-                    <p className="text-sm text-gray-500">
-                      Name, description, price and availability
-                    </p>
+                    {activeTab === "details" ? (
+                      <p className="text-sm text-gray-500">
+                        Name, description, price and availability
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {name
+                          ? `${name} • ₦${sellingPrice?.toLocaleString() || "0"}`
+                          : "No item details added"}
+                      </p>
+                    )}
                   </div>
                 </div>
               </AccordionTrigger>
@@ -837,7 +850,7 @@ export default function CreateMenuPage() {
                         >
                           <SelectTrigger
                             className={cn(
-                              "h-12 w-full",
+                              "h-12! w-full",
                               errors.categoryTypeId &&
                                 "border-red-600 focus-visible:ring-red-600",
                             )}
@@ -983,9 +996,17 @@ export default function CreateMenuPage() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Sizes
                     </h3>
-                    <p className="text-sm text-gray-500">
-                      Specify sizes/variants (optional)
-                    </p>
+                    {activeTab === "sizes" ? (
+                      <p className="text-sm text-gray-500">
+                        Specify sizes/variants (optional)
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {variants && variants.length > 0
+                          ? `${variants.length} size${variants.length > 1 ? "s" : ""} added`
+                          : "No sizes added"}
+                      </p>
+                    )}
                   </div>
                 </div>
               </AccordionTrigger>
@@ -1078,9 +1099,17 @@ export default function CreateMenuPage() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Extras
                     </h3>
-                    <p className="text-sm text-gray-500">
-                      Add optional items customers can choose
-                    </p>
+                    {activeTab === "extras" ? (
+                      <p className="text-sm text-gray-500">
+                        Add optional items customers can choose (optional)
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {addons && addons.length > 0
+                          ? `${addons.length} extra${addons.length > 1 ? "s" : ""} added`
+                          : "No extras added"}
+                      </p>
+                    )}
                   </div>
                 </div>
               </AccordionTrigger>
@@ -1173,9 +1202,17 @@ export default function CreateMenuPage() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Discounts
                     </h3>
-                    <p className="text-sm text-gray-500">
-                      Offer temporary price reductions
-                    </p>
+                    {activeTab === "discounts" ? (
+                      <p className="text-sm text-gray-500">
+                        Offer temporary price reductions (optional)
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 font-medium">
+                        {discount?.type
+                          ? `${discount.type === "PERCENTAGE" ? discount.value + "%" : "₦" + discount.value} off`
+                          : "No discount added"}
+                      </p>
+                    )}
                   </div>
                 </div>
               </AccordionTrigger>
@@ -1270,7 +1307,7 @@ export default function CreateMenuPage() {
                                 </div>
                               </div>
 
-                              <div className="flex items-start space-x-3">
+                              <div className="flex items-start space-x-3 p-3 rounded-lg hover:bg-white/50 transition-colors">
                                 <RadioGroupItem
                                   value="FIXED_PRICE"
                                   id="fixed"
@@ -1358,7 +1395,7 @@ export default function CreateMenuPage() {
           </Card>
         </Accordion>
 
-        <div className="flex justify-end gap-2 items-center mt-12 pt-8 border-t border-gray-200">
+        <div className="flex justify-end gap-2 items-center mt-12 pt-8">
           {!isFirstTab && (
             <Button
               onClick={handleBack}

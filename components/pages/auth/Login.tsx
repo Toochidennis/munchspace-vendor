@@ -23,6 +23,7 @@ import {
   setAccessToken,
   setBusinessId,
   setFirstName,
+  setDisplayName,
 } from "@/app/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
@@ -339,6 +340,14 @@ export default function LoginPage() {
 
     setAccessToken(data.accessToken);
 
+    // Save display name and first name
+    if (data.displayName) {
+      setDisplayName(data.displayName);
+    }
+    if (data.firstName) {
+      setFirstName(data.firstName);
+    }
+
     document.cookie = `refreshToken=${data.refreshToken}; path=/; secure; samesite=strict; max-age=${60 * 60 * 24 * 30}`;
 
     if (data.vendor?.hasBusiness) {
@@ -348,6 +357,7 @@ export default function LoginPage() {
     // else {
     //   hasBusiness(null);
     // }
+    console.log("Vendor data on login:", data);
 
     window.location.href = "/restaurant/dashboard";
   }

@@ -458,11 +458,11 @@ export default function MenuPage() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="pl-10 w-full h-12 rounded-md"
+                  className="pl-10 w-80 h-10 rounded-md"
                 />
               </div>
               <Link href="/restaurant/menu/new">
-                <Button className="bg-orange-500 h-12 hover:bg-orange-600 text-white rounded-md">
+                <Button className="bg-orange-500 h-10 hover:bg-orange-600 text-white rounded-md">
                   New Menu
                 </Button>
               </Link>
@@ -479,7 +479,7 @@ export default function MenuPage() {
           </div>
 
           {showSearchMobile && (
-            <div className="flex flex-col items-center gap-3 mb-6">
+            <div className="flex flex-col items-center gap-3 mb-6 bg-red-200">
               <div className="relative flex-1 w-full">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <Input
