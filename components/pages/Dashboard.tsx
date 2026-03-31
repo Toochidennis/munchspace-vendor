@@ -47,7 +47,12 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { getAccessToken, getBusinessId, getFirstName } from "@/app/lib/auth";
+import {
+  getAccessToken,
+  getBusinessId,
+  getFirstName,
+  getDisplayName,
+} from "@/app/lib/auth";
 import { toast } from "sonner";
 import { refreshAccessToken } from "@/app/lib/api";
 import { Metadata } from "next";
@@ -156,7 +161,29 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
-    setFirstName(getFirstName());
+    // Try to get displayName first, then fallback to firstName
+    const displayName = getDisplayName();
+    if (displayName) {
+      setFirstName(displayName);
+    } else {
+      const firstName = getFirstName();
+      if (firstName) {
+        setFirstName(firstName);
+      } else {
+        // Try to get from localStorage directly if not expired
+        try {
+          const stored =
+            localStorage.getItem("displayName") ||
+            localStorage.getItem("firstName");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            setFirstName(parsed.value);
+          }
+        } catch (e) {
+          setFirstName(null);
+        }
+      }
+    }
   }, []);
 
   // Fetch store status
@@ -444,7 +471,7 @@ export default function DashboardPage() {
     <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header with Toggle */}
-        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-6">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
               Hi {firstName || "User"},
@@ -452,46 +479,47 @@ export default function DashboardPage() {
             <p className="text-gray-600 mt-1">Welcome to your dashboard</p>
           </div>
 
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto">
-            <Select
-              value={period}
-              onValueChange={(value) => setPeriod(value as any)}
-            >
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="last_7_days">Last 7 days</SelectItem>
-                <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                <SelectItem value="last_6_months">Last 6 months</SelectItem>
-                <SelectItem value="this_month">This month</SelectItem>
-                <SelectItem value="last_month">Last month</SelectItem>
-                <SelectItem value="this_year">This year</SelectItem>
-              </SelectContent>
-            </Select>
+          {isPublished !== null && (
+            <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-2">
+              <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Store Status
+              </span>
+              <Switch
+                checked={isPublished}
+                onCheckedChange={toggleOnlineStatus}
+                disabled={toggling}
+              />
+              <span
+                className={cn(
+                  "text-sm font-semibold whitespace-nowrap",
+                  isPublished ? "text-green-600" : "text-red-600",
+                )}
+              >
+                {isPublished ? "Online" : "Offline"}
+              </span>
+            </div>
+          )}
+        </div>
 
-            {isPublished !== null && (
-              <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-2 w-full md:w-auto">
-                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                  Store Status
-                </span>
-                <Switch
-                  checked={isPublished}
-                  onCheckedChange={toggleOnlineStatus}
-                  disabled={toggling}
-                />
-                <span
-                  className={cn(
-                    "text-sm font-semibold whitespace-nowrap",
-                    isPublished ? "text-green-600" : "text-red-600",
-                  )}
-                >
-                  {isPublished ? "Online" : "Offline"}
-                </span>
-              </div>
-            )}
-          </div>
+        {/* Period Filter - Right aligned */}
+        <div className="flex justify-end">
+          <Select
+            value={period}
+            onValueChange={(value) => setPeriod(value as any)}
+          >
+            <SelectTrigger className="w-full md:w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="last_7_days">Last 7 days</SelectItem>
+              <SelectItem value="last_30_days">Last 30 days</SelectItem>
+              <SelectItem value="last_6_months">Last 6 months</SelectItem>
+              <SelectItem value="this_month">This month</SelectItem>
+              <SelectItem value="last_month">Last month</SelectItem>
+              <SelectItem value="this_year">This year</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Store Traffic + KPI Cards */}

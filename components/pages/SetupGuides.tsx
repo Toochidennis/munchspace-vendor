@@ -129,7 +129,7 @@ export default function SetupGuidePage() {
       description:
         "Submit required documents including your Tax Identification Number (TIN) to verify your business.",
       actionLabel: "Begin KYC",
-      href: "/restaurant/setup/kyc",
+      href: "/restaurant/account-settings",
       isCompleted: (data: OnboardingData) => data.kycVerified,
     },
     {

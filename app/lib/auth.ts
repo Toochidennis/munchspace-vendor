@@ -29,6 +29,35 @@ export function getFirstName(): string | null {
   }
 }
 
+export function setDisplayName(name: string | null) {
+  if (name) {
+    const item = {
+      value: name,
+      expiry: Date.now() + 60 * 2000 * 10000,
+    };
+    localStorage.setItem("displayName", JSON.stringify(item));
+  } else {
+    localStorage.removeItem("displayName");
+  }
+}
+
+export function getDisplayName(): string | null {
+  const itemStr = localStorage.getItem("displayName");
+  if (!itemStr) return null;
+
+  try {
+    const item = JSON.parse(itemStr);
+    if (Date.now() > item.expiry) {
+      localStorage.removeItem("displayName");
+      return null; // Expired
+    }
+    return item.value;
+  } catch (error) {
+    localStorage.removeItem("displayName");
+    return null;
+  }
+}
+
 export function setBusinessId(id: string | null) {
   if (id) {
     const item = {
