@@ -122,8 +122,8 @@ const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().min(1, "Description is required"),
-  image: z.string().default("").refine((val) => val.length > 0, "Please upload an image"),
-  categoryTypeId: z.string().default("").refine((val) => val.length > 0, "Category is required"),
+  image: z.string().min(1, "Please upload an image"),
+  categoryTypeId: z.string().min(1, "Category is required"),
   sellingPrice: z
     .number("Selling price is required")
     .min(1, "Selling price must be at least 1")
@@ -439,6 +439,8 @@ export default function CreateMenuPage() {
     resolver: zodResolver(formSchema),
     mode: "onChange",
     defaultValues: {
+      image: "",
+      categoryTypeId: "",
       isAvailable: "available",
     },
   });
