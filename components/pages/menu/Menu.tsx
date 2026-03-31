@@ -861,7 +861,7 @@ const MenuSkeleton = () => {
 
       {/* Mobile Skeleton */}
       <div className="md:hidden space-y-4">
-        {[1, 2, 3].map((i) => (
+        {[1, 2, 3, 4, 5, 6].map((i) => (
           <div
             key={i}
             className="p-4 border border-gray-200 rounded-md space-y-4"
