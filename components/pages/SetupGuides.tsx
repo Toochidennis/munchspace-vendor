@@ -43,7 +43,16 @@ async function authenticatedFetch(
     ...init.headers,
   };
 
-  if (!(init.body instanceof FormData)) {
+  const method = (init.method || "GET").toUpperCase();
+  const hasBody = init.body !== undefined && init.body !== null;
+
+  if (
+    !hasBody &&
+    (method === "POST" || method === "PATCH" || method === "PUT")
+  ) {
+    init.body = JSON.stringify({});
+    (headers as any)["Content-Type"] = "application/json";
+  } else if (hasBody && !(init.body instanceof FormData)) {
     (headers as any)["Content-Type"] = "application/json";
   }
 
@@ -101,7 +110,7 @@ export default function SetupGuidePage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPublishing, setIsPublishing] = useState(false);
-  const { isPublished, isPublishLoading } = useStore();
+  const { isPublished, isPublishLoading, refreshPublishStatus } = useStore();
   const [showCompletedDialog, setShowCompletedDialog] = useState(false);
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
@@ -113,36 +122,46 @@ export default function SetupGuidePage() {
     }
   }, [isPublished, isPublishLoading]);
 
-  const taskMapping: Record<string, Omit<Task, "completed" | "pendingKey">> = {
-    "Tax Identification Number (TIN) not provided": {
+  const taskMapping = [
+    {
+      pendingKey: "KYC",
       title: "Complete KYC Verification",
       description:
         "Submit required documents including your Tax Identification Number (TIN) to verify your business.",
       actionLabel: "Begin KYC",
       href: "/restaurant/setup/kyc",
+      isCompleted: (data: OnboardingData) => data.kycVerified,
     },
-    "At least 3 menu items are required": {
+    {
+      pendingKey: "MENU_ITEMS",
       title: "Add 3+ Menu Items",
       description:
         "List at least three dishes or products with names, prices and photos so customers can order.",
       actionLabel: "Add items",
       href: "/restaurant/menu",
+      isCompleted: (data: OnboardingData) => data.menuItemsCount >= 3,
     },
-    "Business charges not configured": {
+    {
+      pendingKey: "CHARGES",
       title: "Set Charges & Fees",
       description:
         "Define packaging, service, or delivery fees so prices stay clear and accurate.",
       actionLabel: "Add charges",
       href: "/restaurant/setup/charges",
+      isCompleted: (data: OnboardingData) => data.chargesReady,
     },
-    "Settlement account not configured": {
+    {
+      pendingKey: "SETTLEMENT",
       title: "Add Settlement Account",
       description:
         "Add your bank account details to receive payouts for your orders.",
       actionLabel: "Add account",
       href: "/restaurant/settlement",
+      isCompleted: (data: OnboardingData) => data.settlementReady,
     },
-  };
+  ] as Array<
+    Omit<Task, "completed"> & { isCompleted: (data: OnboardingData) => boolean }
+  >;
 
   const fetchOnboardingStatus = async () => {
     setLoading(true);
@@ -161,6 +180,7 @@ export default function SetupGuidePage() {
       }
 
       const res = await response.json();
+      console.log("Onboarding status response:", res);
       const data: OnboardingData = res.data;
 
       // Requirement: If pending is empty, redirect to dashboard
@@ -169,16 +189,14 @@ export default function SetupGuidePage() {
         return;
       }
 
-      const updatedTasks: Task[] = [];
-
-      Object.keys(taskMapping).forEach((key) => {
-        const isPending = data.pending.includes(key);
-        updatedTasks.push({
-          ...taskMapping[key],
-          pendingKey: key,
-          completed: !isPending,
-        });
-      });
+      const updatedTasks: Task[] = taskMapping.map((task) => ({
+        title: task.title,
+        description: task.description,
+        actionLabel: task.actionLabel,
+        href: task.href,
+        pendingKey: task.pendingKey,
+        completed: task.isCompleted(data),
+      }));
 
       if (data.canGoLive) {
         updatedTasks.push({
@@ -214,26 +232,39 @@ export default function SetupGuidePage() {
 
   const handlePublish = async () => {
     const businessId = getBusinessId();
-    if (!businessId) return;
+    if (!businessId) {
+      toast.error("Business ID not found.");
+      return;
+    }
 
     setIsPublishing(true);
+
     try {
       const response = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/publish`,
         {
           method: "PATCH",
-          body: JSON.stringify({ businessId }),
         },
       );
 
       const resData = await response.json();
-      if (!response.ok)
-        throw new Error(resData.message || "Failed to publish store");
+      if (!response.ok) {
+        const message =
+          resData.error || resData.message || "Failed to publish store";
+        throw new Error(message);
+      }
 
-      toast.success(resData.message || "Business is now live.");
+      toast.success(resData.message || "Business is now online.");
+
+      // Refresh store context to update nav visibility
+      await refreshPublishStatus();
+
       router.push("/restaurant/dashboard");
     } catch (err: any) {
-      toast.error(err.message || "Failed to publish store");
+      const message = err?.message || "Failed to publish store";
+      toast.error(message, {
+        description: "Please complete all required business setup to go live.",
+      });
     } finally {
       setIsPublishing(false);
     }

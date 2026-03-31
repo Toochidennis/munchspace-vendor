@@ -46,7 +46,7 @@ import Image from "next/image";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import CustomModal from "@/components/layout/CustomModal";
 import { refreshAccessToken } from "@/app/lib/api";
 
@@ -72,7 +72,10 @@ async function authenticatedFetch(
   let token = getAccessToken();
   if (!token) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
   }
 
@@ -90,7 +93,10 @@ async function authenticatedFetch(
 
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
 
     response = await fetch(url, {

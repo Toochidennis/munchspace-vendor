@@ -44,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getAccessToken, getBusinessId, getFirstName } from "@/app/lib/auth";
@@ -72,14 +73,14 @@ export const metadata: Metadata = {
 };
 
 // ────────────────────────────────────────────────
-//  Constants from .env
+//  Constants
 // ────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 // ────────────────────────────────────────────────
-//  Authenticated Fetch
+//  Authenticated Fetch (Fixed for PATCH)
 // ────────────────────────────────────────────────
 
 async function authenticatedFetch(
@@ -100,7 +101,16 @@ async function authenticatedFetch(
     ...init.headers,
   };
 
-  if (!(init.body instanceof FormData)) {
+  const method = (init.method || "GET").toUpperCase();
+  const hasBody = init.body !== undefined && init.body !== null;
+
+  if (
+    !hasBody &&
+    (method === "POST" || method === "PATCH" || method === "PUT")
+  ) {
+    init.body = JSON.stringify({});
+    (headers as any)["Content-Type"] = "application/json";
+  } else if (hasBody && !(init.body instanceof FormData)) {
     (headers as any)["Content-Type"] = "application/json";
   }
 
@@ -113,10 +123,7 @@ async function authenticatedFetch(
 
     response = await fetch(url, {
       ...init,
-      headers: {
-        ...headers,
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { ...headers, Authorization: `Bearer ${token}` },
     });
   }
 
@@ -139,14 +146,45 @@ export default function DashboardPage() {
     | "this_year"
   >("last_30_days");
 
+  const [isPublished, setIsPublished] = useState<boolean | null>(null);
+  const [toggling, setToggling] = useState(false);
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(null);
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setFirstName(getFirstName());
   }, []);
 
+  // Fetch store status
+  useEffect(() => {
+    const fetchOnlineStatus = async () => {
+      const businessId = getBusinessId();
+      if (!businessId) return;
+
+      try {
+        const res = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/onboarding`,
+        );
+        if (res.ok) {
+          const json = await res.json();
+          setIsPublished(json.data?.isPublished ?? false);
+        } else {
+          setIsPublished(false);
+        }
+      } catch (err) {
+        console.error(err);
+        setIsPublished(false);
+      }
+    };
+
+    fetchOnlineStatus();
+  }, []);
+
+  // Fetch dashboard analytics
   useEffect(() => {
     const fetchDashboard = async () => {
       setLoading(true);
@@ -170,7 +208,7 @@ export default function DashboardPage() {
 
         const api = json.data;
 
-        const transformed = {
+        setData({
           traffic: api.traffic || [],
           bestSelling: (api.bestSelling || []).map((item: any) => ({
             name: item.name || item.productName || "Unknown Item",
@@ -193,19 +231,18 @@ export default function DashboardPage() {
             totalDiscount: api.totals?.discounts?.total?.value || 0,
             totalDiscountTrend: api.totals?.discounts?.total?.trend || 0,
           },
-        };
-
-        setData(transformed);
+        });
       } catch (err: any) {
-        console.error("Dashboard fetch failed:", err);
-        if (err.message?.includes("fetch") || err.message?.includes("Network")) {
+        console.error(err);
+        if (
+          err.message?.includes("fetch") ||
+          err.message?.includes("Network")
+        ) {
           setFetchNetworkError(
-            "Unable to load dashboard data. Please check your internet connection."
+            "Unable to load dashboard data. Please check your internet connection.",
           );
         } else {
-          toast.error("Failed to load dashboard", {
-            description: err.message || "Please try again later.",
-          });
+          toast.error("Failed to load dashboard");
         }
         setData({
           traffic: [],
@@ -230,6 +267,42 @@ export default function DashboardPage() {
     fetchDashboard();
   }, [period]);
 
+  // Toggle Online / Offline using PATCH
+  const toggleOnlineStatus = async () => {
+    if (isPublished === null || toggling) return;
+
+    const businessId = getBusinessId();
+    if (!businessId) return toast.error("Business ID not found");
+
+    setToggling(true);
+    const action = isPublished ? "unpublish" : "publish";
+    const endpoint = `${API_BASE}/vendors/me/businesses/${businessId}/${action}`;
+
+    try {
+      const res = await authenticatedFetch(endpoint, { method: "PATCH" });
+
+      if (res.ok) {
+        const newStatus = !isPublished;
+        setIsPublished(newStatus);
+        toast.success(`Store is now ${newStatus ? "Online" : "Offline"}`);
+      } else {
+        let errorMessage = `Failed to ${action} store`;
+        try {
+          const errorJson = await res.json();
+          errorMessage = errorJson.error || errorJson.message || errorMessage;
+        } catch (_) {}
+        toast.error(errorMessage, {
+          description:
+            "Please complete all required business setup to go live.",
+        });
+      }
+    } catch (err) {
+      toast.error("An unexpected error occurred while updating store status.");
+    } finally {
+      setToggling(false);
+    }
+  };
+
   const colorPalette = [
     "bg-blue-500",
     "bg-green-500",
@@ -238,10 +311,8 @@ export default function DashboardPage() {
     "bg-red-500",
   ];
 
-  // Status Badge Colors (including "Ready")
   const getStatusBadgeClass = (status: string): string => {
     const s = status.toLowerCase().trim();
-
     switch (s) {
       case "pending":
         return "bg-blue-100 text-blue-700 border border-blue-200";
@@ -264,7 +335,9 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
-        <h2 className="text-2xl font-semibold text-gray-800 mb-4">Connection Error</h2>
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+          Connection Error
+        </h2>
         <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
         <Button
           onClick={() => window.location.reload()}
@@ -364,13 +437,13 @@ export default function DashboardPage() {
       : data.bestSelling;
   const totalSales = top5Items.reduce(
     (sum: number, item: any) => sum + item.sales,
-    0
+    0,
   );
 
   return (
     <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
+        {/* Header with Toggle */}
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
@@ -378,23 +451,47 @@ export default function DashboardPage() {
             </h1>
             <p className="text-gray-600 mt-1">Welcome to your dashboard</p>
           </div>
-          <Select
-            value={period}
-            onValueChange={(value) => setPeriod(value as any)}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="last_7_days">Last 7 days</SelectItem>
-              <SelectItem value="last_30_days">Last 30 days</SelectItem>
-              <SelectItem value="last_6_months">Last 6 months</SelectItem>
-              <SelectItem value="this_month">This month</SelectItem>
-              <SelectItem value="last_month">Last month</SelectItem>
-              <SelectItem value="this_year">This year</SelectItem>
-            </SelectContent>
-          </Select>
+
+          <div className="flex items-center gap-4">
+            <Select
+              value={period}
+              onValueChange={(value) => setPeriod(value as any)}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="last_7_days">Last 7 days</SelectItem>
+                <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                <SelectItem value="last_6_months">Last 6 months</SelectItem>
+                <SelectItem value="this_month">This month</SelectItem>
+                <SelectItem value="last_month">Last month</SelectItem>
+                <SelectItem value="this_year">This year</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {isPublished !== null && (
+              <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-2">
+                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                  Store Status
+                </span>
+                <Switch
+                  checked={isPublished}
+                  onCheckedChange={toggleOnlineStatus}
+                  disabled={toggling}
+                />
+                <span
+                  className={cn(
+                    "text-sm font-semibold whitespace-nowrap",
+                    isPublished ? "text-green-600" : "text-red-600",
+                  )}
+                >
+                  {isPublished ? "Online" : "Offline"}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Store Traffic + KPI Cards */}
@@ -418,7 +515,8 @@ export default function DashboardPage() {
                     />
                     <p className="text-center text-sm px-5 md:px-20 mb-4">
                       This space will feature a bar chart showcasing the number
-                      of customers who visited your store once data is available.
+                      of customers who visited your store once data is
+                      available.
                     </p>
                   </div>
                 ) : (
@@ -458,7 +556,9 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.totalOrdersTrend > 0 ? "text-green-600" : "text-red-600"
+                      data.kpis.totalOrdersTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.totalOrdersTrend > 0 ? "+" : ""}
@@ -470,7 +570,10 @@ export default function DashboardPage() {
                     {data.kpis.totalOrders.toLocaleString()}
                   </p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: "75%" }} />
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{ width: "75%" }}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -484,7 +587,9 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.totalReturnsTrend > 0 ? "text-green-600" : "text-red-600"
+                      data.kpis.totalReturnsTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.totalReturnsTrend > 0 ? "+" : ""}
@@ -494,7 +599,10 @@ export default function DashboardPage() {
                 <CardContent>
                   <p className="text-2xl font-bold">{data.kpis.totalReturns}</p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: "40%" }} />
+                    <div
+                      className="bg-purple-600 h-2 rounded-full transition-all"
+                      style={{ width: "40%" }}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -508,7 +616,9 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.newCustomersTrend > 0 ? "text-green-600" : "text-red-600"
+                      data.kpis.newCustomersTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.newCustomersTrend > 0 ? "+" : ""}
@@ -518,7 +628,10 @@ export default function DashboardPage() {
                 <CardContent>
                   <p className="text-2xl font-bold">{data.kpis.newCustomers}</p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div className="bg-yellow-600 h-2 rounded-full transition-all" style={{ width: "65%" }} />
+                    <div
+                      className="bg-yellow-600 h-2 rounded-full transition-all"
+                      style={{ width: "65%" }}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -532,7 +645,9 @@ export default function DashboardPage() {
                   <p
                     className={cn(
                       "text-sm flex items-center gap-1 justify-center",
-                      data.kpis.totalDiscountTrend > 0 ? "text-green-600" : "text-red-600"
+                      data.kpis.totalDiscountTrend > 0
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
                     {data.kpis.totalDiscountTrend > 0 ? "+" : ""}
@@ -540,9 +655,14 @@ export default function DashboardPage() {
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-2xl font-bold">{data.kpis.totalDiscount}</p>
+                  <p className="text-2xl font-bold">
+                    {data.kpis.totalDiscount}
+                  </p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
-                    <div className="bg-red-600 h-2 rounded-full transition-all" style={{ width: "85%" }} />
+                    <div
+                      className="bg-red-600 h-2 rounded-full transition-all"
+                      style={{ width: "85%" }}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -555,7 +675,9 @@ export default function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg">Best selling Items</CardTitle>
-              <CardDescription>Know your best selling items and maintain it.</CardDescription>
+              <CardDescription>
+                Know your best selling items and maintain it.
+              </CardDescription>
             </div>
             <Link href="/restaurant/dashboard/items">
               <Button variant="outline" size="sm" className="gap-2">
@@ -569,12 +691,16 @@ export default function DashboardPage() {
               <div className="w-full bg-gray-200 h-2">
                 <div className="flex h-full">
                   {top5Items.map((item: any, index: number) => {
-                    const percentage = totalSales > 0 ? (item.sales / totalSales) * 100 : 0;
+                    const percentage =
+                      totalSales > 0 ? (item.sales / totalSales) * 100 : 0;
                     const color = colorPalette[index % colorPalette.length];
                     return (
                       <div
                         key={item.name}
-                        className={cn("h-full flex items-center justify-center text-white text-xs font-medium", color)}
+                        className={cn(
+                          "h-full flex items-center justify-center text-white text-xs font-medium",
+                          color,
+                        )}
                         style={{ width: `${percentage}%` }}
                       />
                     );
@@ -589,7 +715,9 @@ export default function DashboardPage() {
                       <div key={item.name} className="flex gap-3 text-xs">
                         <div>
                           <div className="flex items-center gap-1">
-                            <span className={cn("w-3 h-3 rounded-full", color)}></span>
+                            <span
+                              className={cn("w-3 h-3 rounded-full", color)}
+                            ></span>
                             <p className="font-bold text-sm">{item.sales}</p>
                           </div>
                           <div className="flex items-center gap-1">
@@ -606,12 +734,14 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Orders - Custom Status Colors */}
+        {/* Recent Orders */}
         <Card className="border-gray-100 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg">Recent orders</CardTitle>
-              <CardDescription>See your items that are sold recently.</CardDescription>
+              <CardDescription>
+                See your items that are sold recently.
+              </CardDescription>
             </div>
             <Link href="/restaurant/orders">
               <Button variant="outline" size="sm" className="gap-2">
@@ -641,12 +771,14 @@ export default function DashboardPage() {
                     >
                       <TableCell className="ps-4 py-6">{order.code}</TableCell>
                       <TableCell className="py-6">{order.date}</TableCell>
-                      <TableCell className="py-6">₦{order.price}</TableCell>
+                      <TableCell className="py-6">
+                        ₦{order.price.toLocaleString()}
+                      </TableCell>
                       <TableCell className="py-6">
                         <Badge
                           className={cn(
                             "rounded px-4 py-1.5 font-medium",
-                            getStatusBadgeClass(order.status)
+                            getStatusBadgeClass(order.status),
                           )}
                         >
                           {order.status}
@@ -675,14 +807,14 @@ export default function DashboardPage() {
                   <div
                     className={cn(
                       "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50",
-                      data.recentOrders.length - 1 === index && "border-0"
+                      data.recentOrders.length - 1 === index && "border-0",
                     )}
                   >
                     <div className="flex flex-col">
                       <Badge
                         className={cn(
                           "w-fit mb-3 text-sm font-medium",
-                          getStatusBadgeClass(order.status)
+                          getStatusBadgeClass(order.status),
                         )}
                       >
                         {order.status}
@@ -691,8 +823,12 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-gray-600 text-sm mb-1">{order.date}</p>
-                      <p className="text-gray-900 font-semibold text-xl">N{order.price}</p>
-                      <p className="text-gray-600 text-xs mt-1">order channel: Store</p>
+                      <p className="text-gray-900 font-semibold text-xl">
+                        N{order.price.toLocaleString()}
+                      </p>
+                      <p className="text-gray-600 text-xs mt-1">
+                        order channel: Store
+                      </p>
                     </div>
                   </div>
                 </Link>

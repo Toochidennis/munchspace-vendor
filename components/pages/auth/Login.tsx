@@ -343,10 +343,11 @@ export default function LoginPage() {
 
     if (data.vendor?.hasBusiness) {
       setBusinessId(data.vendor.businessId);
-      hasBusiness(true);
-    } else {
-      hasBusiness(null);
+      // hasBusiness(true);
     }
+    // else {
+    //   hasBusiness(null);
+    // }
 
     window.location.href = "/restaurant/dashboard";
   }

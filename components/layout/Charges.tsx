@@ -46,10 +46,7 @@ import { Badge } from "../ui/badge";
 import { cn } from "@/lib/utils";
 import { Switch } from "../ui/switch";
 import { toast } from "sonner";
-import {
-  getAccessToken,
-  getBusinessId,
-} from "@/app/lib/auth";
+import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import { Skeleton } from "../ui/skeleton";
 import { refreshAccessToken } from "@/app/lib/api";
 
@@ -124,7 +121,10 @@ async function authenticatedFetch(
   let token = getAccessToken();
   if (!token) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
   }
 
@@ -142,7 +142,10 @@ async function authenticatedFetch(
 
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
     response = await fetch(url, {
       ...init,
@@ -590,10 +593,7 @@ const Charges = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Charge Type *</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                    >
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="h-11! w-full rounded-md">
                           <SelectValue placeholder="Select type" />
@@ -643,8 +643,7 @@ const Charges = () => {
               render={({ field }) => (
                 <FormItem className="mb-0">
                   <FormLabel className="font-normal text-slate-500">
-                    Applicable Services{" "}
-                    <span className="text-red-600">*</span>
+                    Applicable Services <span className="text-red-600">*</span>
                   </FormLabel>
                   <Popover
                     open={serviceOperationOpen}

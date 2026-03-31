@@ -49,7 +49,12 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
-import { getAccessToken, hasBusiness, setBusinessId } from "@/app/lib/auth";
+import {
+  getAccessToken,
+  hasBusiness,
+  setBusinessId,
+  logout,
+} from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
@@ -67,7 +72,10 @@ async function authenticatedFetch(
   let token = getAccessToken();
   if (!token) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
   }
 
@@ -85,7 +93,10 @@ async function authenticatedFetch(
 
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
     response = await fetch(url, {
       ...init,
