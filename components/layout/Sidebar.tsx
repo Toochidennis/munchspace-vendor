@@ -35,7 +35,8 @@ const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
 export default function RestaurantSidebar() {
-  const { storeImage, address, isPublished, isPublishLoading } = useStore();
+  const { storeImage, address, isPublished, canGoLive, isPublishLoading } =
+    useStore();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileCollapsed, setMobileCollapsed] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
@@ -168,7 +169,7 @@ export default function RestaurantSidebar() {
             </p>
           )}
           <ul className="space-y-1">
-            {!isPublishLoading && !isPublished && (
+            {!isPublishLoading && !isPublished && !canGoLive && (
               <Link
                 href="/restaurant/setup-guides"
                 className="block"
@@ -184,9 +185,7 @@ export default function RestaurantSidebar() {
                   )}
                 >
                   <BellRing className="h-5 w-5 shrink-0" />
-                  {!collapsed && (
-                    <span className="text-sm">Setup Guides</span>
-                  )}
+                  {!collapsed && <span className="text-sm">Setup Guides</span>}
                 </button>
               </Link>
             )}

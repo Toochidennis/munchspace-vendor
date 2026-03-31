@@ -70,7 +70,19 @@ async function authenticatedFetch(
     ...init.headers,
   };
 
-  if (!(init.body instanceof FormData)) {
+  const method = (init.method || "GET").toUpperCase();
+  const hasBody = init.body !== undefined && init.body !== null;
+
+  if (
+    !hasBody &&
+    (method === "POST" ||
+      method === "PATCH" ||
+      method === "PUT" ||
+      method === "DELETE")
+  ) {
+    init.body = JSON.stringify({});
+    (headers as any)["Content-Type"] = "application/json";
+  } else if (hasBody && !(init.body instanceof FormData)) {
     (headers as any)["Content-Type"] = "application/json";
   }
 
@@ -319,10 +331,9 @@ export default function MenuPage() {
       const res = await authenticatedFetch(url, {
         method: "DELETE",
       });
-
-      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
       const json = await res.json();
       console.log("delete response:", json);
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
 
       toast.success("Menu item deleted successfully");
       setIsDeleteDialogOpen(false);

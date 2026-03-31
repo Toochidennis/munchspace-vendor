@@ -118,7 +118,7 @@ export async function logout() {
   const accessToken = getAccessToken();
   setAccessToken(null); // Clear access token from localStorage
   setBusinessId(null);
-  
+
   // Extract refresh token from cookie to send to backend
   const cookies = document.cookie.split("; ");
   const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
@@ -146,6 +146,12 @@ export async function logout() {
     }
   }
 
-  // Final redirect to login
-  window.location.href = "/login";
+  // Clear browser history to prevent back navigation
+  // Push new states to overwrite history stack
+  for (let i = 0; i < window.history.length; i++) {
+    window.history.pushState(null, "", "/login");
+  }
+
+  // Redirect to login (use replace to clear current history entry)
+  window.location.replace("/login");
 }

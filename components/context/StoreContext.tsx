@@ -12,6 +12,7 @@ interface StoreContextType {
   refreshStoreData: () => Promise<void>;
 
   isPublished: boolean | null;
+  canGoLive: boolean | null;
   isPublishLoading: boolean;
   refreshPublishStatus: () => Promise<void>;
 }
@@ -58,6 +59,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
   const [storeImage, setStoreImage] = useState("/images/auth/store.svg");
   const [address, setAddress] = useState("Loading address...");
   const [isPublished, setIsPublished] = useState<boolean | null>(null);
+  const [canGoLive, setCanGoLive] = useState<boolean | null>(null);
   const [isPublishLoading, setIsPublishLoading] = useState(true);
 
   const refreshStoreData = async () => {
@@ -108,9 +110,11 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
       const data = json.data;
 
       setIsPublished(data.isPublished === true);
+      setCanGoLive(data.canGoLive === true);
     } catch (err) {
       console.error("Failed to load publish status", err);
       setIsPublished(false); // fail-safe: show setup guide
+      setCanGoLive(false);
     } finally {
       setIsPublishLoading(false);
     }
@@ -133,6 +137,7 @@ export const StoreProvider = ({ children }: { children: React.ReactNode }) => {
         refreshStoreData,
 
         isPublished,
+        canGoLive,
         isPublishLoading,
         refreshPublishStatus,
       }}

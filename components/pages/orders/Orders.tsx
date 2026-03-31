@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { toast } from "sonner";
-import { getAccessToken, getBusinessId } from "@/app/lib/auth";
+import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import Image from "next/image";
 import { refreshAccessToken } from "@/app/lib/api";
 
@@ -55,7 +55,10 @@ async function authenticatedFetch(
 
   if (!token) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
   }
 
@@ -73,7 +76,10 @@ async function authenticatedFetch(
 
   if (response.status === 401) {
     const refreshOk = await refreshAccessToken();
-    if (!refreshOk) throw new Error("Session expired");
+    if (!refreshOk) {
+      await logout();
+      throw new Error("Session expired");
+    }
     token = getAccessToken();
 
     response = await fetch(url, {
