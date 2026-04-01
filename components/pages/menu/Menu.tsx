@@ -189,6 +189,7 @@ export default function MenuPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<MenuItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCriticalDeletion, setIsCriticalDeletion] = useState(false);
 
   // Toggle loading states
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
@@ -362,6 +363,7 @@ export default function MenuPage() {
 
   const handleDeleteClick = (item: MenuItem) => {
     setDeleteCandidate(item);
+    setIsCriticalDeletion(items.length === 3);
     setIsDeleteDialogOpen(true);
   };
 
@@ -792,7 +794,11 @@ export default function MenuPage() {
       <CustomModal
         isOpen={isDeleteDialogOpen && !!deleteCandidate}
         onClose={() => setIsDeleteDialogOpen(false)}
-        title="Confirm Deletion"
+        title={
+          isCriticalDeletion
+            ? "Warning: Store Will Go Offline"
+            : "Confirm Deletion"
+        }
         maxWidth="sm:max-w-[450px]"
         footer={
           <>
@@ -816,11 +822,20 @@ export default function MenuPage() {
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-700">
-            Are you sure you want to delete{" "}
-            <strong>{deleteCandidate?.name}</strong>? This action cannot be
-            undone.
-          </p>
+          {isCriticalDeletion ? (
+            <p className="text-sm text-gray-700">
+              You currently have 3 items in your menu. If you delete{" "}
+              <strong>{deleteCandidate?.name}</strong>, your store will be set
+              to offline automatically as the minimum required items will not be
+              met. This action cannot be undone.
+            </p>
+          ) : (
+            <p className="text-sm text-gray-700">
+              Are you sure you want to delete{" "}
+              <strong>{deleteCandidate?.name}</strong>? This action cannot be
+              undone.
+            </p>
+          )}
         </div>
       </CustomModal>
     </div>
