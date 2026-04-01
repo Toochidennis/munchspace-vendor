@@ -469,9 +469,9 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen p-6 lg:p-8 mt-10 md:mt-0">
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-4 md:space-y-8">
         {/* Header with Toggle */}
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-6">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 md:gap-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
               Hi {firstName || "User"},
