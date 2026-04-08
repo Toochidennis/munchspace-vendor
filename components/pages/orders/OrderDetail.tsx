@@ -18,12 +18,20 @@ import {
   ChevronRight,
   AlertCircle,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { toast } from "sonner";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // ────────────────────────────────────────────────
 //  Constants
@@ -31,6 +39,59 @@ import { refreshAccessToken } from "@/app/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+
+// ────────────────────────────────────────────────
+//  Custom Modal Component
+// ────────────────────────────────────────────────
+
+function CustomModal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+  maxWidth = "sm:max-w-[640px]",
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  maxWidth?: string;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          "relative w-full bg-white shadow-xl overflow-hidden rounded-md animate-in zoom-in-95 duration-200",
+          maxWidth,
+        )}
+      >
+        <div className="flex border-b items-center justify-between px-6 py-4">
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <button
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+        {footer && (
+          <div className="flex justify-end gap-3 px-6 py-4 border-t bg-white">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ────────────────────────────────────────────────
 //  Authenticated Fetch
@@ -101,6 +162,76 @@ export default function OrderDetailsPage() {
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
   );
+
+  // Status update modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newStatus, setNewStatus] = useState<string>("");
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleStatusUpdate = async () => {
+    if (!order || !newStatus) return;
+
+    setIsUpdating(true);
+    try {
+      const BUSINESS_ID = getBusinessId();
+      const currentOrderId = order.orderId;
+
+      let endpoint = "";
+      switch (newStatus.toLowerCase()) {
+        case "confirm":
+        case "pending":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${currentOrderId}/confirm`;
+          break;
+        case "ready":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${currentOrderId}/ready-for-pickup`;
+          break;
+        case "reject":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${currentOrderId}/reject`;
+          break;
+        case "cancel":
+        case "cancelled":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${currentOrderId}/cancel`;
+          break;
+        default:
+          toast.error("Invalid status selected");
+          return;
+      }
+
+      const response = await authenticatedFetch(endpoint, {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      });
+
+      const result = await response.json();
+      console.log("Status update response:", result);
+
+      if (!response.ok) {
+        throw new Error(
+          result.message ||
+            `Failed to update order status (${response.status})`,
+        );
+      }
+
+      if (result.success) {
+        toast.success(`Order status updated to ${newStatus}`);
+        setIsModalOpen(false);
+        setNewStatus("");
+        // Refresh the page to reflect the changes
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } else {
+        throw new Error(result.message || "Failed to update order status");
+      }
+    } catch (err: any) {
+      console.error("Status update failed:", err);
+      toast.error("Failed to update order status", {
+        description: err.message || "Please try again",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   useEffect(() => {
     const BUSINESS_ID = getBusinessId();
@@ -295,43 +426,61 @@ export default function OrderDetailsPage() {
       <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0 gap-0">
         {/* Header */}
         <CardHeader className="pb-4 mb-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
-              <img
-                src={displayData.image}
-                alt="Order item"
-                width={64}
-                height={64}
-                className="object-cover"
-                crossOrigin="anonymous"
-              />
+          <div className="flex items-center justify-between gap-6">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden shrink-0">
+                <img
+                  src={displayData.image}
+                  alt="Order item"
+                  width={64}
+                  height={64}
+                  className="object-cover"
+                  crossOrigin="anonymous"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <Badge
+                  className={cn(
+                    "rounded px-4 py-1 mb-1",
+                    order.status.toLowerCase().includes("ready") &&
+                      "bg-purple-100 text-purple-700 border border-purple-200",
+                    order.status.toLowerCase().includes("complete") &&
+                      "bg-green-100 text-green-500 border border-green-200",
+                    order.status.toLowerCase().includes("pending") &&
+                      "bg-blue-100 text-blue-500 border border-blue-200",
+                    (order.status.toLowerCase().includes("cancel") ||
+                      order.status.toLowerCase().includes("return")) &&
+                      "bg-red-100 text-red-400 border border-red-200",
+                    order.status.toLowerCase().includes("reject") &&
+                      "bg-red-100 text-red-700 border border-red-200",
+                    order.status.toLowerCase().includes("out_for_delivery") &&
+                      "bg-teal-100 text-teal-700 border border-teal-200",
+                    order.status.toLowerCase().includes("prepar") &&
+                      "bg-yellow-100 text-yellow-700 border border-yellow-200",
+                  )}
+                >
+                  {displayData.status}
+                </Badge>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Order {displayData.id}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Ordered on {displayData.orderedDateInWords}
+                </p>
+              </div>
             </div>
-            <div>
-              <Badge
-                className={cn(
-                  "rounded px-4 py-1 mb-1",
-                  displayData.status.toLowerCase().includes("ready") &&
-                    "bg-purple-100 text-purple-700 border border-purple-200",
-                  displayData.status.toLowerCase().includes("complete") &&
-                    "bg-green-100 text-green-500 border border-green-200",
-                  displayData.status.toLowerCase().includes("pending") &&
-                    "bg-blue-100 text-blue-500 border border-blue-200",
-                  (displayData.status.toLowerCase().includes("cancel") ||
-                    displayData.status.toLowerCase().includes("return")) &&
-                    "bg-red-100 text-red-400 border border-red-200",
-                  displayData.status.toLowerCase().includes("prepar") &&
-                    "bg-yellow-100 text-yellow-700 border border-yellow-200",
-                )}
-              >
-                {displayData.status}
-              </Badge>
-              <h2 className="text-xl font-bold text-gray-900">
-                Order {displayData.id}
-              </h2>
-              <p className="text-sm text-gray-500">
-                Ordered on {displayData.orderedDateInWords}
-              </p>
-            </div>
+            {!order.status.toLowerCase().includes("cancel") &&
+              !order.status.toLowerCase().includes("completed") &&
+              !order.status.toLowerCase().includes("out_for_delivery") &&
+              !order.status.toLowerCase().includes("rejected") && (
+                <Button
+                  onClick={() => setIsModalOpen(true)}
+                  variant="outline"
+                  className="text-gray-900 rounded-md whitespace-nowrap shrink-0 h-10"
+                >
+                  Mark Order as...
+                </Button>
+              )}
           </div>
         </CardHeader>
 
@@ -473,6 +622,62 @@ export default function OrderDetailsPage() {
           </Button>
         </div>
       </Card>
+
+      {/* Status Update Modal */}
+      <CustomModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setNewStatus("");
+        }}
+        title="Mark order as ..."
+        maxWidth="sm:max-w-md"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              className="rounded-md"
+              onClick={() => {
+                setIsModalOpen(false);
+                setNewStatus("");
+              }}
+              disabled={isUpdating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStatusUpdate}
+              disabled={!newStatus || isUpdating}
+              className="bg-orange-500 hover:bg-orange-600 text-white rounded-md min-w-24"
+            >
+              {isUpdating ? "Updating..." : "Update Status"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              Select New Status
+            </label>
+            <Select value={newStatus} onValueChange={setNewStatus}>
+              <SelectTrigger className="rounded-md h-12! w-full mt-2">
+                <SelectValue placeholder="Choose a status" />
+              </SelectTrigger>
+              <SelectContent className="rounded-md">
+                {order && order.status.toLowerCase().includes("pending") && (
+                  <SelectItem value="confirm">Confirm</SelectItem>
+                )}
+                {order && order.status.toLowerCase().includes("preparing") && (
+                  <SelectItem value="ready">Ready for Pickup</SelectItem>
+                )}
+                <SelectItem value="reject">Reject</SelectItem>
+                <SelectItem value="cancel">Cancel</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CustomModal>
     </div>
   );
 }
