@@ -8,6 +8,8 @@ import {
   Settings2,
   AlertCircle,
   RefreshCw,
+  Edit3,
+  X,
 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -35,6 +37,59 @@ import { toast } from "sonner";
 import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import Image from "next/image";
 import { refreshAccessToken } from "@/app/lib/api";
+
+// ────────────────────────────────────────────────
+//  Custom Modal Component
+// ────────────────────────────────────────────────
+
+function CustomModal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+  maxWidth = "sm:max-w-[640px]",
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  maxWidth?: string;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          "relative w-full bg-white shadow-xl overflow-hidden rounded-md animate-in zoom-in-95 duration-200",
+          maxWidth,
+        )}
+      >
+        <div className="flex border-b items-center justify-between px-6 py-4">
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <button
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+        {footer && (
+          <div className="flex justify-end gap-3 px-6 py-4 border-t bg-white">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ────────────────────────────────────────────────
 //  Constants from .env
@@ -130,7 +185,10 @@ const getStatusBadgeClass = (status: string) => {
     return "bg-purple-100 text-purple-700 border-purple-200";
   if (s.includes("completed"))
     return "bg-green-100 text-green-700 border-green-200";
+  if (s.includes("reject")) return "bg-red-100 text-red-700 border-red-200";
   if (s.includes("cancel")) return "bg-red-100 text-red-700 border-red-200";
+  if (s.includes("out_for_delivery"))
+    return "bg-teal-100 text-teal-700 border-teal-200";
   if (s.includes("returned"))
     return "bg-orange-100 text-orange-700 border-orange-200";
   return "bg-gray-100 text-gray-700 border-gray-200";
@@ -164,6 +222,12 @@ export default function OrdersPage() {
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
   );
+
+  // Status update modal state
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newStatus, setNewStatus] = useState<string>("");
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     const BUSINESS_ID = getBusinessId();
@@ -215,7 +279,6 @@ export default function OrdersPage() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const json = await response.json();
-        console.log("Orders API response:", json);
 
         if (!json.success || !json.data) {
           throw new Error("Invalid API response structure");
@@ -281,6 +344,76 @@ export default function OrdersPage() {
     fetchOrders();
   }, [period, statusFilter, currentPage, itemsPerPage]);
 
+  const handleStatusUpdate = async () => {
+    if (!selectedOrder || !newStatus) return;
+
+    setIsUpdating(true);
+    try {
+      const BUSINESS_ID = getBusinessId();
+      const { orderId } = selectedOrder;
+
+      let endpoint = "";
+      switch (newStatus.toLowerCase()) {
+        case "confirm":
+        case "pending":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}/confirm`;
+          break;
+        case "ready":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}/ready-for-pickup`;
+          break;
+        case "reject":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}/reject`;
+          break;
+        case "cancel":
+        case "cancelled":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}/cancel`;
+          break;
+        default:
+          toast.error("Invalid status selected");
+          return;
+      }
+
+      const response = await authenticatedFetch(endpoint, {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      });
+
+      const result = await response.json();
+      console.log("Status update response:", result);
+
+      if (!response.ok) {
+        throw new Error(
+          result.message ||
+            `Failed to update order status (${response.status})`,
+        );
+      }
+
+      if (result.success) {
+        toast.success(`Order status updated to ${newStatus}`);
+        setIsModalOpen(false);
+        setSelectedOrder(null);
+        setNewStatus("");
+        // Refresh the page to reflect the changes
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } else {
+        throw new Error(result.message || "Failed to update order status");
+      }
+    } catch (err: any) {
+      console.error("Status update failed:", err);
+      toast.error("Failed to update order status", {
+        description: err.message || "Please try again",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) setCurrentPage(page);
+  };
+
   const filteredOrders = useMemo(() => {
     if (!searchTerm.trim()) return orders;
     return orders.filter(
@@ -291,10 +424,6 @@ export default function OrdersPage() {
   }, [orders, searchTerm]);
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
-
-  const handlePageChange = (page: number) => {
-    if (page >= 1 && page <= totalPages) setCurrentPage(page);
-  };
 
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(Number(value));
@@ -578,7 +707,7 @@ export default function OrdersPage() {
                   setCurrentPage(1);
                 }}
                 className={cn(
-                  "pb-3 border-b-[4px] font-medium whitespace-nowrap transition-colors -mb-[1px]",
+                  "pb-3 border-b-4 font-medium whitespace-nowrap transition-colors -mb-px",
                   statusFilter === f
                     ? "border-orange-600 text-orange-600"
                     : "border-transparent text-gray-600 hover:text-gray-900",
@@ -682,15 +811,40 @@ export default function OrdersPage() {
                                 ₦{order.totalAmount.toLocaleString()}
                               </TableCell>
                               <TableCell className="py-6">
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "px-4 py-1.5 rounded text-sm font-medium",
-                                    getStatusBadgeClass(order.status),
-                                  )}
-                                >
-                                  {order.status.replace(/_/g, " ")}
-                                </Badge>
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "px-4 py-1.5 rounded text-sm font-medium",
+                                      getStatusBadgeClass(order.status),
+                                    )}
+                                  >
+                                    {order.status.replace(/_/g, " ")}
+                                  </Badge>
+                                  {!order.status
+                                    .toLowerCase()
+                                    .includes("cancel") &&
+                                    !order.status
+                                      .toLowerCase()
+                                      .includes("completed") &&
+                                    !order.status
+                                      .toLowerCase()
+                                      .includes("out_for_delivery") &&
+                                    !order.status
+                                      .toLowerCase()
+                                      .includes("rejected") && (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedOrder(order);
+                                          setIsModalOpen(true);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+                                        title="Update status"
+                                      >
+                                        <Edit3 className="h-4 w-4 text-gray-600 hover:text-gray-900" />
+                                      </button>
+                                    )}
+                                </div>
                               </TableCell>
                               <TableCell className="text-right py-6">
                                 <Link
@@ -709,15 +863,15 @@ export default function OrdersPage() {
 
                     <div className="md:hidden divide-y divide-gray-100">
                       {filteredOrders.map((order) => (
-                        <Link
+                        <div
                           key={order.orderId}
-                          href={`/restaurant/orders/${order.orderId}`}
+                          className="p-4 flex justify-between items-start hover:bg-gray-50"
                         >
-                          <div className="p-4 flex justify-between items-start hover:bg-gray-50">
-                            <div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
                               <div
                                 className={cn(
-                                  "font-medium mb-1 text-sm",
+                                  "font-medium text-sm",
                                   getStatusBadgeClass(order.status).split(
                                     " ",
                                   )[1],
@@ -725,20 +879,44 @@ export default function OrdersPage() {
                               >
                                 {order.status.replace(/_/g, " ")}
                               </div>
-                              <div className="font-medium">
-                                {order.orderCode}
-                              </div>
+                              {!order.status.toLowerCase().includes("cancel") &&
+                                !order.status
+                                  .toLowerCase()
+                                  .includes("completed") &&
+                                !order.status
+                                  .toLowerCase()
+                                  .includes("out_for_delivery") &&
+                                !order.status
+                                  .toLowerCase()
+                                  .includes("rejected") && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedOrder(order);
+                                      setIsModalOpen(true);
+                                    }}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                    title="Update status"
+                                  >
+                                    <Edit3 className="h-3.5 w-3.5 text-gray-600" />
+                                  </button>
+                                )}
                             </div>
-                            <div className="text-right">
-                              <div className="text-gray-500 text-sm mb-1">
-                                {new Date(order.placedAt).toLocaleString()}
-                              </div>
-                              <div className="font-bold text-lg">
-                                ₦{order.totalAmount.toLocaleString()}
-                              </div>
+                            <Link
+                              href={`/restaurant/orders/${order.orderId}`}
+                              className="font-medium"
+                            >
+                              {order.orderCode}
+                            </Link>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-gray-500 text-sm mb-1">
+                              {new Date(order.placedAt).toLocaleString()}
+                            </div>
+                            <div className="font-bold text-lg">
+                              ₦{order.totalAmount.toLocaleString()}
                             </div>
                           </div>
-                        </Link>
+                        </div>
                       ))}
                     </div>
                   </>
@@ -749,6 +927,72 @@ export default function OrdersPage() {
           <PaginationControls />
         </div>
       )}
+
+      {/* Status Update Modal */}
+      <CustomModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedOrder(null);
+          setNewStatus("");
+        }}
+        title="Mark order as..."
+        maxWidth="sm:max-w-md"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              className="rounded-md"
+              onClick={() => {
+                setIsModalOpen(false);
+                setSelectedOrder(null);
+                setNewStatus("");
+              }}
+              disabled={isUpdating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStatusUpdate}
+              disabled={!newStatus || isUpdating}
+              className="bg-orange-500 hover:bg-orange-600 text-white rounded-md min-w-24"
+            >
+              {isUpdating ? "Updating..." : "Update Status"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-600 mb-1">Order ID:</p>
+            <p className="font-medium text-gray-900">
+              {selectedOrder?.orderCode}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              Select New Status
+            </label>
+            <Select value={newStatus} onValueChange={setNewStatus}>
+              <SelectTrigger className="rounded-md h-12! w-full mt-2">
+                <SelectValue placeholder="Choose a status" />
+              </SelectTrigger>
+              <SelectContent className="rounded-md">
+                {selectedOrder &&
+                  selectedOrder.status.toLowerCase().includes("pending") && (
+                    <SelectItem value="confirm">Confirm</SelectItem>
+                  )}
+                {selectedOrder &&
+                  selectedOrder.status.toLowerCase().includes("preparing") && (
+                    <SelectItem value="ready">Ready for Pickup</SelectItem>
+                  )}
+                <SelectItem value="reject">Reject</SelectItem>
+                <SelectItem value="cancel">Cancel</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CustomModal>
     </div>
   );
 }
