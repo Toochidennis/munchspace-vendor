@@ -462,6 +462,16 @@ export default function LoginPage() {
                     "Continue"
                   )}
                 </Button>
+
+                <p className="text-center text-sm text-slate-500">
+                  Don&apos;t have an account?{" "}
+                  <Link
+                    href="/register"
+                    className="font-medium text-munchprimary underline underline-offset-4 hover:text-munchprimaryDark"
+                  >
+                    Sign up
+                  </Link>
+                </p>
               </form>
             </Form>
           )}
