@@ -84,6 +84,22 @@ export const metadata: Metadata = {
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
+const DEFAULT_DASHBOARD_DATA = {
+  traffic: [],
+  bestSelling: [],
+  recentOrders: [],
+  kpis: {
+    totalOrders: 0,
+    totalOrdersTrend: 0,
+    totalReturns: 0,
+    totalReturnsTrend: 0,
+    newCustomers: 0,
+    newCustomersTrend: 0,
+    totalDiscount: 0,
+    totalDiscountTrend: 0,
+  },
+};
+
 // ────────────────────────────────────────────────
 //  Authenticated Fetch (Fixed for PATCH)
 // ────────────────────────────────────────────────
@@ -154,7 +170,7 @@ export default function DashboardPage() {
   const [isPublished, setIsPublished] = useState<boolean | null>(null);
   const [toggling, setToggling] = useState(false);
 
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<any>(DEFAULT_DASHBOARD_DATA);
   const [loading, setLoading] = useState(true);
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
@@ -220,6 +236,7 @@ export default function DashboardPage() {
       const businessId = getBusinessId();
       if (!businessId) {
         toast.error("Business ID not found");
+        setData(DEFAULT_DASHBOARD_DATA);
         setLoading(false);
         return;
       }
@@ -271,21 +288,7 @@ export default function DashboardPage() {
         } else {
           toast.error("Failed to load dashboard");
         }
-        setData({
-          traffic: [],
-          bestSelling: [],
-          recentOrders: [],
-          kpis: {
-            totalOrders: 0,
-            totalOrdersTrend: 0,
-            totalReturns: 0,
-            totalReturnsTrend: 0,
-            newCustomers: 0,
-            newCustomersTrend: 0,
-            totalDiscount: 0,
-            totalDiscountTrend: 0,
-          },
-        });
+        setData(DEFAULT_DASHBOARD_DATA);
       } finally {
         setLoading(false);
       }
@@ -458,10 +461,11 @@ export default function DashboardPage() {
     );
   }
 
+  const bestSellingItems = data?.bestSelling ?? [];
   const top5Items =
-    data.bestSelling.length > 5
-      ? data.bestSelling.slice(0, 5)
-      : data.bestSelling;
+    bestSellingItems.length > 5
+      ? bestSellingItems.slice(0, 5)
+      : bestSellingItems;
   const totalSales = top5Items.reduce(
     (sum: number, item: any) => sum + item.sales,
     0,
