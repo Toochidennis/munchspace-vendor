@@ -65,8 +65,14 @@ export function setBusinessId(id: string | null) {
       expiry: Date.now() + 60 * 2000 * 10000,
     };
     localStorage.setItem("businessId", JSON.stringify(item));
+    Cookies.set("businessId", id, {
+      expires: COOKIE_EXPIRY_DAYS,
+      path: "/",
+      sameSite: "lax",
+    });
   } else {
     localStorage.removeItem("businessId");
+    Cookies.remove("businessId");
   }
 }
 
@@ -147,6 +153,7 @@ export async function logout() {
   const accessToken = getAccessToken();
   setAccessToken(null); // Clear access token from localStorage
   setBusinessId(null);
+  hasBusiness(null);
 
   // Extract refresh token from cookie to send to backend
   const cookies = document.cookie.split("; ");

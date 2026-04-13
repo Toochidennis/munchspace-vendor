@@ -41,6 +41,16 @@ const passwordSchema = z.object({
 type EmailValues = z.infer<typeof emailSchema>;
 type PasswordValues = z.infer<typeof passwordSchema>;
 
+const SERVER_ERROR_MESSAGE = "Something went wrong try again later";
+
+async function parseApiResponse(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 // ── Component ──────────────────────────────────────────────
 export default function LoginPage() {
   const [step, setStep] = useState<"email" | "password" | "otp">("email");
@@ -146,6 +156,13 @@ export default function LoginPage() {
         body: JSON.stringify({ identifier: values.identifier }),
       });
 
+      if (res.status >= 500) {
+        emailForm.setError("root", {
+          message: SERVER_ERROR_MESSAGE,
+        });
+        return;
+      }
+
       if (res.status === 401) {
         emailForm.setError("root", {
           message: "No account found with this email or phone number.",
@@ -153,12 +170,13 @@ export default function LoginPage() {
         return;
       }
 
-      const apiRes = await res.json();
+      const apiRes = await parseApiResponse(res);
 
-      if (!apiRes.success || !apiRes.data) {
-        const errorMessage = apiRes.message?.toLowerCase().includes("invalid")
+      if (!apiRes?.success || !apiRes?.data) {
+        const errorMessage = apiRes?.message?.toLowerCase().includes("invalid")
           ? "Please enter a valid email address or phone number."
-          : apiRes.message || "An unexpected error occurred. Please try again.";
+          : apiRes?.message ||
+            "An unexpected error occurred. Please try again.";
 
         emailForm.setError("root", { message: errorMessage });
         return;
@@ -228,11 +246,18 @@ export default function LoginPage() {
         }),
       });
 
-      const apiRes = await res.json();
-
-      if (!apiRes.success || !apiRes.data) {
+      if (res.status >= 500) {
         passwordForm.setError("root", {
-          message: apiRes.message || "Incorrect password. Please try again.",
+          message: SERVER_ERROR_MESSAGE,
+        });
+        return;
+      }
+
+      const apiRes = await parseApiResponse(res);
+
+      if (!apiRes?.success || !apiRes?.data) {
+        passwordForm.setError("root", {
+          message: apiRes?.message || "Incorrect password. Please try again.",
         });
         return;
       }
@@ -274,10 +299,15 @@ export default function LoginPage() {
         body: JSON.stringify({ identifier: currentIdentifier }),
       });
 
-      const apiRes = await res.json();
+      if (res.status >= 500) {
+        setOtpError(SERVER_ERROR_MESSAGE);
+        return;
+      }
 
-      if (!apiRes.success) {
-        setOtpError(apiRes.message || "Failed to send verification code.");
+      const apiRes = await parseApiResponse(res);
+
+      if (!apiRes?.success) {
+        setOtpError(apiRes?.message || "Failed to send verification code.");
       } else {
         setResendCooldown(60);
         setCurrentWaitTime(60);
@@ -314,11 +344,16 @@ export default function LoginPage() {
         }),
       });
 
-      const apiRes = await res.json();
+      if (res.status >= 500) {
+        setOtpError(SERVER_ERROR_MESSAGE);
+        return;
+      }
 
-      if (!apiRes.success || !apiRes.data) {
+      const apiRes = await parseApiResponse(res);
+
+      if (!apiRes?.success || !apiRes?.data) {
         setOtpError(
-          apiRes.message ||
+          apiRes?.message ||
             "Invalid or expired code. Please check and try again.",
         );
         return;
@@ -350,13 +385,13 @@ export default function LoginPage() {
 
     document.cookie = `refreshToken=${data.refreshToken}; path=/; secure; samesite=strict; max-age=${60 * 60 * 24 * 30}`;
 
-    if (data.vendor?.hasBusiness) {
+    if (data.vendor?.hasBusiness && data.vendor?.businessId) {
       setBusinessId(data.vendor.businessId);
-      // hasBusiness(true);
+      hasBusiness(true);
+    } else {
+      setBusinessId(null);
+      hasBusiness(null);
     }
-    // else {
-    //   hasBusiness(null);
-    // }
     console.log("Vendor data on login:", data);
 
     window.location.href = "/restaurant/dashboard";

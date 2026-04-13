@@ -18,7 +18,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { setAccessToken, setBusinessId } from "@/app/lib/auth";
+import {
+  hasBusiness,
+  setAccessToken,
+  setBusinessId,
+  setFirstName,
+  setDisplayName,
+} from "@/app/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
@@ -52,6 +58,16 @@ const registerSchema = z
   });
 
 type RegisterValues = z.infer<typeof registerSchema>;
+
+const SERVER_ERROR_MESSAGE = "Something went wrong try again later";
+
+async function parseApiResponse(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
 export default function RegisterPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -141,7 +157,8 @@ export default function RegisterPage() {
   };
 
   // ── New helper: request OTP ───────────────────────────────────────
-  async function requestOtp() {
+  async function requestOtp(email?: string) {
+    const identifier = email || savedEmail;
     try {
       const res = await fetch(`${API_BASE}/auth/otp/request`, {
         method: "POST",
@@ -149,20 +166,27 @@ export default function RegisterPage() {
           "Content-Type": "application/json",
           "x-api-key": API_KEY,
         },
-        body: JSON.stringify({ identifier: savedEmail }),
+        body: JSON.stringify({ identifier }),
       });
 
+      if (res.status >= 500) {
+        setOtpError(SERVER_ERROR_MESSAGE);
+        return false;
+      }
+
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
+        const err = (await parseApiResponse(res)) || {};
         console.warn("OTP request failed:", err.message || res.status);
-        // We don't block the flow — user can still try to resend
+        return false;
       } else {
         setResendCooldown(60);
         setCurrentWaitTime(60);
         setOtp(["", "", "", "", "", ""]);
+        return true;
       }
     } catch (err) {
       console.warn("OTP request network error", err);
+      return false;
     }
   }
 
@@ -193,19 +217,35 @@ export default function RegisterPage() {
         }),
       });
 
-      const resData = await response.json();
+      if (response.status >= 500) {
+        form.setError("root", {
+          message: SERVER_ERROR_MESSAGE,
+        });
+        return;
+      }
 
-      if (response.status === 201 && resData.success && resData.data) {
+      const resData = await parseApiResponse(response);
+
+      if (response.status === 201 && resData?.success && resData?.data) {
         setSavedEmail(values.email);
 
         if (resData.data.requiresOtp) {
           // ── Changed: request OTP before showing the screen ────────
-          await requestOtp();
+          await requestOtp(values.email);
           setStep(2);
         } else {
           const { accessToken, refreshToken } = resData.data;
 
-          setBusinessId(resData.data.vendor.businessId);
+          if (resData.data.vendor?.businessId) {
+            setBusinessId(resData.data.vendor.businessId);
+            hasBusiness(true);
+          } else {
+            setBusinessId(null);
+            hasBusiness(null);
+          }
+          if (resData.data.firstName) setFirstName(resData.data.firstName);
+          if (resData.data.displayName)
+            setDisplayName(resData.data.displayName);
           setAccessToken(accessToken);
           document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
             60 * 60 * 24 * 30
@@ -215,7 +255,7 @@ export default function RegisterPage() {
         }
       } else if (response.status === 400) {
         form.setError("root", {
-          message: resData.message || "Invalid input data.",
+          message: resData?.message || "Invalid input data.",
         });
       } else if (response.status === 401) {
         form.setError("root", { message: "Invalid or missing API key." });
@@ -223,7 +263,7 @@ export default function RegisterPage() {
         form.setError("email", { message: "User already exists." });
       } else {
         form.setError("root", {
-          message: resData.message || "An unexpected error occurred.",
+          message: resData?.message || "An unexpected error occurred.",
         });
       }
     } catch (error) {
@@ -238,9 +278,9 @@ export default function RegisterPage() {
     setIsLoading(true);
     setOtpError("");
 
-    await requestOtp(); // reuse the same helper
+    const otpRequested = await requestOtp();
 
-    if (resendCooldown === 0) {
+    if (!otpRequested && !otpError) {
       // If request failed and didn't set cooldown → show error
       setOtpError("Failed to resend code. Please try again.");
     }
@@ -268,17 +308,37 @@ export default function RegisterPage() {
         }),
       });
 
+      if (response.status >= 500) {
+        setOtpError(SERVER_ERROR_MESSAGE);
+        return;
+      }
+
       if (response.status === 200) {
-        const res = await response.json();
+        const res = await parseApiResponse(response);
+
+        console.log("OTP verification response:", res);
+        if (!res?.data) {
+          setOtpError("An error occurred during verification.");
+          return;
+        }
+
         const { accessToken, refreshToken } = res.data;
 
-        setBusinessId(res.data.vendor.businessId);
+        if (res.data.vendor?.businessId) {
+          setBusinessId(res.data.vendor.businessId);
+          hasBusiness(true);
+        } else {
+          setBusinessId(null);
+          hasBusiness(null);
+        }
+        if (res.data.firstName) setFirstName(res.data.firstName);
+        if (res.data.displayName) setDisplayName(res.data.displayName);
         setAccessToken(accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30
         }`;
 
-        setStep(3);
+        window.location.href = "/restaurant/dashboard";
       } else if (response.status === 400) {
         setOtpError("Invalid or expired OTP.");
       } else {

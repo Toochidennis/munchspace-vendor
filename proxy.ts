@@ -7,7 +7,9 @@ export async function proxy(request: NextRequest) {
   const cookieStore = await cookies();
 
   const hasRefreshToken = cookieStore.has("refreshToken");
-  const hasBusiness = cookieStore.get("hasBusiness")?.value;
+  const hasBusinessCookie = cookieStore.get("hasBusiness")?.value === "true";
+  const hasBusinessId = Boolean(cookieStore.get("businessId")?.value);
+  const hasBusiness = hasBusinessCookie && hasBusinessId;
 
   console.log(`Proxy - Path: ${pathname}, HasBusiness: ${hasBusiness}`);
 
