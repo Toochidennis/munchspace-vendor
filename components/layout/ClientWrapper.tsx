@@ -19,8 +19,11 @@ export default function ClientWrapper({
 }) {
   const pathname = usePathname();
   useEffect(() => {
-    // Check if user has been inactive for more than 1 hour
-    checkInactivityOnLoad();
+    // Skip inactivity check if setting up an impersonation session
+    if (!pathname.startsWith("/impersonate")) {
+      // Check if user has been inactive for more than 1 hour
+      checkInactivityOnLoad();
+    }
 
     // Always start the inactivity listener (global)
     const cleanupInactivity = startInactivityListener();
