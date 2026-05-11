@@ -579,7 +579,7 @@ export default function EditMenuPage() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const { data } = await res.json();
-        console.log("Fetched menu item data:", data);
+
 
         const hasDiscount = !!data.discount?.type;
 

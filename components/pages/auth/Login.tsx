@@ -56,6 +56,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<"email" | "password" | "otp">("email");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   // Use useRef to store identifier persistently across renders
   const identifierRef = useRef<string>("");
@@ -145,6 +146,7 @@ export default function LoginPage() {
     setIsLoading(true);
     setNoPasswordMessage("");
     setOtpError("");
+    setAuthError("");
 
     try {
       const res = await fetch(`${API_BASE}/auth/login`, {
@@ -163,9 +165,12 @@ export default function LoginPage() {
         return;
       }
 
-      if (res.status === 401) {
+      if (res.status === 401 || res.status === 403) {
+        const apiRes = await parseApiResponse(res);
         emailForm.setError("root", {
-          message: "No account found with this email or phone number.",
+          message:
+            apiRes?.message ||
+            "You do not have access to the admin page. Please contact support.",
         });
         return;
       }
@@ -183,6 +188,15 @@ export default function LoginPage() {
       }
 
       const data = apiRes.data;
+
+      if (data?.admin === false && !data?.vendor) {
+        emailForm.setError("root", {
+          message:
+            data.message ||
+            "You do not have access to the admin page. Please contact support.",
+        });
+        return;
+      }
 
       // *** IMPORTANT: Save identifier immediately ***
       saveIdentifier(values.identifier);
@@ -246,6 +260,16 @@ export default function LoginPage() {
         }),
       });
 
+      if (res.status === 401 || res.status === 403) {
+        const apiRes = await parseApiResponse(res);
+        passwordForm.setError("root", {
+          message:
+            apiRes?.message ||
+            "You do not have access to the admin page. Please contact support.",
+        });
+        return;
+      }
+
       if (res.status >= 500) {
         passwordForm.setError("root", {
           message: SERVER_ERROR_MESSAGE,
@@ -263,6 +287,15 @@ export default function LoginPage() {
       }
 
       const data = apiRes.data;
+
+      if (data?.admin === false && !data?.vendor) {
+        passwordForm.setError("root", {
+          message:
+            data.message ||
+            "You do not have access to the admin page. Please contact support.",
+        });
+        return;
+      }
 
       if (data.availableMethods?.includes("otp") || data.requiresOtp) {
         await requestOtp();
@@ -359,6 +392,14 @@ export default function LoginPage() {
         return;
       }
 
+      if (apiRes.data?.admin === false && !apiRes.data?.vendor) {
+        setOtpError(
+          apiRes.data?.message ||
+            "You do not have access to the admin page. Please contact support.",
+        );
+        return;
+      }
+
       completeSignIn(apiRes.data);
     } catch {
       setOtpError("Network error. Please try again.");
@@ -392,7 +433,11 @@ export default function LoginPage() {
       setBusinessId(null);
       hasBusiness(null);
     }
-    console.log("Vendor data on login:", data);
+
+    localStorage.setItem("admin", JSON.stringify(!!data.admin));
+    localStorage.setItem("customer", JSON.stringify(!!data.customer));
+
+
 
     window.location.href = "/restaurant/dashboard";
   }

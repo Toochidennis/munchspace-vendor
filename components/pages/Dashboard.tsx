@@ -253,12 +253,12 @@ export default function DashboardPage() {
         const api = json.data;
 
         setData({
-          traffic: api.traffic || [],
-          bestSelling: (api.bestSelling || []).map((item: any) => ({
+          traffic: Array.isArray(api.traffic) ? api.traffic : [],
+          bestSelling: (Array.isArray(api.bestSelling) ? api.bestSelling : []).map((item: any) => ({
             name: item.name || item.productName || "Unknown Item",
             sales: item.sales || item.quantity || item.totalSold || 0,
           })),
-          recentOrders: (api.recentOrders?.data || []).map((o: any) => ({
+          recentOrders: (Array.isArray(api.recentOrders?.data) ? api.recentOrders.data : []).map((o: any) => ({
             id: o.orderId,
             code: o.code || o.orderId,
             date: new Date(o.placedAt).toLocaleString(),
@@ -537,7 +537,7 @@ export default function DashboardPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                {data.traffic.length === 0 ? (
+                {!data.traffic || !Array.isArray(data.traffic) || data.traffic.length === 0 ? (
                   <div className="h-64 flex flex-col items-center justify-center text-gray-500">
                     <Image
                       src="/images/empty-chart.png"

@@ -830,7 +830,7 @@ const StoreDetails = () => {
       );
 
       const resData = await res.json();
-      console.log("Address update response:", resData);
+
       if (!res.ok) throw new Error("Address update failed");
 
       const stateName =

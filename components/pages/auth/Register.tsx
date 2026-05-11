@@ -316,7 +316,7 @@ export default function RegisterPage() {
       if (response.status === 200) {
         const res = await parseApiResponse(response);
 
-        console.log("OTP verification response:", res);
+
         if (!res?.data) {
           setOtpError("An error occurred during verification.");
           return;

@@ -203,7 +203,7 @@ export default function OrderDetailsPage() {
       });
 
       const result = await response.json();
-      console.log("Status update response:", result);
+
 
       if (!response.ok) {
         throw new Error(

@@ -224,7 +224,7 @@ const Charges = () => {
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
   );
-
+  
   const businessId = getBusinessId();
 
   const form = useForm<ChargesFormType>({

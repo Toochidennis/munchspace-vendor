@@ -11,7 +11,7 @@ export async function proxy(request: NextRequest) {
   const hasBusinessId = Boolean(cookieStore.get("businessId")?.value);
   const hasBusiness = hasBusinessCookie && hasBusinessId;
 
-  console.log(`Proxy - Path: ${pathname}, HasBusiness: ${hasBusiness}`);
+
 
   // 1. PUBLIC ROUTES: If logged in, don't allow access to login/home
   if (hasRefreshToken && (pathname === "/" || pathname === "/login")) {
