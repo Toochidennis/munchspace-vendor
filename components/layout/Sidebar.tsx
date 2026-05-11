@@ -45,6 +45,13 @@ export default function RestaurantSidebar() {
   const [loadingProfile, setLoadingProfile] = useState(false);
 
   const [showMore, setShowMore] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    try {
+      setIsAdmin(localStorage.getItem("admin") === "true");
+    } catch (e) {}
+  }, []);
 
   const pathname = usePathname();
 
@@ -330,7 +337,7 @@ export default function RestaurantSidebar() {
             {!collapsed && !loadingProfile && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{profile?.name}</p>
-                <p className="text-xs">Vendor</p>
+                <p className="text-xs">{isAdmin ? "Admin" : "Vendor"}</p>
               </div>
             )}
             <button
@@ -519,7 +526,7 @@ export default function RestaurantSidebar() {
                   <p className="text-sm font-medium truncate">
                     {profile?.name}
                   </p>
-                  <p className="text-xs">Vendor</p>
+                  <p className="text-xs">{isAdmin ? "Admin" : "Vendor"}</p>
                 </div>
                 <button
                   className={cn("p-2 rounded-lg  transition-colors")}

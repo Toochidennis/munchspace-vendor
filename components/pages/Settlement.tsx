@@ -19,6 +19,21 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
   Form,
@@ -140,7 +155,7 @@ interface SettlementAccount {
 // ────────────────────────────────────────────────
 
 export default function EarningsPage() {
-  const [activeTab, setActiveTab] = useState<"earnings" | "payout">("earnings");
+  const [activeTab, setActiveTab] = useState<"earnings" | "payout_history" | "payout">("earnings");
   const [account, setAccount] = useState<SettlementAccount | null>(null);
   const [banks, setBanks] = useState<BankOption[]>([]);
   const [isLoadingBanks, setIsLoadingBanks] = useState(true);
@@ -152,13 +167,23 @@ export default function EarningsPage() {
   const [bankOpen, setBankOpen] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationError, setVerificationError] = useState<string | null>(
-    null,
-  );
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const [selectedBank, setSelectedBank] = useState<BankOption | null>(null);
-  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
-    null,
-  );
+  const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(null);
+
+  // Earnings tab state
+  const [earningsSummary, setEarningsSummary] = useState<any>(null);
+  const [earningsData, setEarningsData] = useState<any[]>([]);
+  const [earningsMeta, setEarningsMeta] = useState<any>(null);
+  const [earningsPage, setEarningsPage] = useState(1);
+  const [earningsDateRange, setEarningsDateRange] = useState("last_30_days");
+  const [isLoadingEarnings, setIsLoadingEarnings] = useState(false);
+
+  // Payout history state
+  const [payoutsData, setPayoutsData] = useState<any[]>([]);
+  const [payoutsMeta, setPayoutsMeta] = useState<any>(null);
+  const [payoutsPage, setPayoutsPage] = useState(1);
+  const [isLoadingPayouts, setIsLoadingPayouts] = useState(false);
 
   const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
@@ -172,6 +197,7 @@ export default function EarningsPage() {
   useEffect(() => {
     const id = getBusinessId();
     setBusinessId(id);
+
 
     async function fetchData() {
       if (!id) return;
@@ -219,6 +245,60 @@ export default function EarningsPage() {
 
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!businessId || activeTab !== "earnings") return;
+
+    async function fetchEarnings() {
+      setIsLoadingEarnings(true);
+      try {
+        const res = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/financials/earnings?page=${earningsPage}&limit=10&dateRange=${earningsDateRange}`
+        );
+        const json = await res.json();
+        if (json.success && json.data) {
+          setEarningsSummary(json.data.summary);
+          setEarningsData(json.data.earnings?.data || []);
+          setEarningsMeta(json.data.earnings?.meta || null);
+        }
+      } catch (err) {
+        console.error("Failed to fetch earnings:", err);
+      } finally {
+        setIsLoadingEarnings(false);
+      }
+    }
+    fetchEarnings();
+  }, [businessId, activeTab, earningsPage, earningsDateRange]);
+
+  useEffect(() => {
+    if (!businessId || activeTab !== "payout_history") return;
+
+    async function fetchPayouts() {
+      setIsLoadingPayouts(true);
+      try {
+        const res = await authenticatedFetch(
+          `${API_BASE}/vendors/me/businesses/${businessId}/financials/payouts?page=${payoutsPage}&limit=10`
+        );
+        const json = await res.json();
+        if (json.success && json.data) {
+          setPayoutsData(json.data.payouts || []);
+          setPayoutsMeta({
+            total: json.data.total,
+            page: json.data.page,
+            limit: json.data.limit,
+            totalPages: json.data.totalPages,
+            hasNextPage: json.data.hasNextPage,
+            hasPreviousPage: json.data.hasPreviousPage
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch payouts:", err);
+      } finally {
+        setIsLoadingPayouts(false);
+      }
+    }
+    fetchPayouts();
+  }, [businessId, activeTab, payoutsPage]);
 
   useEffect(() => {
     const verifyAccount = async () => {
@@ -380,6 +460,17 @@ export default function EarningsPage() {
             Earnings & Activity
           </button>
           <button
+            onClick={() => setActiveTab("payout_history")}
+            className={cn(
+              "pb-2 font-medium transition-colors",
+              activeTab === "payout_history"
+                ? "text-orange-600 border-b-2 border-orange-600"
+                : "text-gray-500 hover:text-gray-900",
+            )}
+          >
+            Payout History
+          </button>
+          <button
             onClick={() => setActiveTab("payout")}
             className={cn(
               "pb-2 font-medium transition-colors",
@@ -393,34 +484,211 @@ export default function EarningsPage() {
         </div>
 
         {activeTab === "earnings" && (
-          <div className="mt-6">
-            {isLoadingAccount ? (
-              <Skeleton className="h-30 w-full rounded-md" />
-            ) : account ? (
-              <div className="bg-gray-50 rounded-xl p-5">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">
-                  Earnings
-                </h2>
-                <p className="text-3xl font-bold text-gray-900">₦0.00</p>
+          <div className="mt-6 space-y-6">
+            {isLoadingEarnings && !earningsSummary ? (
+              <div className="space-y-6">
+                <Skeleton className="h-[200px] w-full rounded-xl" />
+                <Skeleton className="h-[400px] w-full rounded-xl" />
               </div>
             ) : (
-              <div className="flex flex-col items-center text-center">
-                <Image
-                  src="/images/Cash on Delivery.png"
-                  width={300}
-                  height={300}
-                  alt="cash"
-                />
-                <h3 className="font-semibold text-2xl mt-4">
-                  No settlement account set up.
-                </h3>
-                <Button
-                  className="bg-munchprimary hover:bg-munchprimaryDark mt-5 text-white rounded-md"
-                  onClick={() => setActiveTab("payout")}
-                >
-                  Setup settlement account
-                </Button>
+              <>
+                <div className="bg-gray-50 rounded-xl p-6 space-y-6 border border-gray-100">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Earnings</h2>
+                <p className="text-gray-500 text-sm mt-1 max-w-3xl">
+                  Your available balance updates once an order is paid and confirmed by the customer's bank. Funds are held until the order is successfully delivered by our dispatch rider. This can take up to 2 days. <a href="#" className="text-blue-500 hover:underline">Need assistance?</a> Our team is ready to help.
+                </p>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-gray-200">
+                <div>
+                  <p className="text-sm font-medium text-gray-500 flex items-center gap-1">Total balance <AlertCircle className="w-4 h-4"/></p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {!earningsSummary ? <Skeleton className="h-8 w-32"/> : `₦ ${(earningsSummary?.totalBalance || 0).toLocaleString()}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500 flex items-center gap-1">Funds on hold <AlertCircle className="w-4 h-4"/></p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {!earningsSummary ? <Skeleton className="h-8 w-32"/> : `₦ ${(earningsSummary?.pendingBalance || 0).toLocaleString()}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500 flex items-center gap-1">In transit to bank <AlertCircle className="w-4 h-4"/></p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {!earningsSummary ? <Skeleton className="h-8 w-32"/> : `₦ ${(earningsSummary?.nextPaymentAmount || 0).toLocaleString()}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="flex justify-between items-center p-5 border-b border-gray-100">
+                <h3 className="text-lg font-bold text-gray-900">History</h3>
+                <Select value={earningsDateRange} defaultValue="last_30_days" onValueChange={setEarningsDateRange}>
+                  <SelectTrigger className="w-[160px] h-9">
+                    <SelectValue placeholder="Date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="last_7_days">Last 7 days</SelectItem>
+                    <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                    <SelectItem value="last_90_days">Last 90 days</SelectItem>
+                    <SelectItem value="all_time">All time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead className="py-4">ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoadingEarnings ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : earningsData.length > 0 ? (
+                    earningsData.map((item: any, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium text-gray-900 py-4">{item.orderCode}</TableCell>
+                        <TableCell className="text-gray-700">Order - {item.orderCode}</TableCell>
+                        <TableCell className="text-gray-500">{new Date(item.date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</TableCell>
+                        <TableCell className="font-medium text-gray-900">+₦{item.amount.toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-10 text-gray-500">No history found</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+              
+              {/* Pagination */}
+              {earningsMeta && earningsMeta.totalPages > 1 && (
+                <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+                  <div className="text-sm text-gray-500">
+                    Total {earningsMeta.total} items
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      disabled={!earningsMeta.hasPreviousPage}
+                      onClick={() => setEarningsPage(p => Math.max(1, p - 1))}
+                    >
+                      Prev
+                    </Button>
+                    <span className="text-sm text-gray-600 px-2">Page {earningsPage} of {earningsMeta.totalPages}</span>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      disabled={!earningsMeta.hasNextPage}
+                      onClick={() => setEarningsPage(p => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === "payout_history" && (
+          <div className="mt-6">
+            {isLoadingPayouts && payoutsData.length === 0 ? (
+              <Skeleton className="h-[400px] w-full rounded-xl" />
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="p-5 border-b border-gray-100">
+                <h3 className="text-lg font-bold text-gray-900">Payout History</h3>
+              </div>
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead className="py-4">ID</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoadingPayouts ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : payoutsData.length > 0 ? (
+                    payoutsData.map((item: any, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium text-gray-900 py-4">{item.code}</TableCell>
+                        <TableCell className="text-gray-500">{new Date(item.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</TableCell>
+                        <TableCell className="font-medium text-gray-900">₦{item.amount.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <span className={cn(
+                            "px-2 py-1 rounded-full text-xs font-medium",
+                            item.status === "Failed" ? "bg-red-100 text-red-700" :
+                            item.status === "Successful" ? "bg-green-100 text-green-700" :
+                            "bg-yellow-100 text-yellow-700"
+                          )}>
+                            {item.status}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-10 text-gray-500">No payouts found</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+              
+              {/* Pagination */}
+              {payoutsMeta && payoutsMeta.totalPages > 1 && (
+                <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+                  <div className="text-sm text-gray-500">
+                    Total {payoutsMeta.total} items
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      disabled={!payoutsMeta.hasPreviousPage}
+                      onClick={() => setPayoutsPage(p => Math.max(1, p - 1))}
+                    >
+                      Prev
+                    </Button>
+                    <span className="text-sm text-gray-600 px-2">Page {payoutsPage} of {payoutsMeta.totalPages}</span>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      disabled={!payoutsMeta.hasNextPage}
+                      onClick={() => setPayoutsPage(p => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
             )}
           </div>
         )}

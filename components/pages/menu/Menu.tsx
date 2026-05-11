@@ -333,7 +333,7 @@ export default function MenuPage() {
         method: "DELETE",
       });
       const json = await res.json();
-      console.log("delete response:", json);
+
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
 
       toast.success("Menu item deleted successfully");

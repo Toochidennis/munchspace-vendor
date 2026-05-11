@@ -104,8 +104,8 @@ interface Document {
   description: string;
   scope: "VENDOR" | "BUSINESS";
   input: {
-    kind: "FILE_UPLOAD" | "TEXT_INPUT";
-    field: string;
+    kind: "FILE" | "TEXT";
+    field?: string;
   };
   state: DocumentState;
 }
@@ -152,7 +152,6 @@ export default function KycVerification() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const json = await res.json();
-        console.log("Documents response:", json);
 
         if (!json.success || !json.data?.documents) {
           throw new Error("Invalid response format");
@@ -161,8 +160,8 @@ export default function KycVerification() {
         const fetchedDocs: Document[] = json.data.documents;
         setDocuments(fetchedDocs);
 
-        const taxDoc = fetchedDocs.find((d) => d.key === "tax_id");
-        if (taxDoc?.state?.exists && taxDoc.state.value) {
+        const taxDoc = fetchedDocs.find((d) => d.key === "tax_identification_number");
+        if (taxDoc?.state?.value) {
           tinForm.reset({ tin: taxDoc.state.value });
         }
       } catch (err: any) {
@@ -259,29 +258,52 @@ export default function KycVerification() {
       return;
     }
 
+    const doc = documents.find((d) => d.key === "tax_identification_number");
+    if (!doc || !doc.id) {
+      toast.error("Tax ID document type not found");
+      return;
+    }
+
     setIsTinSubmitting(true);
 
     try {
-      const endpoint = `${API_BASE}/vendors/me/businesses/${businessId}/tax-id`;
+      const endpoint = doc.scope === "VENDOR"
+        ? `${API_BASE}/vendors/me/documents`
+        : `${API_BASE}/vendors/me/businesses/${businessId}/documents`;
+
+      const formData = new FormData();
+      formData.append("documentTypeId", doc.id);
+      formData.append("value", data.tin.trim());
 
       const res = await authenticatedFetch(endpoint, {
-        method: "PATCH",
-        body: JSON.stringify({ taxId: data.tin.trim() }),   // Change to { tin: ... } if backend expects "tin"
+        method: "POST",
+        body: formData,
       });
 
+      const result = await res.json();
+
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || "Failed to update TIN");
+        throw new Error(result.message || result.error || "Failed to update TIN");
       }
+
+      const rawStatus = result.status || result.state?.status || result.data?.status || "PENDING";
+      const finalStatus: DocumentState["status"] = 
+        rawStatus.toUpperCase().includes("APPROV") ? "APPROVED" :
+        rawStatus.toUpperCase().includes("REJECT") ? "REJECTED" : "PENDING";
 
       toast.success("Tax Identification Number updated successfully");
 
       setDocuments((prev) =>
         prev.map((d) =>
-          d.key === "tax_id"
+          d.key === "tax_identification_number"
             ? {
                 ...d,
-                state: { ...d.state, value: data.tin, exists: true },
+                state: { 
+                  ...d.state, 
+                  value: data.tin.trim(), 
+                  status: finalStatus,
+                  createdAt: result.createdAt || new Date().toISOString()
+                },
               }
             : d
         )
@@ -342,7 +364,7 @@ export default function KycVerification() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">{doc.label}</h2>
-                  {doc.input.kind === "FILE_UPLOAD" && (
+                  {doc.input.kind === "FILE" && (
                     <div className="mt-2">{getStatusBadge(doc)}</div>
                   )}
                 </div>
@@ -352,8 +374,8 @@ export default function KycVerification() {
                 {doc.description}
               </p>
 
-              {/* Tax ID (TEXT_INPUT) */}
-              {doc.key === "tax_id" && (
+              {/* Tax ID (TEXT) */}
+              {doc.key === "tax_identification_number" && (
                 <Form {...tinForm}>
                   <form onSubmit={tinForm.handleSubmit(onTinSubmit)} className="space-y-6">
                     <FormField
@@ -385,14 +407,14 @@ export default function KycVerification() {
                     >
                       {isTinSubmitting ? (
                         <LoaderCircle className="animate-spin mr-2" />
-                      ) : doc.state.exists ? (
+                      ) : doc.state.value ? (
                         "Update TIN"
                       ) : (
                         "Submit TIN"
                       )}
                     </Button>
 
-                    {doc.state.exists && doc.state.value && (
+                    {doc.state.value && (
                       <p className="text-sm text-gray-600">
                         Current submitted TIN: <span className="font-medium">{doc.state.value}</span>
                       </p>
@@ -402,7 +424,7 @@ export default function KycVerification() {
               )}
 
               {/* File Upload Documents */}
-              {doc.input.kind === "FILE_UPLOAD" && (
+              {doc.input.kind === "FILE" && (
                 <div className="space-y-4">
                   {doc.state.fileUrl && (
                     <a

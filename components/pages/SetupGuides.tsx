@@ -180,7 +180,7 @@ export default function SetupGuidePage() {
       }
 
       const res = await response.json();
-      console.log("Onboarding status response:", res);
+
       const data: OnboardingData = res.data;
 
       // Requirement: If pending is empty, redirect to dashboard
