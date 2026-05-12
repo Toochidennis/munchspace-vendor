@@ -45,7 +45,10 @@ export async function refreshAccessToken(): Promise<string | null> {
   const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
   const refreshToken = refreshCookie ? refreshCookie.split("=")[1] : null;
 
-  if (!refreshToken) return null;
+  if (!refreshToken) {
+    logout();
+    return null;
+  }
 
   try {
     const response = await fetch(`${API_BASE}/auth/token/refresh`, {
@@ -67,6 +70,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     return accessToken;
   } catch (err) {
     console.error("Refresh failed:", err);
+    logout();
     return null;
   }
 }
