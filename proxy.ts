@@ -7,6 +7,8 @@ export async function proxy(request: NextRequest) {
   const cookieStore = await cookies();
 
   const hasRefreshToken = cookieStore.has("refreshToken");
+  const hasAccessToken = cookieStore.has("accessToken");
+  const hasAuth = hasRefreshToken || hasAccessToken;
   const hasBusinessCookie = cookieStore.get("hasBusiness")?.value === "true";
   const hasBusinessId = Boolean(cookieStore.get("businessId")?.value);
   const hasBusiness = hasBusinessCookie && hasBusinessId;
@@ -14,7 +16,7 @@ export async function proxy(request: NextRequest) {
 
 
   // 1. PUBLIC ROUTES: If logged in, don't allow access to login/home
-  if (hasRefreshToken && (pathname === "/" || pathname === "/login")) {
+  if (hasAuth && (pathname === "/" || pathname === "/login")) {
     // If they have a session but NO business, send to setup
     if (!hasBusiness) {
       return NextResponse.redirect(new URL("/setup-your-store", request.url));
@@ -28,18 +30,18 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/restaurant") ||
     pathname.startsWith("/setup-your-store");
 
-  if (!hasRefreshToken && isProtectedRoute) {
+  if (!hasAuth && isProtectedRoute) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
   // 3. BUSINESS REQUIREMENT: If in /restaurant but no business is set
-  if (hasRefreshToken && !hasBusiness && pathname.startsWith("/restaurant")) {
+  if (hasAuth && !hasBusiness && pathname.startsWith("/restaurant")) {
     return NextResponse.redirect(new URL("/setup-your-store", request.url));
   }
 
   // 4. PREVENT LOOP: If they HAVE a business, don't let them stay on setup page
   if (
-    hasRefreshToken &&
+    hasAuth &&
     hasBusiness &&
     pathname.startsWith("/setup-your-store")
   ) {
@@ -47,7 +49,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // FALLBACK: Root redirect for logged-out users
-  if (!hasRefreshToken && pathname === "/") {
+  if (!hasAuth && pathname === "/") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

@@ -115,6 +115,8 @@ interface MenuItem {
   image: string;
   description: string;
   sellingPrice: string;
+  discountedPrice: string | null;
+  quantityInStock: number | null;
   isAvailable: boolean;
   isSoldOut: boolean;
 }
@@ -230,6 +232,7 @@ export default function MenuPage() {
         }
 
         const json = await res.json();
+        console.log(json);
 
         // Correct parsing based on your API structure
         const apiItems = json.data?.data || json.data || [];
@@ -239,9 +242,15 @@ export default function MenuPage() {
           name: apiItem.name || "Unnamed Item",
           image: apiItem.imageUrl || "/images/placeholder.png",
           description: apiItem.description || "No description available",
-          sellingPrice: String(
-            apiItem.sellingPrice || apiItem.discountedPrice || "0",
-          ),
+          sellingPrice: String(apiItem.sellingPrice || "0"),
+          discountedPrice:
+            apiItem.discountedPrice != null
+              ? String(apiItem.discountedPrice)
+              : null,
+          quantityInStock:
+            apiItem.quantityInStock != null
+              ? Number(apiItem.quantityInStock)
+              : null,
           isAvailable: Boolean(apiItem.isAvailable),
           isSoldOut: Boolean(apiItem.isSoldOut),
         }));
@@ -517,6 +526,12 @@ export default function MenuPage() {
                           Selling Price
                         </TableHead>
                         <TableHead className="text-gray-700 text-center">
+                          Discount Price
+                        </TableHead>
+                        <TableHead className="text-gray-700 text-center">
+                          In Stock
+                        </TableHead>
+                        <TableHead className="text-gray-700 text-center">
                           Availability
                         </TableHead>
                         <TableHead className="text-gray-700 text-right pe-4">
@@ -554,6 +569,33 @@ export default function MenuPage() {
                           </TableCell>
                           <TableCell className="text-center text-gray-900 font-medium">
                             {formatPrice(item.sellingPrice)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {item.discountedPrice != null ? (
+                              <span className="text-orange-600 font-medium">
+                                {formatPrice(item.discountedPrice)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {item.quantityInStock != null ? (
+                              <span
+                                className={cn(
+                                  "font-medium",
+                                  item.quantityInStock === 0
+                                    ? "text-red-500"
+                                    : item.quantityInStock <= 5
+                                    ? "text-amber-500"
+                                    : "text-gray-900",
+                                )}
+                              >
+                                {item.quantityInStock}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
                             <Switch
@@ -639,6 +681,25 @@ export default function MenuPage() {
                             <span className="text-center text-gray-900 font-medium text-sm">
                               {formatPrice(item.sellingPrice)}
                             </span>
+                            {item.discountedPrice != null && (
+                              <span className="text-orange-600 font-medium text-sm">
+                                {formatPrice(item.discountedPrice)}
+                              </span>
+                            )}
+                            {item.quantityInStock != null && (
+                              <span
+                                className={cn(
+                                  "text-xs font-medium",
+                                  item.quantityInStock === 0
+                                    ? "text-red-500"
+                                    : item.quantityInStock <= 5
+                                    ? "text-amber-500"
+                                    : "text-gray-500",
+                                )}
+                              >
+                                Stock: {item.quantityInStock}
+                              </span>
+                            )}
                             <Switch
                               checked={item.isAvailable}
                               onCheckedChange={() =>

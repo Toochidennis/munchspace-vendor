@@ -798,7 +798,7 @@ export default function EditMenuPage() {
       // console.log("Update API response:", json);
 
       toast.success("Menu item updated successfully");
-      // router.push("/restaurant/menu");
+      router.push("/restaurant/menu");
     } catch (err: any) {
       console.error("Update error:", err);
       const msg = err.message?.includes("expired")

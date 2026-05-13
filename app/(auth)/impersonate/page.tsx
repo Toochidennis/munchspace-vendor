@@ -16,13 +16,13 @@ function Impersonator() {
 
   useEffect(() => {
     const accessToken = searchParams.get("accessToken");
-    const vendorId = searchParams.get("vendorId");
+    const businessId = searchParams.get("businessId") || searchParams.get("vendorId");
     const vendorName = searchParams.get("vendorName");
 
-    if (accessToken && vendorId) {
+    if (accessToken && businessId) {
       // Set the impersonation credentials
       setAccessToken(accessToken);
-      setBusinessId(vendorId);
+      setBusinessId(businessId);
       hasBusiness(true);
       if (vendorName) setDisplayName(vendorName);
 

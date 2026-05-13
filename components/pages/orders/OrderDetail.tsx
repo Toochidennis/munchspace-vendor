@@ -148,6 +148,15 @@ const formatDateInWords = (dateString: string): string => {
   });
 };
 
+const formatPrice = (amount: number): string => {
+  const absAmount = Math.abs(amount);
+  const formatted = absAmount.toLocaleString("en-NG", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  return amount < 0 ? `-₦${formatted}` : `₦${formatted}`;
+};
+
 // ────────────────────────────────────────────────
 //  Component
 // ────────────────────────────────────────────────
@@ -399,7 +408,7 @@ export default function OrderDetailsPage() {
     status: order.status.replace(/_/g, " "),
     orderedDateInWords: formatDateInWords(order.placedAt), // ← Changed to words
     orderDate: new Date(order.placedAt).toLocaleString(),
-    totalPrice: `₦${order.totals.total.toLocaleString()}`,
+    totalPrice: formatPrice(order.totals.total),
     paymentOption: order.payment?.channel || "N/A",
     orderChannel: order.orderChannel || "N/A",
     processedBy: order.processedBy || "N/A",
@@ -408,7 +417,7 @@ export default function OrderDetailsPage() {
     items: order.items.map((item: any) => ({
       quantity: `${item.quantity}x`,
       name: item.name,
-      price: `₦${item.total.toLocaleString()}`,
+      price: formatPrice(item.total),
       image: item.imageUrl,
     })),
     image: order.items[0]?.imageUrl || "/images/foods/egusi.png",
@@ -577,7 +586,7 @@ export default function OrderDetailsPage() {
                 <div key={index} className="flex justify-between">
                   <span className="text-gray-600">{item.label}:</span>
                   <span className="font-medium text-gray-900">
-                    ₦{item.amount.toLocaleString()}
+                    {formatPrice(item.amount)}
                   </span>
                 </div>
               ),
@@ -588,7 +597,7 @@ export default function OrderDetailsPage() {
             <div className="flex justify-between text-base font-bold">
               <span className="text-gray-900">Estimated total:</span>
               <span className="text-gray-900">
-                ₦{order.totals.total.toLocaleString()}
+                {formatPrice(order.totals.total)}
               </span>
             </div>
           </div>

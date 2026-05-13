@@ -127,8 +127,14 @@ export function setAccessToken(token: string | null) {
       expiry: Date.now() + TTL_MS,
     };
     localStorage.setItem("accessToken", JSON.stringify(item));
+    Cookies.set("accessToken", token, {
+      expires: TTL_MS / (1000 * 60 * 60 * 24),
+      path: "/",
+      sameSite: "lax",
+    });
   } else {
     localStorage.removeItem("accessToken");
+    Cookies.remove("accessToken");
   }
 }
 
@@ -160,9 +166,11 @@ export async function logout() {
   const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
   const refreshToken = refreshCookie ? refreshCookie.split("=")[1] : null;
 
-  // Clear refresh token cookie client-side
+  // Clear refresh token and access token cookies client-side
   document.cookie =
     "refreshToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  document.cookie =
+    "accessToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
   if (refreshToken) {
     try {

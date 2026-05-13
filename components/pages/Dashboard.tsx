@@ -244,6 +244,7 @@ export default function DashboardPage() {
       try {
         const url = `${API_BASE}/vendors/me/businesses/${businessId}/analytics/dashboard?range=${period}`;
         const res = await authenticatedFetch(url);
+        console.log("response", res)
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

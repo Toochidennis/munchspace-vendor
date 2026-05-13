@@ -13,23 +13,10 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  getAccessToken,
-  getBusinessId,
-} from "@/app/lib/auth";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "../ui/skeleton";
+
+import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
@@ -94,10 +81,9 @@ interface DocumentState {
   rejectionReason?: string | null;
   createdAt?: string | null;
   value?: string | null;
-  exists?: boolean;
 }
 
-interface Document {
+interface KycDocument {
   id: string;
   key: string;
   label: string;
@@ -110,29 +96,51 @@ interface Document {
   state: DocumentState;
 }
 
-const tinSchema = z.object({
-  tin: z.string().min(1, "TIN is required"),
-});
+// ────────────────────────────────────────────────
+//  Helpers
+// ────────────────────────────────────────────────
 
-type TinFormValues = z.infer<typeof tinSchema>;
+function normaliseStatus(raw: string | undefined | null): DocumentState["status"] {
+  if (!raw) return "PENDING";
+  const upper = raw.toUpperCase();
+  if (upper.includes("APPROV")) return "APPROVED";
+  if (upper.includes("REJECT")) return "REJECTED";
+  if (upper.includes("NOT_UPLOAD") || upper === "NOT_UPLOADED") return "NOT_UPLOADED";
+  return "PENDING";
+}
+
+function StatusBadge({ status }: { status: DocumentState["status"] }) {
+  switch (status) {
+    case "NOT_UPLOADED":
+      return <Badge className="bg-pink-100 text-pink-700 hover:bg-pink-100">Required</Badge>;
+    case "PENDING":
+      return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">In Review</Badge>;
+    case "APPROVED":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Verified</Badge>;
+    case "REJECTED":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Rejected</Badge>;
+    default:
+      return <Badge variant="outline">Unknown</Badge>;
+  }
+}
 
 // ────────────────────────────────────────────────
 //  Main Component
 // ────────────────────────────────────────────────
 
 export default function KycVerification() {
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [documents, setDocuments] = useState<KycDocument[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isTinSubmitting, setIsTinSubmitting] = useState(false);
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(null);
 
-  const tinForm = useForm<TinFormValues>({
-    resolver: zodResolver(tinSchema),
-    defaultValues: { tin: "" },
-  });
+  // Per-document text input values: { [docKey]: string }
+  const [textValues, setTextValues] = useState<Record<string, string>>({});
+  // Per-document submitting state: { [docKey]: boolean }
+  const [submittingKeys, setSubmittingKeys] = useState<Record<string, boolean>>({});
 
   const businessId = getBusinessId();
 
+  // ───── Fetch Documents ─────
   useEffect(() => {
     const fetchDocuments = async () => {
       if (!businessId) {
@@ -152,22 +160,29 @@ export default function KycVerification() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const json = await res.json();
+        console.log(json);
 
         if (!json.success || !json.data?.documents) {
           throw new Error("Invalid response format");
         }
 
-        const fetchedDocs: Document[] = json.data.documents;
+        const fetchedDocs: KycDocument[] = json.data.documents;
         setDocuments(fetchedDocs);
 
-        const taxDoc = fetchedDocs.find((d) => d.key === "tax_identification_number");
-        if (taxDoc?.state?.value) {
-          tinForm.reset({ tin: taxDoc.state.value });
-        }
+        // Pre-fill text inputs from existing state values
+        const initialTextValues: Record<string, string> = {};
+        fetchedDocs.forEach((doc) => {
+          if (doc.input.kind === "TEXT" && doc.state?.value) {
+            initialTextValues[doc.key] = doc.state.value;
+          }
+        });
+        setTextValues(initialTextValues);
       } catch (err: any) {
         console.error("Fetch documents error:", err);
         if (err.message?.includes("fetch") || err.message?.includes("Network")) {
-          setFetchNetworkError("Unable to load verification requirements. Please check your internet connection.");
+          setFetchNetworkError(
+            "Unable to load verification requirements. Please check your internet connection.",
+          );
         } else {
           const msg = err.message?.includes("expired")
             ? "Your session has expired. Please sign in again."
@@ -180,10 +195,10 @@ export default function KycVerification() {
     };
 
     fetchDocuments();
-  }, [businessId, tinForm]);
+  }, [businessId]);
 
   // ───── File Upload Handler ─────
-  const handleFileUpload = async (doc: Document, file: File) => {
+  const handleFileUpload = async (doc: KycDocument, file: File) => {
     if (!businessId || !doc.id) {
       toast.error("Missing required information for upload");
       return;
@@ -195,15 +210,17 @@ export default function KycVerification() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("documentTypeId", doc.id);
-    formData.append("file", file);
-
-    // Determine correct endpoint based on scope
     const endpoint =
       doc.scope === "VENDOR"
         ? `${API_BASE}/vendors/me/documents`
         : `${API_BASE}/vendors/me/businesses/${businessId}/documents`;
+
+    const formData = new FormData();
+    formData.append("documentTypeId", doc.id);
+    formData.append("file", file);
+
+    // Optimistic: mark as submitting via a per-doc uploading state
+    setSubmittingKeys((prev) => ({ ...prev, [doc.key]: true }));
 
     try {
       const res = await authenticatedFetch(endpoint, {
@@ -217,13 +234,16 @@ export default function KycVerification() {
         throw new Error(result.message || result.error || "Upload failed");
       }
 
-      const fileUrl = result.fileUrl || result.url || result.data?.fileUrl || result.document?.fileUrl || null;
-      if (!fileUrl) throw new Error("Server did not return a document URL");
+      const fileUrl =
+        result.fileUrl ||
+        result.url ||
+        result.data?.fileUrl ||
+        result.document?.fileUrl ||
+        null;
 
-      const rawStatus = result.status || result.state?.status || result.data?.status || "PENDING";
-      const finalStatus: DocumentState["status"] = 
-        rawStatus.toUpperCase().includes("APPROV") ? "APPROVED" :
-        rawStatus.toUpperCase().includes("REJECT") ? "REJECTED" : "PENDING";
+      const finalStatus = normaliseStatus(
+        result.status || result.state?.status || result.data?.status,
+      );
 
       toast.success("Document uploaded successfully");
 
@@ -234,13 +254,13 @@ export default function KycVerification() {
                 ...d,
                 state: {
                   ...d.state,
-                  fileUrl,
+                  fileUrl: fileUrl ?? d.state.fileUrl,
                   status: finalStatus,
                   createdAt: result.createdAt || new Date().toISOString(),
                 },
               }
-            : d
-        )
+            : d,
+        ),
       );
     } catch (err: any) {
       console.error("Upload error:", err);
@@ -248,32 +268,34 @@ export default function KycVerification() {
         ? "Your session has expired. Please sign in again."
         : err.message || "Failed to upload document";
       toast.error(msg);
+    } finally {
+      setSubmittingKeys((prev) => ({ ...prev, [doc.key]: false }));
     }
   };
 
-  // ───── TIN Submit Handler ─────
-  const onTinSubmit = async (data: TinFormValues) => {
+  // ───── Generic TEXT Submit Handler ─────
+  const handleTextSubmit = async (doc: KycDocument) => {
+    const value = (textValues[doc.key] ?? "").trim();
+    if (!value) {
+      toast.error(`${doc.label} value is required`);
+      return;
+    }
     if (!businessId) {
       toast.error("Business ID not found");
       return;
     }
 
-    const doc = documents.find((d) => d.key === "tax_identification_number");
-    if (!doc || !doc.id) {
-      toast.error("Tax ID document type not found");
-      return;
-    }
-
-    setIsTinSubmitting(true);
+    setSubmittingKeys((prev) => ({ ...prev, [doc.key]: true }));
 
     try {
-      const endpoint = doc.scope === "VENDOR"
-        ? `${API_BASE}/vendors/me/documents`
-        : `${API_BASE}/vendors/me/businesses/${businessId}/documents`;
+      const endpoint =
+        doc.scope === "VENDOR"
+          ? `${API_BASE}/vendors/me/documents`
+          : `${API_BASE}/vendors/me/businesses/${businessId}/documents`;
 
       const formData = new FormData();
       formData.append("documentTypeId", doc.id);
-      formData.append("value", data.tin.trim());
+      formData.append("value", value);
 
       const res = await authenticatedFetch(endpoint, {
         method: "POST",
@@ -283,58 +305,42 @@ export default function KycVerification() {
       const result = await res.json();
 
       if (!res.ok) {
-        throw new Error(result.message || result.error || "Failed to update TIN");
+        throw new Error(result.message || result.error || `Failed to submit ${doc.label}`);
       }
 
-      const rawStatus = result.status || result.state?.status || result.data?.status || "PENDING";
-      const finalStatus: DocumentState["status"] = 
-        rawStatus.toUpperCase().includes("APPROV") ? "APPROVED" :
-        rawStatus.toUpperCase().includes("REJECT") ? "REJECTED" : "PENDING";
+      const finalStatus = normaliseStatus(
+        result.status || result.state?.status || result.data?.status,
+      );
 
-      toast.success("Tax Identification Number updated successfully");
+      toast.success(`${doc.label} submitted successfully`);
 
       setDocuments((prev) =>
         prev.map((d) =>
-          d.key === "tax_identification_number"
+          d.key === doc.key
             ? {
                 ...d,
-                state: { 
-                  ...d.state, 
-                  value: data.tin.trim(), 
+                state: {
+                  ...d.state,
+                  value,
                   status: finalStatus,
-                  createdAt: result.createdAt || new Date().toISOString()
+                  createdAt: result.createdAt || new Date().toISOString(),
                 },
               }
-            : d
-        )
+            : d,
+        ),
       );
-
-      tinForm.reset({ tin: data.tin });
     } catch (err: any) {
-      console.error("TIN update error:", err);
+      console.error("Text submit error:", err);
       const msg = err.message?.includes("expired")
         ? "Your session has expired. Please sign in again."
-        : err.message || "Failed to update TIN";
+        : err.message || `Failed to submit ${doc.label}`;
       toast.error(msg);
     } finally {
-      setIsTinSubmitting(false);
+      setSubmittingKeys((prev) => ({ ...prev, [doc.key]: false }));
     }
   };
 
-  const getStatusBadge = (doc: Document) => {
-    switch (doc.state.status) {
-      case "NOT_UPLOADED":
-        return <Badge className="bg-pink-100 text-pink-700">Required</Badge>;
-      case "PENDING":
-        return <Badge className="bg-blue-100 text-blue-700">In Review</Badge>;
-      case "APPROVED":
-        return <Badge className="bg-green-100 text-green-700">Verified</Badge>;
-      case "REJECTED":
-        return <Badge className="bg-red-100 text-red-700">Rejected</Badge>;
-      default:
-        return <Badge variant="outline">Unknown</Badge>;
-    }
-  };
+  // ───── Error / Loading States ─────
 
   if (fetchNetworkError) {
     return (
@@ -342,7 +348,10 @@ export default function KycVerification() {
         <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Connection Error</h2>
         <p className="text-gray-600 max-w-md mb-8">{fetchNetworkError}</p>
-        <Button onClick={() => window.location.reload()} className="gap-2 bg-munchprimary hover:bg-munchprimaryDark">
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2 bg-munchprimary hover:bg-munchprimaryDark"
+        >
           <RefreshCw className="h-4 w-4" />
           Refresh Page
         </Button>
@@ -352,140 +361,157 @@ export default function KycVerification() {
 
   if (loading) return <KycSkeleton />;
 
+  // ───── Render ─────
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="mx-auto max-w-5xl space-y-12">
         <div className="space-y-8">
-          {documents.map((doc) => (
-            <div
-              key={doc.key}
-              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-5"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">{doc.label}</h2>
-                  {doc.input.kind === "FILE" && (
-                    <div className="mt-2">{getStatusBadge(doc)}</div>
-                  )}
+          {documents.map((doc) => {
+            const isSubmitting = submittingKeys[doc.key] ?? false;
+            const textVal = textValues[doc.key] ?? "";
+            const isTextKind = doc.input.kind === "TEXT";
+            const isFileKind = doc.input.kind === "FILE";
+
+            return (
+              <div
+                key={doc.key}
+                className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-5"
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <h2 className="text-xl font-semibold text-gray-900">{doc.label}</h2>
+                    <StatusBadge status={doc.state.status} />
+                  </div>
                 </div>
-              </div>
 
-              <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
-                {doc.description}
-              </p>
+                {/* Description */}
+                <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+                  {doc.description}
+                </p>
 
-              {/* Tax ID (TEXT) */}
-              {doc.key === "tax_identification_number" && (
-                <Form {...tinForm}>
-                  <form onSubmit={tinForm.handleSubmit(onTinSubmit)} className="space-y-6">
-                    <FormField
-                      control={tinForm.control}
-                      name="tin"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-normal text-slate-500">
-                            Tax Identification Number (TIN)
-                            <span className="text-xl text-red-600 ms-1">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Enter your TIN"
-                              className="h-12 max-w-md"
-                              {...field}
-                              disabled={isTinSubmitting}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                {/* Rejection reason — shown for all kinds */}
+                {doc.state.status === "REJECTED" && doc.state.rejectionReason && (
+                  <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3">
+                    <p className="text-sm text-red-700">
+                      <span className="font-medium">Rejection reason:</span>{" "}
+                      {doc.state.rejectionReason}
+                    </p>
+                  </div>
+                )}
 
-                    <Button
-                      type="submit"
-                      disabled={isTinSubmitting}
-                      className="bg-munchprimary hover:bg-munchprimaryDark h-10 rounded-lg min-w-[140px]"
-                    >
-                      {isTinSubmitting ? (
-                        <LoaderCircle className="animate-spin mr-2" />
-                      ) : doc.state.value ? (
-                        "Update TIN"
-                      ) : (
-                        "Submit TIN"
-                      )}
-                    </Button>
-
-                    {doc.state.value && (
-                      <p className="text-sm text-gray-600">
-                        Current submitted TIN: <span className="font-medium">{doc.state.value}</span>
-                      </p>
-                    )}
-                  </form>
-                </Form>
-              )}
-
-              {/* File Upload Documents */}
-              {doc.input.kind === "FILE" && (
-                <div className="space-y-4">
-                  {doc.state.fileUrl && (
-                    <a
-                      href={doc.state.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      <LinkIcon className="h-4 w-4" />
-                      View document
-                    </a>
-                  )}
-
-                  {(doc.state.status === "NOT_UPLOADED" ||
-                    doc.state.status === "PENDING" ||
-                    doc.state.status === "REJECTED") && (
-                    <div className="space-y-2">
-                      <label className="block cursor-pointer">
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleFileUpload(doc, file);
-                          }}
-                          className="hidden"
-                        />
-                        <div className="inline-flex items-center justify-center gap-2 rounded-md border border-orange-500 px-5 py-2.5 text-sm font-medium text-orange-600 hover:bg-orange-50 transition">
-                          <Upload className="h-4 w-4" />
-                          {doc.state.fileUrl ? "Replace Document" : "Upload Document"}
-                        </div>
-                      </label>
-                      <p className="text-xs text-gray-500">
-                        Accepted formats: PDF, JPG, JPEG, PNG • One file only
-                      </p>
-                      {doc.state.status === "REJECTED" && doc.state.rejectionReason && (
-                        <p className="text-sm text-red-600 mt-2">
-                          Rejection reason: {doc.state.rejectionReason}
-                        </p>
+                {/* ── TEXT input ── */}
+                {isTextKind && (
+                  <div className="space-y-3">
+                    <Label className="font-normal text-slate-500">
+                      {doc.label}
+                      <span className="text-xl text-red-600 ms-1">*</span>
+                    </Label>
+                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                      <Input
+                        placeholder={`Enter ${doc.label}`}
+                        value={textVal}
+                        onChange={(e) =>
+                          setTextValues((prev) => ({ ...prev, [doc.key]: e.target.value }))
+                        }
+                        disabled={isSubmitting || doc.state.status === "APPROVED"}
+                        className="h-12 w-full"
+                      />
+                      {doc.state.status !== "APPROVED" && (
+                        <Button
+                          onClick={() => handleTextSubmit(doc)}
+                          disabled={isSubmitting || !textVal.trim()}
+                          className="bg-munchprimary hover:bg-munchprimaryDark h-12 rounded-lg w-full md:w-auto px-6 shrink-0"
+                        >
+                          {isSubmitting ? (
+                            <LoaderCircle className="animate-spin h-4 w-4" />
+                          ) : (
+                            "Submit"
+                          )}
+                        </Button>
                       )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                    {doc.state.value && (
+                      <p className="text-sm text-gray-500">
+                        Submitted value:{" "}
+                        <span className="font-medium text-gray-800">{doc.state.value}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* ── FILE upload ── */}
+                {isFileKind && (
+                  <div className="space-y-4">
+                    {doc.state.fileUrl && (
+                      <a
+                        href={doc.state.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        <LinkIcon className="h-4 w-4" />
+                        View uploaded document
+                      </a>
+                    )}
+
+                    {doc.state.status !== "APPROVED" && (
+                      <div className="space-y-2">
+                        <label className="block cursor-pointer">
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            disabled={isSubmitting}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleFileUpload(doc, file);
+                            }}
+                            className="hidden"
+                          />
+                          <div
+                            className={`inline-flex items-center justify-center gap-2 rounded-md border border-orange-500 px-5 py-2.5 text-sm font-medium text-orange-600 hover:bg-orange-50 transition ${
+                              isSubmitting ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            {isSubmitting ? (
+                              <LoaderCircle className="animate-spin h-4 w-4" />
+                            ) : (
+                              <Upload className="h-4 w-4" />
+                            )}
+                            {isSubmitting
+                              ? "Uploading…"
+                              : doc.state.fileUrl
+                              ? "Replace Document"
+                              : "Upload Document"}
+                          </div>
+                        </label>
+                        <p className="text-xs text-gray-500">
+                          Accepted formats: PDF, JPG, JPEG, PNG • One file only
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-// Skeleton remains unchanged
+// ────────────────────────────────────────────────
+//  Skeleton
+// ────────────────────────────────────────────────
+
 const KycSkeleton = () => (
-  // ... (same as previous version)
   <div className="min-h-screen bg-gray-50 py-8">
     <div className="mx-auto max-w-5xl space-y-12">
       <div className="space-y-8">
         {[1, 2, 3].map((i) => (
           <div key={i} className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-5">
-            {/* Skeleton content - unchanged */}
             <div className="flex items-start justify-between">
               <div className="space-y-2">
                 <Skeleton className="h-7 w-64 rounded-md" />
