@@ -40,7 +40,6 @@ function Impersonator() {
   return (
     <div className="flex flex-col items-center gap-4">
       <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
-      <p className="text-gray-600">Setting up impersonation session...</p>
     </div>
   );
 }
