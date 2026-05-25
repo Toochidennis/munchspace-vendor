@@ -6,7 +6,7 @@ import { z } from "zod";
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -49,6 +49,20 @@ async function parseApiResponse(res: Response) {
   } catch {
     return null;
   }
+}
+
+function maskIdentifier(identifier: string) {
+  if (!identifier) return "";
+  if (identifier.includes("@")) {
+    const [name, domain] = identifier.split("@");
+    if (name.length <= 2) return `${name}***@${domain}`;
+    return `${name[0]}***${name[name.length - 1]}@${domain}`;
+  }
+  // For phone numbers
+  if (identifier.length >= 6) {
+    return `${identifier.slice(0, 3)}***${identifier.slice(-2)}`;
+  }
+  return "***";
 }
 
 // ── Component ──────────────────────────────────────────────
@@ -560,11 +574,19 @@ export default function LoginPage() {
           {step === "password" && (
             <>
               <div>
+                <button
+                  type="button"
+                  onClick={() => setStep("email")}
+                  className="mb-4 flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back
+                </button>
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
                   Enter your password
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  for {savedIdentifier || "your account"}
+                  for {maskIdentifier(savedIdentifier) || "your account"}
                 </p>
               </div>
               {/* Rest of password form remains the same */}
@@ -646,11 +668,19 @@ export default function LoginPage() {
           {step === "otp" && (
             <div className="space-y-8">
               <div>
+                <button
+                  type="button"
+                  onClick={() => setStep("email")}
+                  className="mb-4 flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back
+                </button>
                 <h2 className="text-2xl font-bold tracking-tight font-rubik">
                   Verify your account
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Enter the code sent to {savedIdentifier || "your account"}
+                  Enter the code sent to {maskIdentifier(savedIdentifier) || "your account"}
                 </p>
               </div>
 
