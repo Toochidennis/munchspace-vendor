@@ -1,4 +1,9 @@
 import Cookies from "js-cookie";
+import { clearSession, sessionExpiry } from "@/app/lib/session";
+
+// Same base every other request uses. Hardcoding dev here meant logout hit
+// dev no matter which environment the app was pointed at.
+const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 
 export function setFirstName(name: string | null) {
   if (name) {
@@ -119,16 +124,19 @@ export function getBusinessId(): string | null {
 }
 
 // app/lib/auth.ts (Updated for localStorage persistence of access token)
-const TTL_MS = 60 * 2000 * 1000;
+// Tokens are stamped with the session's own end, so a stored token never looks
+// valid for longer than the session it belongs to — including an impersonation
+// session, which is far shorter than a normal sign-in.
 export function setAccessToken(token: string | null) {
   if (token) {
+    const expiry = sessionExpiry();
     const item = {
       value: token,
-      expiry: Date.now() + TTL_MS,
+      expiry,
     };
     localStorage.setItem("accessToken", JSON.stringify(item));
     Cookies.set("accessToken", token, {
-      expires: TTL_MS / (1000 * 60 * 60 * 24),
+      expires: new Date(expiry),
       path: "/",
       sameSite: "lax",
     });
@@ -157,9 +165,14 @@ export function getAccessToken(): string | null {
 
 export async function logout() {
   const accessToken = getAccessToken();
+  clearSession();
   setAccessToken(null); // Clear access token from localStorage
   setBusinessId(null);
   hasBusiness(null);
+  // Set when an admin impersonates a vendor, and read by the sidebar. Left
+  // behind, it shows admin affordances to whoever signs in next on this
+  // browser until their own login overwrites it.
+  localStorage.removeItem("admin");
 
   // Extract refresh token from cookie to send to backend
   const cookies = document.cookie.split("; ");
@@ -174,7 +187,7 @@ export async function logout() {
 
   if (refreshToken) {
     try {
-      await fetch("https://dev.api.munchspace.io/api/v1/auth/token/revoke", {
+      await fetch(`${API_BASE}/auth/token/revoke`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -23,7 +23,7 @@ import {
   getBusinessId,
 } from "@/app/lib/auth";
 import { cn } from "@/lib/utils";
-import { refreshAccessToken } from "@/app/lib/api";
+import { readApiError, refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
 //  Constants from .env
@@ -229,8 +229,7 @@ export default function StorePreview() {
       );
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${res.status}`);
+        throw new Error(await readApiError(res));
       }
 
       toast.success("Store name updated successfully");
@@ -270,8 +269,7 @@ export default function StorePreview() {
       );
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${res.status}`);
+        throw new Error(await readApiError(res));
       }
 
       toast.success("Store image updated successfully");

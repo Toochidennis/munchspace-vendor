@@ -20,6 +20,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { readApiError } from "@/app/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
@@ -106,8 +107,7 @@ function ResetPasswordContent() {
         setPasswordChanged(true);
         toast.success("Password reset successful!");
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.message || "Failed to reset password.");
+        toast.error(await readApiError(response, "Failed to reset password."));
       }
     } catch (error) {
       toast.error("Network error. Please try again.");

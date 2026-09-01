@@ -1,5 +1,6 @@
 // app/lib/api.ts (remains as previously provided)
 import { getAccessToken, logout, setAccessToken } from "@/app/lib/auth";
+import { isSessionRenewable } from "@/app/lib/session";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
@@ -50,6 +51,12 @@ export async function refreshAccessToken(): Promise<string | null> {
     return null;
   }
 
+  // Sessions are bounded rather than renewed indefinitely — see lib/session.
+  if (!isSessionRenewable()) {
+    logout();
+    return null;
+  }
+
   try {
     const response = await fetch(`${API_BASE}/auth/token/refresh`, {
       method: "POST",
@@ -73,4 +80,71 @@ export async function refreshAccessToken(): Promise<string | null> {
     logout();
     return null;
   }
+}
+
+/**
+ * Pulls the human-readable reason out of an API error response.
+ *
+ * The API answers every failure with the same envelope:
+ *
+ *   { success: false, statusCode: 400, error: "Business name already taken" }
+ *
+ * and for validation failures `error` is an array of strings. There is no
+ * `message` field on it — anywhere. Reading `body.message` therefore always
+ * yields undefined, which is why so many screens showed their own generic
+ * fallback and swallowed what the server actually said.
+ *
+ * Falls back to copy chosen by status code, so a caller never has to invent
+ * wording for the cases that are the same everywhere.
+ */
+export function getApiErrorMessage(
+  body: unknown,
+  fallback = "Something went wrong. Please try again.",
+  status?: number,
+): string {
+  const envelope = body as { error?: unknown; statusCode?: number } | null;
+  const error = envelope?.error;
+  // The envelope carries its own statusCode, so a caller holding only the
+  // parsed body still gets status-appropriate wording.
+  status = status ?? envelope?.statusCode;
+
+  if (typeof error === "string" && error.trim()) return error.trim();
+
+  if (Array.isArray(error)) {
+    const parts = error.filter(
+      (entry): entry is string => typeof entry === "string" && !!entry.trim(),
+    );
+    if (parts.length) return parts.join(" ");
+  }
+
+  switch (status) {
+    case 401:
+      return "Your session has expired. Please sign in again.";
+    case 403:
+      return "You do not have permission to do that.";
+    case 404:
+      return "We could not find what you were looking for.";
+    case 409:
+      return "That conflicts with something that already exists.";
+    case 413:
+      return "That file is too large.";
+    case 429:
+      return "Too many attempts. Please wait a moment and try again.";
+    default:
+      return status && status >= 500
+        ? "Something went wrong on our end. Please try again shortly."
+        : fallback;
+  }
+}
+
+/**
+ * Reads an error message straight off a failed Response. Safe to call on a
+ * body that is empty or not JSON.
+ */
+export async function readApiError(
+  response: Response,
+  fallback?: string,
+): Promise<string> {
+  const body = await response.json().catch(() => null);
+  return getApiErrorMessage(body, fallback, response.status);
 }

@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { startSession } from "@/app/lib/session";
 import {
   hasBusiness,
   setAccessToken,
@@ -246,6 +247,7 @@ export default function RegisterPage() {
           if (resData.data.firstName) setFirstName(resData.data.firstName);
           if (resData.data.displayName)
             setDisplayName(resData.data.displayName);
+          startSession();
           setAccessToken(accessToken);
           document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
             60 * 60 * 24 * 30
@@ -333,6 +335,7 @@ export default function RegisterPage() {
         }
         if (res.data.firstName) setFirstName(res.data.firstName);
         if (res.data.displayName) setDisplayName(res.data.displayName);
+        startSession();
         setAccessToken(accessToken);
         document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
           60 * 60 * 24 * 30

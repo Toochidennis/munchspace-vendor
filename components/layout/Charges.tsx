@@ -48,7 +48,7 @@ import { Switch } from "../ui/switch";
 import { toast } from "sonner";
 import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import { Skeleton } from "../ui/skeleton";
-import { refreshAccessToken } from "@/app/lib/api";
+import { readApiError, refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
 //  Custom Modal Component
@@ -368,8 +368,7 @@ const Charges = () => {
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to save charge");
+        throw new Error(await readApiError(res, "Failed to save charge"));
       }
 
       toast.success(

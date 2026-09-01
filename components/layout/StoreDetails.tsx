@@ -55,7 +55,7 @@ import { format } from "date-fns";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
 import { Skeleton } from "../ui/skeleton";
-import { refreshAccessToken } from "@/app/lib/api";
+import { getApiErrorMessage, readApiError, refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
 //  Constants from .env
@@ -165,6 +165,15 @@ const storeInfoEditSchema = z.object({
 
 type StoreInfoEditValues = z.infer<typeof storeInfoEditSchema>;
 
+// Coordinates are only ever set by picking the place on the map, and the form
+// starts them at 0. Zero is a valid number, so an address saved without
+// touching the map used to submit 0,0 — a real point in the Gulf of Guinea,
+// about 700km off Lagos. Delivery distance and the delivery fee are computed
+// from it, so the store quietly charged from the wrong place. The API now
+// refuses 0,0; catch it here so the vendor is told what to do instead of
+// seeing a server error.
+const isPickedOnMap = (value: number) => Number.isFinite(value) && value !== 0;
+
 const addressEditSchema = z.object({
   country: z.string().min(1, "Country is required."),
   state: z.string().min(1, "State is required."),
@@ -172,8 +181,12 @@ const addressEditSchema = z.object({
   streetName: z.string().min(1, "Street name is required."),
   city: z.string().min(1, "City is required."),
   postalCode: z.number().optional(),
-  latitude: z.number(),
-  longitude: z.number(),
+  latitude: z
+    .number()
+    .refine(isPickedOnMap, "Select your store's location on the map."),
+  longitude: z
+    .number()
+    .refine(isPickedOnMap, "Select your store's location on the map."),
 });
 
 type AddressEditValues = z.infer<typeof addressEditSchema>;
@@ -681,8 +694,7 @@ const StoreDetails = () => {
       );
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to upload logo");
+        throw new Error(await readApiError(res, "Failed to upload logo"));
       }
 
       const responseData = await res.json();
@@ -723,7 +735,10 @@ const StoreDetails = () => {
 
       const data = await res.json();
 
-      if (!res.ok) throw new Error(data.message || "Failed to update password");
+      if (!res.ok)
+        throw new Error(
+          getApiErrorMessage(data, "Failed to update password", res.status),
+        );
 
       toast.success("Password updated successfully");
       logout();
@@ -1799,6 +1814,17 @@ const StoreDetails = () => {
               </FormItem>
 
               <div id="map" className="h-64 w-full rounded-lg border"></div>
+
+              {/* Latitude and longitude have no field of their own — they are
+                  set by the map — so their validation error has nowhere to
+                  render. Surface it here, or the form fails silently. */}
+              {(addressForm.formState.errors.latitude ||
+                addressForm.formState.errors.longitude) && (
+                <p className="text-sm font-medium text-munchred">
+                  {addressForm.formState.errors.latitude?.message ??
+                    addressForm.formState.errors.longitude?.message}
+                </p>
+              )}
 
               <div className="grid md:grid-cols-2 gap-6">
                 <FormField

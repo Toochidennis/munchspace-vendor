@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { startSession } from "@/app/lib/session";
 import {
   hasBusiness,
   setAccessToken,
@@ -428,6 +429,9 @@ export default function LoginPage() {
       return;
     }
 
+    // Signing in is the one moment the session clock starts. Refreshing later
+    // never resets it, so the session ends a fixed time after sign-in.
+    startSession();
     setAccessToken(data.accessToken);
 
     // Save display name and first name

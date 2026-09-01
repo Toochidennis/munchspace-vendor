@@ -63,7 +63,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import CustomModal from "@/components/layout/CustomModal";
-import { refreshAccessToken } from "@/app/lib/api";
+import { readApiError, refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
 //  Constants from .env
@@ -331,8 +331,7 @@ export default function EarningsPage() {
         );
 
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || "Account verification failed");
+          throw new Error(await readApiError(res, "Account verification failed"));
         }
 
         const json = await res.json();

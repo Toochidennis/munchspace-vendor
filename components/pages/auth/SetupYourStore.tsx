@@ -55,7 +55,7 @@ import {
   setBusinessId,
   logout,
 } from "@/app/lib/auth";
-import { refreshAccessToken } from "@/app/lib/api";
+import { getApiErrorMessage, refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
 //  Authenticated Fetch (same as in orders page)
@@ -534,8 +534,11 @@ export default function SetupStorePage() {
           }, 1500);
         } else {
           toast.error("Failed to create store", {
-            description:
-              feedback.message || "Please check your input and try again.",
+            description: getApiErrorMessage(
+              feedback,
+              "Please check your input and try again.",
+              response.status,
+            ),
           });
         }
       } catch (error) {
