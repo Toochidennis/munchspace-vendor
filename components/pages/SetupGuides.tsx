@@ -142,6 +142,18 @@ export default function SetupGuidePage() {
       isCompleted: (data: OnboardingData) => data.menuItemsCount >= 3,
     },
     {
+      // canGoLive is blocked on this server-side. Without a task for it, a
+      // business whose availabilities were removed shows four of four done, no
+      // publish button, and nothing saying why.
+      pendingKey: "AVAILABILITY",
+      title: "Set Opening Hours",
+      description:
+        "Tell customers which days you trade and the hours you are open on each.",
+      actionLabel: "Set hours",
+      href: "/restaurant/account-settings",
+      isCompleted: (data: OnboardingData) => data.availabilityReady,
+    },
+    {
       pendingKey: "CHARGES",
       title: "Set Charges & Fees",
       description:

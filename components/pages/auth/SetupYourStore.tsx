@@ -107,6 +107,9 @@ async function authenticatedFetch(
   return response;
 }
 
+/** Mirrors the API's WorkingHourDto regex, which rejects anything else. */
+const TWENTY_FOUR_HOUR_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
 const setupSchema = z.object({
   storeImage: z.any().optional(), // not used in form, just for type safety
   legalName: z.string().min(1, "Legal name is required."),
@@ -125,14 +128,35 @@ const setupSchema = z.object({
     .array(z.string())
     .min(1, "Select at least one service operation."),
 
-  workingHours: z.record(
-    z.string(),
-    z.object({
-      enabled: z.boolean(),
-      start: z.string(),
-      end: z.string(),
-    }),
-  ),
+  workingHours: z
+    .record(
+      z.string(),
+      z.object({
+        enabled: z.boolean(),
+        start: z.string(),
+        end: z.string(),
+      }),
+    )
+    // Only enabled days are sent, so with none enabled the payload carries no
+    // workingHours at all and the API rejects the whole submission on @IsArray
+    // — at step 4, after every other field has been filled in. Both rules
+    // mirror what the server enforces, so the form refuses first and says so
+    // on the step that caused it.
+    .refine(
+      (hours) => Object.values(hours).some((day) => day.enabled),
+      "Open on at least one day. A store with no opening hours cannot be created.",
+    )
+    .refine(
+      (hours) =>
+        Object.values(hours)
+          .filter((day) => day.enabled)
+          .every(
+            (day) =>
+              TWENTY_FOUR_HOUR_TIME.test(day.start) &&
+              TWENTY_FOUR_HOUR_TIME.test(day.end),
+          ),
+      "Every open day needs both an opening and a closing time.",
+    ),
 
   country: z.string().min(1, "Country is required."),
   state: z.string().min(1, "State is required."),
@@ -433,6 +457,7 @@ export default function SetupStorePage() {
         "description",
       ];
     if (step === 2) fields = ["businessType", "serviceOperations"];
+    if (step === 3) fields = ["workingHours"];
     if (step === 4)
       fields = [
         "country",
@@ -1175,6 +1200,12 @@ export default function SetupStorePage() {
 
               {step === 3 && (
                 <div className="space-y-4">
+                  {typeof form.formState.errors.workingHours?.message ===
+                    "string" && (
+                    <p className="text-sm text-destructive">
+                      {form.formState.errors.workingHours.message}
+                    </p>
+                  )}
                   {daysOfWeek.map((day) => {
                     const isEnabled = form.watch(`workingHours.${day}.enabled`);
                     const start = form.watch(`workingHours.${day}.start`);
