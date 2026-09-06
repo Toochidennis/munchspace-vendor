@@ -727,13 +727,21 @@ export default function EditMenuPage() {
 
     const formData = new FormData();
 
-    formData.append("name", data.name.trim());
-    formData.append("description", data.description.trim());
-    formData.append("categoryTypeId", data.categoryTypeId);
-    formData.append("sellingPrice", data.sellingPrice.toString());
-    formData.append("quantityInStock", data.quantityInStock.toString());
+    // Nested under menuItem[...], the way the create form sends them. The
+    // compose endpoint reads only menuItem, variants, addons and discount off
+    // the form, so flat keys were parsed into nothing: the item's own fields
+    // never changed, and the uploaded file was dropped with them because it is
+    // only forwarded to storage alongside a menuItem.
+    formData.append("menuItem[name]", data.name.trim());
+    formData.append("menuItem[description]", data.description.trim());
+    formData.append("menuItem[categoryTypeId]", data.categoryTypeId);
+    formData.append("menuItem[sellingPrice]", data.sellingPrice.toString());
     formData.append(
-      "isAvailable",
+      "menuItem[quantityInStock]",
+      data.quantityInStock.toString(),
+    );
+    formData.append(
+      "menuItem[isAvailable]",
       data.isAvailable === "available" ? "true" : "false",
     );
 
