@@ -15,8 +15,27 @@ export async function proxy(request: NextRequest) {
 
 
 
+  // A queued destination wins over the dashboard for someone who already has a
+  // session — the stale-cookie case, where logout() lands on /login?next=... a
+  // beat before the cleared cookie is visible here. Same-origin paths only:
+  // "//evil.com" and "/\\evil.com" are protocol-relative URLs despite the
+  // leading slash, and this value reaches a redirect.
+  const queued = request.nextUrl.searchParams.get("next");
+  const queuedTarget =
+    queued &&
+    queued.startsWith("/") &&
+    !queued.startsWith("//") &&
+    !queued.startsWith("/\\") &&
+    !queued.startsWith("/login")
+      ? queued
+      : null;
+
   // 1. PUBLIC ROUTES: If logged in, don't allow access to login/home
   if (hasAuth && (pathname === "/" || pathname === "/login")) {
+    if (queuedTarget && hasBusiness) {
+      return NextResponse.redirect(new URL(queuedTarget, request.url));
+    }
+
     // If they have a session but NO business, send to setup
     if (!hasBusiness) {
       return NextResponse.redirect(new URL("/setup-your-store", request.url));
@@ -31,7 +50,12 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/setup-your-store");
 
   if (!hasAuth && isProtectedRoute) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    // Carry the page they were trying to reach, so an order link from email
+    // survives the detour through login. Built from nextUrl, so it is always a
+    // same-origin path; the login form sanitizes it again before using it.
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(loginUrl);
   }
 
   // 3. BUSINESS REQUIREMENT: If in /restaurant but no business is set

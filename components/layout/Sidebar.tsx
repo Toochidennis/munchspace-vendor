@@ -315,7 +315,7 @@ export default function RestaurantSidebar() {
                       collapsed && "justify-center px-0",
                       "hover:bg-munchprimaryDark",
                     )}
-                    onClick={logout}
+                    onClick={() => logout({ returnTo: null })}
                   >
                     <Image
                       src={"/images/Logout.svg"}
@@ -503,7 +503,7 @@ export default function RestaurantSidebar() {
                           "flex items-center bg-munchprimary text-white gap-4 py-3 text-left transition-colors rounded-lg px-3 w-full",
                           "hover:bg-munchprimaryDark",
                         )}
-                        onClick={logout}
+                        onClick={() => logout({ returnTo: null })}
                       >
                         <Image
                           src={"/images/Logout.svg"}

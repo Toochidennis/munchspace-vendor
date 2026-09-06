@@ -9,8 +9,13 @@ import {
 import { refreshAccessToken } from "@/app/lib/api";
 import { usePathname } from "next/navigation";
 import { getAccessToken } from "@/app/lib/auth";
+import { currentReturnTo, loginUrlWithReturnTo } from "@/app/lib/return-to";
 
-const PROTECTED_PATHS = ["/setup-your-store", "/dashboard"];
+// Every authenticated screen lives under /restaurant, and /setup-your-store is
+// the one onboarding step that also needs a session. Matching "/dashboard" was
+// matching nothing: the route is /restaurant/dashboard, so startsWith never
+// fired and the entire dashboard went ungated.
+const PROTECTED_PATHS = ["/restaurant", "/setup-your-store"];
 
 export default function ClientWrapper({
   children,
@@ -42,8 +47,10 @@ export default function ClientWrapper({
           // No access token → attempt refresh using refresh token cookie
           const newToken = await refreshAccessToken();
           if (!newToken) {
-            // Refresh failed → no valid session, redirect to login
-            // window.location.href = "/login";
+            // Refresh failed → no valid session. Send them to login carrying
+            // the page they were trying to reach, so following an order link
+            // from email survives the detour through the login form.
+            window.location.replace(loginUrlWithReturnTo(currentReturnTo()));
           }
           // If successful, refreshAccessToken already sets the new token in localStorage
         }

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { startSession } from "@/app/lib/session";
+import { postLoginTarget } from "@/app/lib/return-to";
 import {
   hasBusiness,
   setAccessToken,
@@ -457,7 +458,9 @@ export default function LoginPage() {
 
 
 
-    window.location.href = "/restaurant/dashboard";
+    // Falls back to the dashboard when nothing was queued, which is every
+    // login that did not start from a deep link.
+    window.location.href = postLoginTarget();
   }
 
   async function handleResendOtp() {

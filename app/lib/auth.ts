@@ -1,5 +1,6 @@
 import Cookies from "js-cookie";
 import { clearSession, sessionExpiry } from "@/app/lib/session";
+import { currentReturnTo, loginUrlWithReturnTo } from "@/app/lib/return-to";
 
 // Same base every other request uses. Hardcoding dev here meant logout hit
 // dev no matter which environment the app was pointed at.
@@ -163,7 +164,15 @@ export function getAccessToken(): string | null {
   }
 }
 
-export async function logout() {
+/**
+ * `returnTo` defaults to the page being left, so an involuntary boot — a 401,
+ * an unusable refresh token, the inactivity timer — comes back to where the
+ * vendor was. Pass null for a deliberate sign-out, which should land on a bare
+ * /login with nothing queued behind it.
+ */
+export async function logout(
+  options: { returnTo?: string | null } = {},
+) {
   const accessToken = getAccessToken();
   clearSession();
   setAccessToken(null); // Clear access token from localStorage
@@ -203,12 +212,16 @@ export async function logout() {
     }
   }
 
+  const loginUrl = loginUrlWithReturnTo(
+    options.returnTo === undefined ? currentReturnTo() : options.returnTo,
+  );
+
   // Clear browser history to prevent back navigation
   // Push new states to overwrite history stack
   for (let i = 0; i < window.history.length; i++) {
-    window.history.pushState(null, "", "/login");
+    window.history.pushState(null, "", loginUrl);
   }
 
   // Redirect to login (use replace to clear current history entry)
-  window.location.replace("/login");
+  window.location.replace(loginUrl);
 }
