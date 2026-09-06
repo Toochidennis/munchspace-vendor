@@ -142,6 +142,10 @@ const formSchema = z.object({
   variants: z
     .array(
       z.object({
+        // Server id of an existing variant. Absent for one just added in the
+        // form. The compose endpoint diffs on this: a variant the payload does
+        // not name is treated as removed.
+        variantId: z.string().optional(),
         name: z.string().min(1, "Size name is required"),
         description: z.string().optional(),
         price: z
@@ -167,6 +171,8 @@ const formSchema = z.object({
   addons: z
     .array(
       z.object({
+        // Server id of an existing addon — see variants above.
+        addonId: z.string().optional(),
         name: z.string().min(1, "Addon name is required"),
         description: z.string().optional(),
         price: z
@@ -599,6 +605,7 @@ export default function EditMenuPage() {
           variants:
             Array.isArray(data.variants) && data.variants.length > 0
               ? data.variants.map((v: any) => ({
+                  variantId: v.id,
                   name: v.name || "",
                   description: v.description || "",
                   price: v.price != null ? String(v.price) : "",
@@ -608,6 +615,7 @@ export default function EditMenuPage() {
           addons:
             Array.isArray(data.addons) && data.addons.length > 0
               ? data.addons.map((a: any) => ({
+                  addonId: a.id,
                   name: a.name || "",
                   description: a.description || "",
                   price: a.price != null ? String(a.price) : "",
@@ -732,6 +740,11 @@ export default function EditMenuPage() {
     if (data.variants && data.variants.length > 0) {
       data.variants.forEach((variant, index) => {
         if (variant.name?.trim()) {
+          // Without this the server sees no id, treats the existing variant as
+          // removed and creates a replacement.
+          if (variant.variantId) {
+            formData.append(`variants[${index}][id]`, variant.variantId);
+          }
           formData.append(`variants[${index}][name]`, variant.name.trim());
           formData.append(
             `variants[${index}][description]`,
@@ -745,6 +758,9 @@ export default function EditMenuPage() {
     if (data.addons && data.addons.length > 0) {
       data.addons.forEach((addon, index) => {
         if (addon.name?.trim()) {
+          if (addon.addonId) {
+            formData.append(`addons[${index}][id]`, addon.addonId);
+          }
           formData.append(`addons[${index}][name]`, addon.name.trim());
           formData.append(
             `addons[${index}][description]`,
