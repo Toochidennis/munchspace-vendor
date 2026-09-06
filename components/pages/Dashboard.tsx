@@ -84,6 +84,29 @@ export const metadata: Metadata = {
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
 
+type RecentOrderResponse = {
+  orderId: string;
+  code: string;
+  total: number;
+  status: string;
+  placedAt: string;
+};
+
+/**
+ * Traffic points arrive as plain YYYY-MM-DD. Appending a time rather than
+ * letting Date parse the bare date keeps it local — parsed as UTC, an early
+ * timezone would render the previous day on the axis.
+ */
+function formatTrafficDay(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return parsed.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+  });
+}
+
 const DEFAULT_DASHBOARD_DATA = {
   traffic: [],
   bestSelling: [],
@@ -254,15 +277,32 @@ export default function DashboardPage() {
         const api = json.data;
 
         setData({
-          traffic: Array.isArray(api.traffic) ? api.traffic : [],
-          bestSelling: (Array.isArray(api.bestSelling) ? api.bestSelling : []).map((item: any) => ({
-            name: item.name || item.productName || "Unknown Item",
-            sales: item.sales || item.quantity || item.totalSold || 0,
+          // traffic is an object — { chart, total } — not an array, so the old
+          // Array.isArray check always fell through to [] and the chart showed
+          // its empty state no matter how many visits there were. Each point is
+          // { date, count }; the bars read time/customers.
+          traffic: (Array.isArray(api.traffic?.chart)
+            ? api.traffic.chart
+            : []
+          ).map((point: { date: string; count: number }) => ({
+            time: formatTrafficDay(point.date),
+            customers: point.count,
           })),
-          recentOrders: (Array.isArray(api.recentOrders?.data) ? api.recentOrders.data : []).map((o: any) => ({
+          bestSelling: (Array.isArray(api.bestSelling)
+            ? api.bestSelling
+            : []
+          ).map((item: { name?: string; totalSold?: number }) => ({
+            name: item.name || "Unknown Item",
+            sales: item.totalSold ?? 0,
+          })),
+          recentOrders: (Array.isArray(api.recentOrders?.data)
+            ? api.recentOrders.data
+            : []
+          ).map((o: RecentOrderResponse) => ({
             id: o.orderId,
-            code: o.code || o.orderId,
+            code: o.code,
             date: new Date(o.placedAt).toLocaleString(),
+            // Already naira: the API converts with MoneyUtil.toNaira.
             price: o.total,
             status: o.status,
           })),
@@ -273,8 +313,11 @@ export default function DashboardPage() {
             totalReturnsTrend: api.totals?.returns?.total?.trend || 0,
             newCustomers: api.totals?.newCustomers?.value || 0,
             newCustomersTrend: api.totals?.newCustomers?.trend || 0,
-            totalDiscount: api.totals?.discounts?.total?.value || 0,
-            totalDiscountTrend: api.totals?.discounts?.total?.trend || 0,
+            // discounts.total counts the orders that carried a discount;
+            // discounts.amount is the money given away, which is what a card
+            // headed "Total discount" is read as.
+            totalDiscount: api.totals?.discounts?.amount?.value || 0,
+            totalDiscountTrend: api.totals?.discounts?.amount?.trend || 0,
           },
         });
       } catch (err: any) {
@@ -689,7 +732,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold">
-                    {data.kpis.totalDiscount}
+                    ₦{data.kpis.totalDiscount.toLocaleString()}
                   </p>
                   <div className="max-w-35 mx-auto bg-gray-200 rounded-full h-2 mt-4">
                     <div
@@ -833,10 +876,7 @@ export default function DashboardPage() {
             {/* Mobile View */}
             <div className="md:hidden">
               {data.recentOrders.map((order: any, index: number) => (
-                <Link
-                  key={order.code}
-                  href={`/restaurant/orders/${order.code}`}
-                >
+                <Link key={order.code} href={`/restaurant/orders/${order.id}`}>
                   <div
                     className={cn(
                       "border-b border-gray-100 p-4 px-0 flex justify-between items-center hover:bg-gray-50",
@@ -857,7 +897,7 @@ export default function DashboardPage() {
                     <div className="text-right">
                       <p className="text-gray-600 text-sm mb-1">{order.date}</p>
                       <p className="text-gray-900 font-semibold text-xl">
-                        N{order.price.toLocaleString()}
+                        ₦{order.price.toLocaleString()}
                       </p>
                       <p className="text-gray-600 text-xs mt-1">
                         order channel: Store
