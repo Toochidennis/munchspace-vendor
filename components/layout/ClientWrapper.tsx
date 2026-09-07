@@ -2,10 +2,6 @@
 "use client";
 
 import { useEffect } from "react";
-import {
-  startInactivityListener,
-  checkInactivityOnLoad,
-} from "@/app/lib/inactivity";
 import { refreshAccessToken } from "@/app/lib/api";
 import { usePathname } from "next/navigation";
 import { getAccessToken } from "@/app/lib/auth";
@@ -24,14 +20,9 @@ export default function ClientWrapper({
 }) {
   const pathname = usePathname();
   useEffect(() => {
-    // Skip inactivity check if setting up an impersonation session
-    if (!pathname.startsWith("/impersonate")) {
-      // Check if user has been inactive for more than 1 hour
-      checkInactivityOnLoad();
-    }
-
-    // Always start the inactivity listener (global)
-    const cleanupInactivity = startInactivityListener();
+    // No idle timeout. A session is bounded by MAX_SESSION_MS from sign-in and
+    // nothing else — a vendor watching the kitchen rather than the screen is
+    // not signed out mid-service.
 
     // Determine if current route is protected
     const isProtected = PROTECTED_PATHS.some((path) =>
@@ -60,9 +51,7 @@ export default function ClientWrapper({
       ensureValidAccessToken();
     }
 
-    return () => {
-      cleanupInactivity();
-    };
+    return;
   }, [pathname]);
 
   return <>{children}</>;
