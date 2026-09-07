@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -175,10 +176,29 @@ export default function OrderDetailsPage() {
   // Status update modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newStatus, setNewStatus] = useState<string>("");
+  const [confirmationCode, setConfirmationCode] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // DELIVERY orders are completed by the assigned rider, so the business is
+  // only ever the one to close a PICKUP or DINE_IN order — and of those, only
+  // PICKUP asks the customer for a code.
+  const fulfillmentType: string | null = order?.fulfillmentType ?? null;
+  const isPickupOrder = fulfillmentType === "PICKUP";
+  const canMarkCollected =
+    (fulfillmentType === "PICKUP" || fulfillmentType === "DINE_IN") &&
+    order?.status?.toUpperCase() === "READY_FOR_PICKUP";
 
   const handleStatusUpdate = async () => {
     if (!order || !newStatus) return;
+
+    if (
+      newStatus.toLowerCase() === "collected" &&
+      isPickupOrder &&
+      !confirmationCode.trim()
+    ) {
+      toast.error("Enter the confirmation code the customer is showing you");
+      return;
+    }
 
     setIsUpdating(true);
     try {
@@ -194,6 +214,9 @@ export default function OrderDetailsPage() {
         case "ready":
           endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${currentOrderId}/ready-for-pickup`;
           break;
+        case "collected":
+          endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${currentOrderId}/collected`;
+          break;
         case "reject":
           endpoint = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${currentOrderId}/reject`;
           break;
@@ -206,9 +229,17 @@ export default function OrderDetailsPage() {
           return;
       }
 
+      // Only the pickup handover carries a body. The API requires the code for
+      // PICKUP and ignores it for DINE_IN, so sending it for dine-in would be
+      // noise rather than an error.
+      const payload =
+        newStatus.toLowerCase() === "collected" && isPickupOrder
+          ? { confirmationCode: confirmationCode.trim() }
+          : {};
+
       const response = await authenticatedFetch(endpoint, {
         method: "PATCH",
-        body: JSON.stringify({}),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
@@ -225,6 +256,7 @@ export default function OrderDetailsPage() {
         toast.success(`Order status updated to ${newStatus}`);
         setIsModalOpen(false);
         setNewStatus("");
+        setConfirmationCode("");
         // Refresh the page to reflect the changes
         setTimeout(() => {
           window.location.reload();
@@ -680,11 +712,38 @@ export default function OrderDetailsPage() {
                 {order && order.status.toLowerCase().includes("preparing") && (
                   <SelectItem value="ready">Ready for Pickup</SelectItem>
                 )}
+                {canMarkCollected && (
+                  <SelectItem value="collected">
+                    {isPickupOrder ? "Collected by customer" : "Served"}
+                  </SelectItem>
+                )}
                 <SelectItem value="reject">Reject</SelectItem>
                 <SelectItem value="cancel">Cancel</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {newStatus === "collected" && isPickupOrder && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Confirmation code
+              </label>
+              <Input
+                value={confirmationCode}
+                onChange={(e) =>
+                  setConfirmationCode(e.target.value.toUpperCase())
+                }
+                placeholder="A3F9K"
+                maxLength={16}
+                autoFocus
+                className="rounded-md h-12 w-full tracking-[0.2em] uppercase"
+              />
+              <p className="text-xs text-gray-500">
+                Ask the customer to show the code from their order. Dine-in
+                orders do not need one.
+              </p>
+            </div>
+          )}
         </div>
       </CustomModal>
     </div>
