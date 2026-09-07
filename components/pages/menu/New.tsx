@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
-  Camera,
   Plus,
   Trash2,
   CalendarIcon,
@@ -56,10 +54,18 @@ import {
   Control,
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { FieldErrors } from "react-hook-form";
 import * as z from "zod";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import Link from "next/link";
 import { refreshAccessToken } from "@/app/lib/api";
+import { MenuImagePicker } from "@/components/menu/MenuImagePicker";
+import {
+  MENU_SECTION_LABELS,
+  firstErrorField,
+  sectionsWithErrors,
+  type MenuSection,
+} from "@/components/menu/sections";
 
 // ────────────────────────────────────────────────
 //  Constants from .env
@@ -116,8 +122,6 @@ async function authenticatedFetch(
 // ────────────────────────────────────────────────
 //  Schema & Types
 // ────────────────────────────────────────────────
-
-const tabOrder = ["details", "sizes", "extras", "discounts"] as const;
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -321,7 +325,7 @@ function DateTimePickerField({
                   className={cn(
                     "w-full justify-start text-left font-normal h-12",
                     !value && "text-muted-foreground",
-                    error && "border-red-600 focus-visible:ring-red-600",
+                    error && "border-munchred focus-visible:ring-munchred",
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
@@ -403,7 +407,7 @@ function DateTimePickerField({
               </PopoverContent>
             </Popover>
             {error && (
-              <p className="text-red-600 text-sm mt-1">{error.message}</p>
+              <p className="text-munchred text-sm mt-1">{error.message}</p>
             )}
           </>
         );
@@ -413,9 +417,9 @@ function DateTimePickerField({
 }
 
 export default function CreateMenuPage() {
-  const [activeTab, setActiveTab] = useState<
-    "details" | "sizes" | "extras" | "discounts" | undefined
-  >("details");
+  // Which cards are expanded. Nothing gates anything else — the server needs
+  // only the Details card, so the rest open when the vendor wants them.
+  const [openSections, setOpenSections] = useState<MenuSection[]>(["details"]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -433,7 +437,7 @@ export default function CreateMenuPage() {
     formState: { errors },
     watch,
     setValue,
-    trigger,
+    setFocus,
     resetField,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -528,62 +532,50 @@ export default function CreateMenuPage() {
     fetchCategories();
   }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setValue("image", reader.result as string, { shouldValidate: true });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  /**
+   * Where a failed save goes.
+   *
+   * The cards collapse, so an error can land inside a closed one. Save used to
+   * be reachable only from the last card for exactly this reason — and jumping
+   * straight to it made the button do nothing at all: handleSubmit refused, and
+   * every message it raised was hidden behind a collapsed header. Open the
+   * first card that is wrong, scroll to it, and put the cursor in the field.
+   */
+  const onInvalid = (formErrors: FieldErrors<FormData>) => {
+    const failing = sectionsWithErrors(formErrors as Record<string, unknown>);
+    if (failing.length === 0) return;
 
-  const validateCurrentTab = async () => {
-    if (!activeTab) return true;
-    if (activeTab === "details") {
-      return await trigger([
-        "name",
-        "description",
-        "image",
-        "categoryTypeId",
-        "sellingPrice",
-        "quantityInStock",
-      ]);
-    }
-    if (activeTab === "sizes") return await trigger("variants");
-    if (activeTab === "extras") return await trigger("addons");
-    if (activeTab === "discounts") return await trigger("discount");
-    return true;
-  };
+    const [first] = failing;
+    setOpenSections((open) => (open.includes(first) ? open : [...open, first]));
 
-  const handleNext = async () => {
-    const isValid = await validateCurrentTab();
-    if (!isValid) return;
+    toast.error("Some details still need your attention", {
+      description: failing
+        .map((section) => MENU_SECTION_LABELS[section])
+        .join(", "),
+    });
 
-    if (!activeTab) {
-      setActiveTab("details");
-      return;
-    }
+    // The fields of a collapsed card are not mounted yet, and the card animates
+    // open, so both the scroll and the focus have to wait for it.
+    window.setTimeout(() => {
+      document
+        .getElementById(`menu-section-${first}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-    const currentIndex = tabOrder.indexOf(activeTab);
-    if (currentIndex < tabOrder.length - 1) {
-      setActiveTab(tabOrder[currentIndex + 1]);
-    } else {
-      await handleSubmit(onSubmit)();
-    }
-  };
+      const field = firstErrorField(
+        first,
+        formErrors as Record<string, unknown>,
+      );
 
-  const handleBack = () => {
-    if (!activeTab) {
-      setActiveTab("details");
-      return;
-    }
-
-    const currentIndex = tabOrder.indexOf(activeTab);
-    if (currentIndex > 0) {
-      setActiveTab(tabOrder[currentIndex - 1]);
-    }
+      // `image` has no input of its own to focus, and react-hook-form throws
+      // rather than shrugging when a name is not registered.
+      if (field && field !== "image") {
+        try {
+          setFocus(field as keyof FormData);
+        } catch {
+          /* the field is not a focusable input; the scroll is enough */
+        }
+      }
+    }, 200);
   };
 
   const onSubmit: SubmitHandler<FormData> = async (data) => {
@@ -684,8 +676,7 @@ export default function CreateMenuPage() {
     );
   }
 
-  const isFirstTab = activeTab === "details";
-  const isLastTab = activeTab === "discounts";
+  const erroredSections = sectionsWithErrors(errors as Record<string, unknown>);
 
   return (
     <div className="min-h-screen bg-white">
@@ -712,31 +703,28 @@ export default function CreateMenuPage() {
         </div>
 
         <Accordion
-          type="single"
-          collapsible
-          value={activeTab}
-          onValueChange={(value) => {
-            setActiveTab(
-              value
-                ? (value as "details" | "sizes" | "extras" | "discounts")
-                : undefined,
-            );
-          }}
+          type="multiple"
+          value={openSections}
+          onValueChange={(value) => setOpenSections(value as MenuSection[])}
           className="space-y-4"
         >
           {/* Details Section */}
           <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
-            <AccordionItem value="details" className="border-0">
+            <AccordionItem
+              value="details"
+              id="menu-section-details"
+              className="border-0"
+            >
               <AccordionTrigger className="hover:no-underline px-4 py-3 group">
                 <div className="flex items-center gap-3 w-full">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-orange-100 group-hover:bg-orange-200 transition-colors">
-                    <FileText className="h-5 w-5 text-orange-600" />
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-munchprimary/10 group-hover:bg-munchprimary/20 transition-colors">
+                    <FileText className="h-5 w-5 text-munchprimary" />
                   </div>
                   <div className="flex-1 text-left">
                     <h3 className="text-lg font-semibold text-gray-900">
                       Item Details
                     </h3>
-                    {activeTab === "details" ? (
+                    {openSections.includes("details") ? (
                       <p className="text-sm text-gray-500">
                         Name, description, price and availability
                       </p>
@@ -748,13 +736,19 @@ export default function CreateMenuPage() {
                       </p>
                     )}
                   </div>
+                  {erroredSections.includes("details") && (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-munchred">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Needs attention
+                    </span>
+                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
                 <div className="space-y-6">
                   <div className="space-y-2">
-                    <Label className={cn(errors.name && "text-red-600")}>
-                      Name <span className="text-red-600">*</span>
+                    <Label className={cn(errors.name && "text-munchred")}>
+                      Name <span className="text-munchred">*</span>
                     </Label>
                     <Input
                       placeholder="Name"
@@ -762,75 +756,53 @@ export default function CreateMenuPage() {
                       className={cn(
                         "h-12",
                         errors.name &&
-                          "border-red-600 focus-visible:ring-red-600",
+                          "border-munchred focus-visible:ring-munchred",
                       )}
                     />
                     {errors.name && (
-                      <p className="text-red-600 text-sm">
+                      <p className="text-munchred text-sm">
                         {errors.name.message}
                       </p>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label className={cn(errors.description && "text-red-600")}>
-                      Description <span className="text-red-600">*</span>
+                    <Label className={cn(errors.description && "text-munchred")}>
+                      Description <span className="text-munchred">*</span>
                     </Label>
                     <Textarea
                       placeholder="Description"
                       className={cn(
                         "min-h-32",
                         errors.description &&
-                          "border-red-600 focus-visible:ring-red-600",
+                          "border-munchred focus-visible:ring-munchred",
                       )}
                       {...register("description")}
                     />
                     {errors.description && (
-                      <p className="text-red-600 text-sm">
+                      <p className="text-munchred text-sm">
                         {errors.description.message}
                       </p>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label className={cn(errors.image && "text-red-600")}>
-                      Image <span className="text-red-600">*</span>
+                    <Label className={cn(errors.image && "text-munchred")}>
+                      Image <span className="text-munchred">*</span>
                     </Label>
-                    <label className="block cursor-pointer">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                      />
-                      <div
-                        className={cn(
-                          "bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center gap-3 hover:border-orange-400 hover:bg-orange-50/30 transition",
-                          errors.image && "border-red-600",
-                        )}
-                      >
-                        {image ? (
-                          <Image
-                            src={image}
-                            alt="Menu item"
-                            width={300}
-                            height={200}
-                            className="rounded-xl object-cover max-h-64 shadow-sm"
-                          />
-                        ) : (
-                          <>
-                            <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
-                              <Camera className="h-8 w-8 text-orange-500" />
-                            </div>
-                            <p className="text-gray-600 text-center font-medium">
-                              Select an image from your media gallery
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    </label>
+                    <MenuImagePicker
+                      value={image}
+                      onChange={(dataUrl) =>
+                        setValue("image", dataUrl, { shouldValidate: true })
+                      }
+                      onRemove={() =>
+                        setValue("image", "", { shouldValidate: true })
+                      }
+                      invalid={Boolean(errors.image)}
+                      disabled={isSubmitting}
+                    />
                     {errors.image && (
-                      <p className="text-red-600 text-sm">
+                      <p className="text-munchred text-sm">
                         {errors.image.message}
                       </p>
                     )}
@@ -838,9 +810,9 @@ export default function CreateMenuPage() {
 
                   <div className="space-y-2">
                     <Label
-                      className={cn(errors.categoryTypeId && "text-red-600")}
+                      className={cn(errors.categoryTypeId && "text-munchred")}
                     >
-                      Category <span className="text-red-600">*</span>
+                      Category <span className="text-munchred">*</span>
                     </Label>
                     <Controller
                       control={control}
@@ -854,7 +826,7 @@ export default function CreateMenuPage() {
                             className={cn(
                               "h-12! w-full",
                               errors.categoryTypeId &&
-                                "border-red-600 focus-visible:ring-red-600",
+                                "border-munchred focus-visible:ring-munchred",
                             )}
                           >
                             <SelectValue placeholder="Select category" />
@@ -880,7 +852,7 @@ export default function CreateMenuPage() {
                       )}
                     />
                     {errors.categoryTypeId && (
-                      <p className="text-red-600 text-sm">
+                      <p className="text-munchred text-sm">
                         {errors.categoryTypeId.message}
                       </p>
                     )}
@@ -889,9 +861,9 @@ export default function CreateMenuPage() {
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label
-                        className={cn(errors.sellingPrice && "text-red-600")}
+                        className={cn(errors.sellingPrice && "text-munchred")}
                       >
-                        Selling price <span className="text-red-600">*</span>
+                        Selling price <span className="text-munchred">*</span>
                       </Label>
                       <Input
                         type="number"
@@ -902,11 +874,11 @@ export default function CreateMenuPage() {
                         className={cn(
                           "h-12",
                           errors.sellingPrice &&
-                            "border-red-600 focus-visible:ring-red-600",
+                            "border-munchred focus-visible:ring-munchred",
                         )}
                       />
                       {errors.sellingPrice && (
-                        <p className="text-red-600 text-sm">
+                        <p className="text-munchred text-sm">
                           {errors.sellingPrice.message}
                         </p>
                       )}
@@ -914,10 +886,10 @@ export default function CreateMenuPage() {
 
                     <div className="space-y-2">
                       <Label
-                        className={cn(errors.quantityInStock && "text-red-600")}
+                        className={cn(errors.quantityInStock && "text-munchred")}
                       >
                         Quantity in Stock{" "}
-                        <span className="text-red-600">*</span>
+                        <span className="text-munchred">*</span>
                       </Label>
                       <Input
                         type="number"
@@ -930,11 +902,11 @@ export default function CreateMenuPage() {
                         className={cn(
                           "h-12",
                           errors.quantityInStock &&
-                            "border-red-600 focus-visible:ring-red-600",
+                            "border-munchred focus-visible:ring-munchred",
                         )}
                       />
                       {errors.quantityInStock && (
-                        <p className="text-red-600 text-sm">
+                        <p className="text-munchred text-sm">
                           {errors.quantityInStock.message}
                         </p>
                       )}
@@ -988,7 +960,11 @@ export default function CreateMenuPage() {
 
           {/* Sizes Section */}
           <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
-            <AccordionItem value="sizes" className="border-0">
+            <AccordionItem
+              value="sizes"
+              id="menu-section-sizes"
+              className="border-0"
+            >
               <AccordionTrigger className="hover:no-underline px-4 py-3 group">
                 <div className="flex items-center gap-3 w-full">
                   <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
@@ -998,7 +974,7 @@ export default function CreateMenuPage() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Sizes
                     </h3>
-                    {activeTab === "sizes" ? (
+                    {openSections.includes("sizes") ? (
                       <p className="text-sm text-gray-500">
                         Specify sizes/variants (optional)
                       </p>
@@ -1010,6 +986,16 @@ export default function CreateMenuPage() {
                       </p>
                     )}
                   </div>
+                  {erroredSections.includes("sizes") ? (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-munchred">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Needs attention
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                      Optional
+                    </span>
+                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
@@ -1019,7 +1005,7 @@ export default function CreateMenuPage() {
 
                 {errors.variants &&
                   typeof errors.variants.message === "string" && (
-                    <p className="text-red-600 text-sm text-center">
+                    <p className="text-munchred text-sm text-center">
                       {errors.variants.message}
                     </p>
                   )}
@@ -1038,7 +1024,7 @@ export default function CreateMenuPage() {
                             className="h-12"
                           />
                           {errors.variants?.[index]?.name && (
-                            <p className="text-red-600 text-xs">
+                            <p className="text-munchred text-xs">
                               {errors.variants[index]?.name?.message}
                             </p>
                           )}
@@ -1050,7 +1036,7 @@ export default function CreateMenuPage() {
                             className="h-12"
                           />
                           {errors.variants?.[index]?.price && (
-                            <p className="text-red-600 text-xs">
+                            <p className="text-munchred text-xs">
                               {errors.variants[index]?.price?.message}
                             </p>
                           )}
@@ -1059,7 +1045,7 @@ export default function CreateMenuPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => removeVariant(index)}
-                          className="text-red-600 hover:bg-red-50"
+                          className="text-munchred hover:bg-munchred/10"
                         >
                           <Trash2 className="h-5 w-5" />
                         </Button>
@@ -1091,7 +1077,11 @@ export default function CreateMenuPage() {
 
           {/* Extras Section */}
           <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
-            <AccordionItem value="extras" className="border-0">
+            <AccordionItem
+              value="extras"
+              id="menu-section-extras"
+              className="border-0"
+            >
               <AccordionTrigger className="hover:no-underline px-4 py-3 group">
                 <div className="flex items-center gap-3 w-full">
                   <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-purple-100 group-hover:bg-purple-200 transition-colors">
@@ -1101,7 +1091,7 @@ export default function CreateMenuPage() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Extras
                     </h3>
-                    {activeTab === "extras" ? (
+                    {openSections.includes("extras") ? (
                       <p className="text-sm text-gray-500">
                         Add optional items customers can choose (optional)
                       </p>
@@ -1113,6 +1103,16 @@ export default function CreateMenuPage() {
                       </p>
                     )}
                   </div>
+                  {erroredSections.includes("extras") ? (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-munchred">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Needs attention
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                      Optional
+                    </span>
+                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
@@ -1122,7 +1122,7 @@ export default function CreateMenuPage() {
                 </p>
 
                 {errors.addons && typeof errors.addons.message === "string" && (
-                  <p className="text-red-600 text-sm text-center">
+                  <p className="text-munchred text-sm text-center">
                     {errors.addons.message}
                   </p>
                 )}
@@ -1141,7 +1141,7 @@ export default function CreateMenuPage() {
                             className="h-12"
                           />
                           {errors.addons?.[index]?.name && (
-                            <p className="text-red-600 text-xs">
+                            <p className="text-munchred text-xs">
                               {errors.addons[index]?.name?.message}
                             </p>
                           )}
@@ -1153,7 +1153,7 @@ export default function CreateMenuPage() {
                             className="h-12"
                           />
                           {errors.addons?.[index]?.price && (
-                            <p className="text-red-600 text-xs">
+                            <p className="text-munchred text-xs">
                               {errors.addons[index]?.price?.message}
                             </p>
                           )}
@@ -1162,7 +1162,7 @@ export default function CreateMenuPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => removeAddon(index)}
-                          className="text-red-600 hover:bg-red-50"
+                          className="text-munchred hover:bg-munchred/10"
                         >
                           <Trash2 className="h-5 w-5" />
                         </Button>
@@ -1194,7 +1194,11 @@ export default function CreateMenuPage() {
 
           {/* Discounts Section */}
           <Card className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-white to-gray-50/50">
-            <AccordionItem value="discounts" className="border-0">
+            <AccordionItem
+              value="discounts"
+              id="menu-section-discounts"
+              className="border-0"
+            >
               <AccordionTrigger className="hover:no-underline px-4 py-3 group">
                 <div className="flex items-center gap-3 w-full">
                   <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 group-hover:bg-green-200 transition-colors">
@@ -1204,7 +1208,7 @@ export default function CreateMenuPage() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Discounts
                     </h3>
-                    {activeTab === "discounts" ? (
+                    {openSections.includes("discounts") ? (
                       <p className="text-sm text-gray-500">
                         Offer temporary price reductions (optional)
                       </p>
@@ -1216,6 +1220,16 @@ export default function CreateMenuPage() {
                       </p>
                     )}
                   </div>
+                  {erroredSections.includes("discounts") ? (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-munchred">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Needs attention
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                      Optional
+                    </span>
+                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-6 px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/30">
@@ -1243,7 +1257,7 @@ export default function CreateMenuPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="absolute top-4 right-4 text-red-600 hover:bg-red-50"
+                      className="absolute top-4 right-4 text-munchred hover:bg-munchred/10"
                       onClick={() => {
                         setShowDiscountForm(false);
                         resetField("discount");
@@ -1254,7 +1268,7 @@ export default function CreateMenuPage() {
 
                     {errors.discount &&
                       typeof errors.discount.message === "string" && (
-                        <p className="text-red-600 text-sm text-center">
+                        <p className="text-munchred text-sm text-center">
                           {errors.discount.message}
                         </p>
                       )}
@@ -1347,7 +1361,7 @@ export default function CreateMenuPage() {
                             </span>
                           </div>
                           {errors.discount?.value && (
-                            <p className="text-red-600 text-sm mt-1">
+                            <p className="text-munchred text-sm mt-1">
                               {errors.discount.value.message}
                             </p>
                           )}
@@ -1358,11 +1372,11 @@ export default function CreateMenuPage() {
                         <div className="space-y-2">
                           <Label
                             className={cn(
-                              errors.discount?.startsAt && "text-red-600",
+                              errors.discount?.startsAt && "text-munchred",
                             )}
                           >
                             Start Date & Time{" "}
-                            <span className="text-red-600">*</span>
+                            <span className="text-munchred">*</span>
                           </Label>
                           <DateTimePickerField
                             control={control}
@@ -1375,11 +1389,11 @@ export default function CreateMenuPage() {
                         <div className="space-y-2">
                           <Label
                             className={cn(
-                              errors.discount?.endsAt && "text-red-600",
+                              errors.discount?.endsAt && "text-munchred",
                             )}
                           >
                             End Date & Time{" "}
-                            <span className="text-red-600">*</span>
+                            <span className="text-munchred">*</span>
                           </Label>
                           <DateTimePickerField
                             control={control}
@@ -1397,19 +1411,21 @@ export default function CreateMenuPage() {
           </Card>
         </Accordion>
 
-        <div className="flex justify-end gap-2 items-center mt-12 pt-8">
-          {!isFirstTab && (
-            <Button
-              onClick={handleBack}
-              className="gap-2 px-8 bg-gray-100 hover:bg-gray-200 text-munchprimary"
-              disabled={isSubmitting}
-            >
-              Back
-            </Button>
-          )}
+        <div className="mt-12 flex flex-wrap items-center justify-end gap-3 pt-8">
+          <p className="mr-auto text-sm text-gray-500">
+            Only <span className="font-medium text-gray-700">Item Details</span>{" "}
+            is required — sizes, extras and discounts can be left empty.
+          </p>
           <Button
-            onClick={handleNext}
-            className="bg-orange-500 hover:bg-munchprimary text-white px-8 flex items-center gap-2"
+            asChild
+            variant="ghost"
+            className="px-6 text-gray-600 hover:bg-gray-100"
+          >
+            <Link href="/restaurant/menu">Cancel</Link>
+          </Button>
+          <Button
+            onClick={handleSubmit(onSubmit, onInvalid)}
+            className="flex items-center gap-2 bg-munchprimary px-8 text-white hover:bg-munchprimaryDark"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -1417,10 +1433,8 @@ export default function CreateMenuPage() {
                 <Loader2 className="h-5 w-5 animate-spin" />
                 Saving...
               </>
-            ) : isLastTab ? (
-              "Add Menu"
             ) : (
-              "Next"
+              "Add Menu"
             )}
           </Button>
         </div>
