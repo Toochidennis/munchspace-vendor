@@ -110,6 +110,14 @@ async function authenticatedFetch(
 /** Mirrors the API's WorkingHourDto regex, which rejects anything else. */
 const TWENTY_FOUR_HOUR_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// Latitude and longitude are only ever set by picking a place on the map, and
+// the form starts them at zero, so a vendor who fills the address in by hand
+// and never touches the map submits 0,0 — a real point in the Gulf of Guinea,
+// about 700km off Lagos. z.number() is happy with zero, so nothing stopped it.
+// The API now refuses 0,0 outright; catch it here so the vendor is told to pick
+// the location instead of losing a four-step form to a server error.
+const isPickedOnMap = (value: number) => Number.isFinite(value) && value !== 0;
+
 const setupSchema = z.object({
   storeImage: z.any().optional(), // not used in form, just for type safety
   legalName: z.string().min(1, "Legal name is required."),
@@ -164,8 +172,12 @@ const setupSchema = z.object({
   streetName: z.string().min(1, "Street name is required."),
   city: z.string().min(1, "City is required."),
   postalCode: z.string().optional(),
-  latitude: z.number(),
-  longitude: z.number(),
+  latitude: z
+    .number()
+    .refine(isPickedOnMap, "Select your store's location on the map."),
+  longitude: z
+    .number()
+    .refine(isPickedOnMap, "Select your store's location on the map."),
 });
 
 type SetupValues = z.infer<typeof setupSchema>;
@@ -1336,6 +1348,18 @@ export default function SetupStorePage() {
                   </FormItem>
 
                   <div id="map" className="h-64 w-full rounded-lg border"></div>
+
+                  {/* Latitude and longitude have no field of their own — they
+                      are set by the map — so their validation error has nowhere
+                      to render. Surface it here, or step 4 refuses to advance
+                      with nothing on screen to say why. */}
+                  {(form.formState.errors.latitude ||
+                    form.formState.errors.longitude) && (
+                    <p className="text-sm font-medium text-munchred">
+                      {form.formState.errors.latitude?.message ??
+                        form.formState.errors.longitude?.message}
+                    </p>
+                  )}
 
                   <FormField
                     control={form.control}
