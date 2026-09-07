@@ -818,8 +818,6 @@ export default function EditMenuPage() {
 
       const json = await res.json();
       // const formObject = Object.fromEntries(formData.entries());
-      // console.log("FormData as Object:", formObject);
-      // console.log("Update API response:", json);
 
       toast.success("Menu item updated successfully");
       router.push("/restaurant/menu");

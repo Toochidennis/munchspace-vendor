@@ -429,7 +429,6 @@ export default function OrdersPage() {
       });
 
       const result = await response.json();
-      console.log("Update API response:", result);
 
 
       if (!response.ok) {

@@ -232,7 +232,6 @@ export default function MenuPage() {
         }
 
         const json = await res.json();
-        console.log(json);
 
         // Correct parsing based on your API structure
         const apiItems = json.data?.data || json.data || [];

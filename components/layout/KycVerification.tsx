@@ -160,7 +160,6 @@ export default function KycVerification() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const json = await res.json();
-        console.log(json);
 
         if (!json.success || !json.data?.documents) {
           throw new Error("Invalid response format");
