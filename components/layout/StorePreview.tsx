@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import { IMAGE_FALLBACK } from "@/lib/images";
 import {
   BatteryLow,
   Camera,
@@ -615,10 +616,11 @@ export default function StorePreview() {
                         className="flex gap-4 pb-4 border-b border-gray-100 last:border-0"
                       >
                         <div className="bg-gray-200 border-2 border-dashed rounded-xl w-24 h-24 shrink-0 overflow-hidden relative">
-                          <img
-                            src={item.image}
+                          <Image
+                            src={item.image || IMAGE_FALLBACK}
                             alt={item.name}
-                            crossOrigin="anonymous"
+                            width={96}
+                            height={96}
                             className="object-cover w-full h-full object-center"
                           />
                         </div>

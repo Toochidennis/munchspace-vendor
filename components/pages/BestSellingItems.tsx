@@ -28,6 +28,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
+import { IMAGE_FALLBACK } from "@/lib/images";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
@@ -341,13 +342,12 @@ export default function BestSellingItemsPage() {
                     <TableCell className="py-4 ps-4">
                       <div className="flex items-center gap-4 w-fit">
                         <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
-                          <img
-                            src={item.image}
+                          <Image
+                            src={item.image || IMAGE_FALLBACK}
                             alt={item.description}
                             width={80}
                             height={80}
                             className="object-cover w-full h-full"
-                            crossOrigin="anonymous"
                           />
                         </div>
                         <div>

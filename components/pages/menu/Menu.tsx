@@ -24,6 +24,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import Image from "next/image";
+import { IMAGE_FALLBACK } from "@/lib/images";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
@@ -239,7 +240,7 @@ export default function MenuPage() {
         const mappedItems: MenuItem[] = apiItems.map((apiItem: any) => ({
           id: apiItem.id,
           name: apiItem.name || "Unnamed Item",
-          image: apiItem.imageUrl || "/images/placeholder.png",
+          image: apiItem.imageUrl || IMAGE_FALLBACK,
           description: apiItem.description || "No description available",
           sellingPrice: String(apiItem.sellingPrice || "0"),
           discountedPrice:
@@ -547,13 +548,12 @@ export default function MenuPage() {
                           <TableCell className="py-4 ps-4">
                             <div className="flex items-center gap-4">
                               <div className="w-16 h-16 bg-gray-100 rounded-md overflow-hidden">
-                                <img
+                                <Image
                                   src={item.image}
                                   alt={item.name}
-                                  width={100}
-                                  height={100}
+                                  width={64}
+                                  height={64}
                                   className="object-cover w-full h-full"
-                                  crossOrigin="anonymous"
                                 />
                               </div>
                               <div className="flex flex-col">
@@ -658,13 +658,12 @@ export default function MenuPage() {
                         >
                           <div className="flex items-center gap-2 mb-2 flex-1">
                             <div className="w-18 h-18 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
-                              <img
+                              <Image
                                 src={item.image}
                                 alt={item.name}
-                                width={64}
-                                height={64}
+                                width={72}
+                                height={72}
                                 className="object-cover w-full h-full"
-                                crossOrigin="anonymous"
                               />
                             </div>
                             <div className="min-w-0 flex-1">

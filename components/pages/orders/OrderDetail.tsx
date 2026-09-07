@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -470,13 +471,12 @@ export default function OrderDetailsPage() {
           <div className="flex items-center justify-between gap-6">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden shrink-0">
-                <img
+                <Image
                   src={displayData.image}
                   alt="Order item"
                   width={64}
                   height={64}
-                  className="object-cover"
-                  crossOrigin="anonymous"
+                  className="object-cover w-full h-full"
                 />
               </div>
               <div className="flex-1 min-w-0">
