@@ -255,7 +255,11 @@ const StoreDetails = () => {
   >([]);
 
   // Nigeria address meta
-  const [nigeriaData, setNigeriaData] = useState<{
+  const [countries, setCountries] = useState<
+    { id: string; code: string; name: string }[]
+  >([]);
+  // Was hardcoded to Nigeria; the country now comes from the ones we deliver in.
+  const [locationData, setLocationData] = useState<{
     country: { id: string; code: string; name: string };
     states: { id: string; code: string; name: string }[];
   } | null>(null);
@@ -347,7 +351,7 @@ const StoreDetails = () => {
     setLgasError("");
     setLgasLoading(true);
 
-    if (!selectedStateId || !nigeriaData?.states) {
+    if (!selectedStateId || !locationData?.states) {
       setLgasLoading(false);
       return;
     }
@@ -356,7 +360,7 @@ const StoreDetails = () => {
 
     const loadLgas = async () => {
       try {
-        const selectedState = nigeriaData.states.find(
+        const selectedState = locationData.states.find(
           (s) => s.id === selectedStateId,
         );
         if (!selectedState) throw new Error("State not found");
@@ -408,9 +412,36 @@ const StoreDetails = () => {
     return () => {
       isCurrent = false;
     };
-  }, [addressForm.watch("state"), nigeriaData, addressForm]);
+  }, [addressForm.watch("state"), locationData, addressForm]);
 
   // ────────────────────────────────────────────────
+  // Shared by the first load and the country picker.
+  const loadStatesForCountry = async (country: {
+    id: string;
+    code: string;
+    name: string;
+  }) => {
+    setStatesLoading(true);
+    setStatesError("");
+    try {
+      const res = await authenticatedFetch(
+        `${API_BASE}/meta/states?countryId=${country.id}`,
+        { method: "GET" },
+      );
+      const json = await res.json();
+
+      if (Array.isArray(json?.data)) {
+        setLocationData({ country, states: json.data });
+      } else {
+        setStatesError(`Failed to load states for ${country.name}.`);
+      }
+    } catch {
+      setStatesError(`Failed to load states for ${country.name}.`);
+    } finally {
+      setStatesLoading(false);
+    }
+  };
+
   // Fetch all initial data (business types, brand types, etc.)
   // ────────────────────────────────────────────────
   useEffect(() => {
@@ -430,7 +461,7 @@ const StoreDetails = () => {
           "x-api-key": API_KEY,
         };
 
-        const [btRes, brRes, soRes, businessRes, nigeriaRes] =
+        const [btRes, brRes, soRes, businessRes, countriesRes] =
           await Promise.all([
             authenticatedFetch(`${API_BASE}/meta/business-types`, {
               method: "GET",
@@ -445,7 +476,7 @@ const StoreDetails = () => {
               `${API_BASE}/vendors/me/businesses/${businessId}`,
               { method: "GET" },
             ),
-            authenticatedFetch(`${API_BASE}/meta/nigeria-states`, {
+            authenticatedFetch(`${API_BASE}/meta/countries`, {
               method: "GET",
             }),
           ]);
@@ -453,7 +484,7 @@ const StoreDetails = () => {
         const btData = btRes.ok ? (await btRes.json()).data || [] : [];
         const brData = brRes.ok ? (await brRes.json()).data || [] : [];
         const soData = soRes.ok ? (await soRes.json()).data || [] : [];
-        let nigeriaJson: any = null;
+        let countriesJson: any = null;
 
         setBusinessTypeOptions(btData);
         setBrandTypeOptions(brData);
@@ -463,16 +494,18 @@ const StoreDetails = () => {
 
         const { data } = await businessRes.json();
 
-        if (nigeriaRes.ok) {
-          const nigeriaR = await nigeriaRes.json();
-          nigeriaJson = nigeriaR.data;
+        if (countriesRes.ok) {
+          countriesJson = (await countriesRes.json()).data;
         }
 
-        if (nigeriaJson?.country && Array.isArray(nigeriaJson.states)) {
-          setNigeriaData(nigeriaJson);
-          setStatesLoading(false);
+        const served: { id: string; code: string; name: string }[] =
+          Array.isArray(countriesJson) ? countriesJson : [];
+        setCountries(served);
+
+        if (!served.length) {
+          setStatesError("No delivery locations are configured yet.");
         } else {
-          setStatesError("Failed to load Nigerian states.");
+          await loadStatesForCountry(served[0]);
         }
 
         const workingHours: Record<string, any> = {};
@@ -824,7 +857,7 @@ const StoreDetails = () => {
       if (!businessId) return toast.error("No business ID found");
 
       const formData = new FormData();
-      formData.append("address[countryId]", nigeriaData?.country?.id || ""); // Nigeria ID
+      formData.append("address[countryId]", locationData?.country?.id || ""); // Nigeria ID
       formData.append("address[stateId]", data.state);
       formData.append("address[lgaId]", data.lga);
       formData.append("address[streetName]", data.streetName);
@@ -849,7 +882,7 @@ const StoreDetails = () => {
       if (!res.ok) throw new Error("Address update failed");
 
       const stateName =
-        nigeriaData?.states.find((s) => s.id === data.state)?.name || "";
+        locationData?.states.find((s) => s.id === data.state)?.name || "";
       const lgaName = lgas?.find((s) => s.value === data.lga)?.label || "";
       const formattedAddress = `${data.streetName}, ${data.city}, ${stateName}`;
 
@@ -1842,9 +1875,9 @@ const StoreDetails = () => {
                               variant="outline"
                               role="combobox"
                               className="w-full justify-between h-12 font-normal"
-                              disabled={true}
+                              disabled={countries.length < 2}
                             >
-                              {nigeriaData?.country.name || "Nigeria"}
+                              {locationData?.country.name ?? "Select country"}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </FormControl>
@@ -1853,7 +1886,7 @@ const StoreDetails = () => {
                       <input
                         type="hidden"
                         {...field}
-                        value={nigeriaData?.country.name || "Nigeria"}
+                        value={locationData?.country.name ?? ""}
                       />
                       <FormMessage />
                     </FormItem>
@@ -1876,12 +1909,12 @@ const StoreDetails = () => {
                               role="combobox"
                               className="w-full justify-between h-12 font-normal"
                               disabled={
-                                statesLoading || !nigeriaData?.states?.length
+                                statesLoading || !locationData?.states?.length
                               }
                             >
                               <span className="truncate">
                                 {addressForm.watch("state")
-                                  ? nigeriaData?.states.find(
+                                  ? locationData?.states.find(
                                       (s) =>
                                         s.id === addressForm.watch("state"),
                                     )?.name || "Select state"
@@ -1898,7 +1931,7 @@ const StoreDetails = () => {
                             <CommandInput placeholder="Search state..." />
                             <CommandEmpty>No state found.</CommandEmpty>
                             <CommandGroup className="max-h-80 overflow-y-auto overscroll-contain p-1">
-                              {nigeriaData?.states?.map((s) => (
+                              {locationData?.states?.map((s) => (
                                 <CommandItem
                                   key={s.id}
                                   value={s.name}
@@ -1999,7 +2032,7 @@ const StoreDetails = () => {
                               </span>
                               {/* <span className="truncate">
                                 {addressForm.watch("state")
-                                  ? nigeriaData?.states.find(
+                                  ? locationData?.states.find(
                                       (s) =>
                                         s.id === addressForm.watch("state"),
                                     )?.name || "Select state"

@@ -211,7 +211,13 @@ export default function SetupStorePage() {
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
     null,
   );
-  const [nigeriaData, setNigeriaData] = useState<{
+  // Was hardcoded to Nigeria. The country now comes from the countries we
+  // actually deliver in; with one it is chosen automatically and the picker
+  // stays fixed, so this looks the same until there is a second.
+  const [countries, setCountries] = useState<
+    { id: string; code: string; name: string }[]
+  >([]);
+  const [locationData, setLocationData] = useState<{
     country: { id: string; code: string; name: string };
     states: { id: string; code: string; name: string }[];
   } | null>(null);
@@ -259,6 +265,32 @@ export default function SetupStorePage() {
     },
   });
 
+  // Shared by the first load and the country picker.
+  const loadStatesForCountry = async (country: {
+    id: string;
+    code: string;
+    name: string;
+  }) => {
+    setStatesLoading(true);
+    setStatesError("");
+    try {
+      const res = await authenticatedFetch(
+        `${API_BASE}/meta/states?countryId=${country.id}`,
+      );
+      const json = await res.json();
+
+      if (Array.isArray(json?.data)) {
+        setLocationData({ country, states: json.data });
+      } else {
+        setStatesError(`Failed to load states for ${country.name}.`);
+      }
+    } catch {
+      setStatesError(`Failed to load states for ${country.name}.`);
+    } finally {
+      setStatesLoading(false);
+    }
+  };
+
   useEffect(() => {
     async function fetchMeta() {
       setMetaLoading(true);
@@ -266,17 +298,17 @@ export default function SetupStorePage() {
       setFetchNetworkError(null);
 
       try {
-        const [btRes, brRes, soRes, nigeriaRes] = await Promise.all([
+        const [btRes, brRes, soRes, countriesRes] = await Promise.all([
           authenticatedFetch(`${API_BASE}/meta/business-types`),
           authenticatedFetch(`${API_BASE}/meta/brand-types`),
           authenticatedFetch(`${API_BASE}/meta/service-operations`),
-          authenticatedFetch(`${API_BASE}/meta/nigeria-states`),
+          authenticatedFetch(`${API_BASE}/meta/countries`),
         ]);
 
         const btJson = await btRes.json();
         const brJson = await brRes.json();
         const soJson = await soRes.json();
-        const nigeriaJson = await nigeriaRes.json();
+        const countriesJson = await countriesRes.json();
 
         const normalize = (arr: any[]) =>
           arr.map((item) => ({
@@ -288,13 +320,15 @@ export default function SetupStorePage() {
         setBrandTypes(normalize(brJson.data || brJson || []));
         setServiceOperations(normalize(soJson.data || soJson || []));
 
-        if (
-          nigeriaJson?.data?.country &&
-          Array.isArray(nigeriaJson.data.states)
-        ) {
-          setNigeriaData(nigeriaJson.data);
+        const served: { id: string; code: string; name: string }[] =
+          Array.isArray(countriesJson?.data) ? countriesJson.data : [];
+        setCountries(served);
+
+        if (!served.length) {
+          setStatesError("No delivery locations are configured yet.");
         } else {
-          setStatesError("Failed to load Nigerian states data structure.");
+          // Load the first country's states; with several, the picker swaps it.
+          await loadStatesForCountry(served[0]);
         }
       } catch (err: any) {
         console.error("Meta fetch error:", err);
@@ -324,7 +358,7 @@ export default function SetupStorePage() {
     setLgasError("");
     setLgasLoading(true);
 
-    if (!selectedStateId || !nigeriaData?.states) {
+    if (!selectedStateId || !locationData?.states) {
       setLgasLoading(false);
       return;
     }
@@ -333,7 +367,7 @@ export default function SetupStorePage() {
 
     async function loadLgas() {
       try {
-        const selectedState = nigeriaData?.states.find(
+        const selectedState = locationData?.states.find(
           (s) => s.id === selectedStateId,
         );
         if (!selectedState) throw new Error("State not found");
@@ -388,7 +422,7 @@ export default function SetupStorePage() {
     return () => {
       isCurrent = false;
     };
-  }, [form.watch("state"), nigeriaData, form]);
+  }, [form.watch("state"), locationData, form]);
 
   // Google Maps initialization remains unchanged
   useEffect(() => {
@@ -534,7 +568,7 @@ export default function SetupStorePage() {
         });
 
         const addressObj = {
-          countryId: nigeriaData?.country?.id || "",
+          countryId: locationData?.country?.id || "",
           stateId: values.state,
           lgaId: values.lga,
           streetName: values.streetName,
@@ -1379,19 +1413,62 @@ export default function SetupStorePage() {
                                 variant="outline"
                                 role="combobox"
                                 className="w-full justify-between h-12 font-normal"
-                                disabled={true} // or remove disabled if you want to allow change later
+                                // Nothing to choose while we serve one country.
+                                disabled={countries.length < 2 || metaLoading}
                               >
-                                {nigeriaData?.country.name || "Nigeria"}
+                                {locationData?.country.name ?? "Select country"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
+                          <PopoverContent
+                            className="w-[--radix-popover-trigger-width] p-0"
+                            align="start"
+                            side="bottom"
+                          >
+                            <Command className="max-h-72 overflow-y-auto">
+                              <CommandInput placeholder="Search country..." />
+                              <CommandEmpty>No country found.</CommandEmpty>
+                              <CommandGroup>
+                                {countries.map((c) => (
+                                  <CommandItem
+                                    key={c.id}
+                                    value={c.name}
+                                    onSelect={() => {
+                                      setCountryOpen(false);
+                                      if (c.id === locationData?.country.id)
+                                        return;
+                                      // The states belong to the country, so
+                                      // clear what depended on the old one.
+                                      setLocationData({
+                                        country: c,
+                                        states: [],
+                                      });
+                                      form.setValue("country", c.name);
+                                      form.setValue("state", "");
+                                      void loadStatesForCountry(c);
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        locationData?.country.id === c.id
+                                          ? "opacity-100"
+                                          : "opacity-0",
+                                      )}
+                                    />
+                                    {c.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
                         </Popover>
                         {/* Hidden input to satisfy form */}
                         <input
                           type="hidden"
                           {...field}
-                          value={nigeriaData?.country.name || "Nigeria"}
+                          value={locationData?.country.name ?? ""}
                         />
                         <FormMessage />
                       </FormItem>
@@ -1414,12 +1491,12 @@ export default function SetupStorePage() {
                                 role="combobox"
                                 className="w-full justify-between h-12 font-normal"
                                 disabled={
-                                  statesLoading || !nigeriaData?.states?.length
+                                  statesLoading || !locationData?.states?.length
                                 }
                               >
                                 <span className="truncate">
                                   {form.watch("state")
-                                    ? nigeriaData?.states.find(
+                                    ? locationData?.states.find(
                                         (s) => s.id === form.watch("state"),
                                       )?.name || "Select state"
                                     : statesLoading
@@ -1435,7 +1512,7 @@ export default function SetupStorePage() {
                               <CommandInput placeholder="Search state..." />
                               <CommandEmpty>No state found.</CommandEmpty>
                               <CommandGroup className="max-h-80 overflow-y-auto overscroll-contain p-1">
-                                {nigeriaData?.states?.map((s) => (
+                                {locationData?.states?.map((s) => (
                                   <CommandItem
                                     key={s.id}
                                     value={s.name}
