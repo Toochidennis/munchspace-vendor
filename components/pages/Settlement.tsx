@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  Trash2,
   Plus,
   LoaderCircle,
+  ShieldAlert,
   ChevronsUpDown,
   AlertCircle,
   RefreshCw,
@@ -63,6 +63,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import CustomModal from "@/components/layout/CustomModal";
+import SupportModal from "@/components/support/SupportModal";
 import { readApiError, refreshAccessToken } from "@/app/lib/api";
 
 // ────────────────────────────────────────────────
@@ -141,6 +142,21 @@ interface BankOption {
   code: string;
 }
 
+interface CashoutQuote {
+  availableAmount: number;
+  minimumAmount: number | null;
+  feeAmount: number | null;
+  netAmount: number | null;
+  eligible: boolean;
+  reason:
+    | "CASHOUT_UNAVAILABLE"
+    | "BELOW_MINIMUM"
+    | "PAYOUT_IN_PROGRESS"
+    | "ACCOUNT_CHANGE_HOLD"
+    | null;
+  holdUntil: string | null;
+}
+
 interface SettlementAccount {
   businessId?: string;
   bankName: string;
@@ -161,9 +177,7 @@ export default function EarningsPage() {
   const [isLoadingBanks, setIsLoadingBanks] = useState(true);
   const [isLoadingAccount, setIsLoadingAccount] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -184,6 +198,23 @@ export default function EarningsPage() {
   const [payoutsMeta, setPayoutsMeta] = useState<any>(null);
   const [payoutsPage, setPayoutsPage] = useState(1);
   const [isLoadingPayouts, setIsLoadingPayouts] = useState(false);
+
+  // Cashout state
+  const [cashoutQuote, setCashoutQuote] = useState<CashoutQuote | null>(null);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+  const [isCashoutOpen, setIsCashoutOpen] = useState(false);
+  const [isCashingOut, setIsCashingOut] = useState(false);
+
+  // Changing the payout account: a code is sent first, then entered here.
+  const [changeStep, setChangeStep] = useState<"details" | "otp">("details");
+  const [otp, setOtp] = useState("");
+  const [otpSentTo, setOtpSentTo] = useState<string[]>([]);
+  const [isRequestingOtp, setIsRequestingOtp] = useState(false);
+  const [isEditingAccount, setIsEditingAccount] = useState(false);
+  const [payoutHoldUntil, setPayoutHoldUntil] = useState<string | null>(null);
+
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [supportSubject, setSupportSubject] = useState<string | undefined>();
 
   const form = useForm<AddSettlementType>({
     resolver: zodResolver(addSettlementSchema),
@@ -219,6 +250,7 @@ export default function EarningsPage() {
         const accJson = await accRes.json();
         if (accJson.success && accJson.data) {
           setAccount(accJson.data);
+          setPayoutHoldUntil(accJson.data.payoutsFrozenUntil ?? null);
         }
 
         const bankJson = await bankRes.json();
@@ -300,6 +332,63 @@ export default function EarningsPage() {
     fetchPayouts();
   }, [businessId, activeTab, payoutsPage]);
 
+  // The quote carries the fee, which is the one thing a vendor must see before
+  // committing — a scheduled payout is free and this one is not.
+  const loadCashoutQuote = useCallback(async () => {
+    if (!businessId) return;
+
+    setIsLoadingQuote(true);
+    try {
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/financials/cashout`,
+      );
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setCashoutQuote(json.data);
+      }
+    } catch {
+      // Leaving the quote null hides the cashout card rather than showing a
+      // button whose cost we cannot state.
+    } finally {
+      setIsLoadingQuote(false);
+    }
+  }, [businessId]);
+
+  useEffect(() => {
+    if (activeTab !== "earnings") return;
+    loadCashoutQuote();
+  }, [activeTab, loadCashoutQuote]);
+
+  const confirmCashout = async () => {
+    if (!businessId) return;
+
+    setIsCashingOut(true);
+    try {
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/financials/cashout`,
+        { method: "POST" },
+      );
+
+      if (!res.ok) {
+        throw new Error(await readApiError(res, "Could not complete cashout"));
+      }
+
+      const json = await res.json();
+      const payout = json.data;
+
+      toast.success(
+        `₦${(payout?.netAmount ?? 0).toLocaleString()} is on its way to your bank`,
+      );
+      setIsCashoutOpen(false);
+      await loadCashoutQuote();
+      setEarningsPage(1);
+    } catch (err: any) {
+      toast.error(err.message || "Could not complete cashout");
+    } finally {
+      setIsCashingOut(false);
+    }
+  };
+
   useEffect(() => {
     const verifyAccount = async () => {
       if (!businessId || !selectedBankName || !accountNumber?.length) {
@@ -362,60 +451,126 @@ export default function EarningsPage() {
     }
   }, [selectedBankName, accountNumber, businessId, banks, form]);
 
+  const openAddAccount = () => {
+    setIsEditingAccount(false);
+    setChangeStep("details");
+    setOtp("");
+    setSelectedBank(null);
+    setVerificationError(null);
+    form.reset({ bankName: "", accountNumber: "", accountName: "" });
+    setIsDialogOpen(true);
+  };
+
+  const openChangeAccount = () => {
+    setIsEditingAccount(true);
+    setChangeStep("details");
+    setOtp("");
+    setSelectedBank(null);
+    setVerificationError(null);
+    // The stored number comes back masked, so there is nothing to prefill —
+    // the new details are typed and verified from scratch.
+    form.reset({ bankName: "", accountNumber: "", accountName: "" });
+    setIsDialogOpen(true);
+  };
+
+  /**
+   * Step one of a change. The code goes to the email and phone on the account,
+   * which a stolen dashboard session does not reach.
+   */
+  const requestAccountChange = async () => {
+    if (!businessId) return;
+
+    if (!selectedBank || !form.getValues("accountName")) {
+      toast.error("Select your bank and let the account name verify first");
+      return;
+    }
+
+    setIsRequestingOtp(true);
+    try {
+      const res = await authenticatedFetch(
+        `${API_BASE}/vendors/me/businesses/${businessId}/financials/bank-account/change-request`,
+        { method: "POST" },
+      );
+
+      if (!res.ok) {
+        throw new Error(
+          await readApiError(res, "Could not send your verification code"),
+        );
+      }
+
+      const json = await res.json();
+      setOtpSentTo(json?.data?.sentTo ?? []);
+      setChangeStep("otp");
+    } catch (err: any) {
+      toast.error(err.message || "Could not send your verification code");
+    } finally {
+      setIsRequestingOtp(false);
+    }
+  };
+
   const onSubmit = async (data: AddSettlementType) => {
     if (!businessId) {
       toast.error("Business ID is missing");
       return;
     }
 
+    if (!selectedBank) {
+      toast.error("Please select a bank");
+      return;
+    }
+
+    if (isEditingAccount && changeStep !== "otp") {
+      await requestAccountChange();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      if (!selectedBank) {
-        toast.error("Please select a bank");
-        return;
-      }
-
       const payload = {
         bankId: selectedBank.id,
         accountNumber: data.accountNumber,
         bankCode: selectedBank.code,
+        ...(isEditingAccount ? { otp } : {}),
       };
 
       const res = await authenticatedFetch(
         `${API_BASE}/vendors/me/businesses/${businessId}/financials/bank-account`,
         {
-          method: "POST",
+          method: isEditingAccount ? "PATCH" : "POST",
           body: JSON.stringify(payload),
         },
       );
 
-      const resJson = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to add bank account");
+        throw new Error(
+          await readApiError(
+            res,
+            isEditingAccount
+              ? "Failed to update bank account"
+              : "Failed to add bank account",
+          ),
+        );
       }
+
+      const resJson = await res.json();
 
       setAccount(resJson.data || { ...data, bankCode: selectedBank.code });
       setIsDialogOpen(false);
+      setOtp("");
+      setChangeStep("details");
       form.reset();
-      toast.success("Settlement account added successfully");
+
+      if (isEditingAccount) {
+        setPayoutHoldUntil(resJson?.data?.payoutsFrozenUntil ?? null);
+        toast.success("Settlement account updated");
+        loadCashoutQuote();
+      } else {
+        toast.success("Settlement account added successfully");
+      }
     } catch (err: any) {
       toast.error(err.message || "An error occurred");
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const confirmDelete = async () => {
-    setIsDeleting(true);
-    try {
-      setAccount(null);
-      setIsDeleteOpen(false);
-      toast.success("Account removed successfully");
-    } catch (error) {
-      toast.error("Failed to remove account");
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -495,7 +650,7 @@ export default function EarningsPage() {
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Earnings</h2>
                 <p className="text-gray-500 text-sm mt-1 max-w-3xl">
-                  Your available balance updates once an order is paid and confirmed by the customer's bank. Funds are held until the order is successfully delivered by our dispatch rider. This can take up to 2 days. <a href="#" className="text-blue-500 hover:underline">Need assistance?</a> Our team is ready to help.
+                  Your available balance updates once an order is paid and confirmed by the customer's bank. Funds are held until the order is successfully delivered by our dispatch rider. This can take up to 2 days. <button type="button" onClick={() => setIsSupportOpen(true)} className="text-blue-500 hover:underline">Need assistance?</button> Our team is ready to help.
                 </p>
               </div>
 
@@ -519,6 +674,53 @@ export default function EarningsPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Cash out. Only shown once the API says it is configured — a
+                  button that always fails is worse than no button. */}
+              {cashoutQuote && cashoutQuote.reason !== "CASHOUT_UNAVAILABLE" && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        Cash out early
+                      </p>
+                      <p className="text-sm text-gray-500 mt-1 max-w-xl">
+                        {cashoutQuote.reason === "ACCOUNT_CHANGE_HOLD" ? (
+                          <>
+                            Your payouts are on hold until{" "}
+                            {formatHoldDeadline(cashoutQuote.holdUntil)} while we
+                            confirm the change to your settlement account. Your
+                            earnings are safe.
+                          </>
+                        ) : cashoutQuote.reason === "PAYOUT_IN_PROGRESS" ? (
+                          "A payout is already on its way to your bank. You can cash out again once it lands."
+                        ) : cashoutQuote.reason === "BELOW_MINIMUM" ? (
+                          `You need at least ₦${(cashoutQuote.minimumAmount || 0).toLocaleString()} cleared to cash out. Scheduled payouts are unaffected.`
+                        ) : (
+                          <>
+                            ₦{cashoutQuote.availableAmount.toLocaleString()}{" "}
+                            cleared. A ₦
+                            {(cashoutQuote.feeAmount || 0).toLocaleString()}{" "}
+                            transfer fee applies — your scheduled payout is still
+                            free.
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => setIsCashoutOpen(true)}
+                      disabled={!cashoutQuote.eligible || isLoadingQuote}
+                      className="bg-munchprimary hover:bg-munchprimaryDark text-white rounded-md shrink-0"
+                    >
+                      {isLoadingQuote ? (
+                        <LoaderCircle className="h-4 w-4 animate-spin" />
+                      ) : (
+                        `Cash out ₦${(cashoutQuote.netAmount ?? 0).toLocaleString()}`
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -697,19 +899,69 @@ export default function EarningsPage() {
             {isLoadingAccount ? (
               <Skeleton className="h-[100px] w-full rounded-md" />
             ) : account ? (
-              <div className="flex items-center justify-between bg-gray-50 rounded-lg p-6">
-                <div>
-                  <p className="font-medium text-lg text-gray-900">
-                    {account.bankName}
-                  </p>
-                  <p className="text-gray-600">{account.accountNumber}</p>
-                  <p className="text-sm text-gray-500">{account.accountName}</p>
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gray-50 rounded-lg p-6">
+                  <div>
+                    <p className="font-medium text-lg text-gray-900">
+                      {account.bankName}
+                    </p>
+                    <p className="text-gray-600">{account.accountNumber}</p>
+                    <p className="text-sm text-gray-500">{account.accountName}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={openChangeAccount}
+                    className="rounded-md shrink-0"
+                  >
+                    Change account
+                  </Button>
                 </div>
+
+                {payoutHoldUntil && (
+                  <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600" />
+                    <div className="text-sm text-amber-900">
+                      <p className="font-medium">
+                        Payouts are on hold until{" "}
+                        {formatHoldDeadline(payoutHoldUntil)}
+                      </p>
+                      <p className="mt-1">
+                        We hold payouts for a day after the settlement account
+                        changes. Your earnings are safe and resume automatically.{" "}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSupportSubject("I did not change my payout account");
+                            setIsSupportOpen(true);
+                          }}
+                          className="underline font-medium"
+                        >
+                          Didn&apos;t make this change?
+                        </button>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-sm text-gray-500">
+                  Changing this account needs a code sent to the email and phone
+                  on your account.{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupportSubject("Help changing my payout account");
+                      setIsSupportOpen(true);
+                    }}
+                    className="text-blue-500 hover:underline"
+                  >
+                    Can&apos;t receive the code?
+                  </button>
+                </p>
               </div>
             ) : (
               <div className="flex justify-center">
                 <Button
-                  onClick={() => setIsDialogOpen(true)}
+                  onClick={openAddAccount}
                   className="text-white bg-munchprimary rounded-md hover:bg-munchprimaryDark"
                 >
                   <Plus className="h-5 w-5" /> Add Account
@@ -723,10 +975,72 @@ export default function EarningsPage() {
       <CustomModal
         isOpen={isDialogOpen}
         onClose={() => setIsDialogOpen(false)}
-        title="Add Account"
+        title={
+          isEditingAccount
+            ? changeStep === "otp"
+              ? "Confirm it's you"
+              : "Change account"
+            : "Add Account"
+        }
         maxWidth="sm:max-w-[450px]"
       >
-        {isLoadingBanks ? (
+        {isEditingAccount && changeStep === "otp" ? (
+          <div className="space-y-5 mt-2">
+            <p className="text-sm text-gray-600">
+              We sent a code to{" "}
+              <span className="font-medium text-gray-900">
+                {otpSentTo.length ? otpSentTo.join(" and ") : "your account"}
+              </span>
+              . Enter it to move your earnings to{" "}
+              <span className="font-medium text-gray-900">
+                {form.getValues("bankName")} ••••{" "}
+                {form.getValues("accountNumber").slice(-4)}
+              </span>
+              .
+            </p>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700">
+                Verification code
+              </label>
+              <Input
+                className="h-12 rounded-md mt-1.5 tracking-[0.4em] text-center text-lg"
+                placeholder="——————"
+                inputMode="numeric"
+                maxLength={8}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
+
+            <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600" />
+              <p className="text-sm text-amber-900">
+                Payouts and cashouts pause for 24 hours after this change, so we
+                can catch it if it wasn&apos;t you.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setChangeStep("details")}
+                className="rounded-md px-6"
+              >
+                Back
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting || otp.length < 4}
+                onClick={() => onSubmit(form.getValues())}
+                className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
+              >
+                {isSubmitting ? "Confirming..." : "Confirm change"}
+              </Button>
+            </div>
+          </div>
+        ) : isLoadingBanks ? (
           <div className="py-8 flex justify-center">
             <LoaderCircle className="h-8 w-8 animate-spin text-orange-600" />
           </div>
@@ -850,10 +1164,16 @@ export default function EarningsPage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isRequestingOtp}
                     className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
                   >
-                    {isSubmitting ? "Saving..." : "Add Account"}
+                    {isEditingAccount
+                      ? isRequestingOtp
+                        ? "Sending code..."
+                        : "Continue"
+                      : isSubmitting
+                        ? "Saving..."
+                        : "Add Account"}
                   </Button>
                 </div>
               </div>
@@ -861,6 +1181,90 @@ export default function EarningsPage() {
           </Form>
         )}
       </CustomModal>
+
+      <CustomModal
+        isOpen={isCashoutOpen}
+        onClose={() => setIsCashoutOpen(false)}
+        title="Cash out now"
+        maxWidth="sm:max-w-[420px]"
+      >
+        <div className="space-y-5">
+          <p className="text-sm text-gray-600">
+            This sends your cleared earnings to{" "}
+            <span className="font-medium text-gray-900">
+              {account?.bankName} {account?.accountNumber}
+            </span>{" "}
+            today instead of on your next payout day.
+          </p>
+
+          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
+            <div className="flex justify-between px-4 py-3 text-sm">
+              <span className="text-gray-500">Cleared earnings</span>
+              <span className="font-medium text-gray-900">
+                ₦{(cashoutQuote?.availableAmount ?? 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between px-4 py-3 text-sm">
+              <span className="text-gray-500">Transfer fee</span>
+              <span className="font-medium text-gray-900">
+                −₦{(cashoutQuote?.feeAmount ?? 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between px-4 py-3">
+              <span className="font-medium text-gray-900">You receive</span>
+              <span className="text-lg font-bold text-gray-900">
+                ₦{(cashoutQuote?.netAmount ?? 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Your next scheduled payout is unaffected and stays free. Earnings
+            clear 24 hours after an order completes, so anything delivered today
+            is not included yet.
+          </p>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => setIsCashoutOpen(false)}
+              className="rounded-md px-6"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmCashout}
+              disabled={isCashingOut}
+              className="bg-munchprimary hover:bg-orange-600 text-white rounded-md px-6"
+            >
+              {isCashingOut ? "Sending..." : "Cash out"}
+            </Button>
+          </div>
+        </div>
+      </CustomModal>
+
+      <SupportModal
+        isOpen={isSupportOpen}
+        onClose={() => {
+          setIsSupportOpen(false);
+          setSupportSubject(undefined);
+        }}
+        presetSubject={supportSubject}
+      />
     </div>
   );
+}
+
+/** The API sends an ISO instant; the vendor reads it on a Lagos clock. */
+function formatHoldDeadline(value: string | null): string {
+  if (!value) return "soon";
+
+  return new Date(value).toLocaleString("en-NG", {
+    timeZone: "Africa/Lagos",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
