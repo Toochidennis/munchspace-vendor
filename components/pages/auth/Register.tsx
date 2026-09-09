@@ -230,7 +230,9 @@ export default function RegisterPage() {
       if (response.status === 201 && resData?.success && resData?.data) {
         setSavedEmail(values.email);
 
-        if (resData.data.requiresOtp) {
+        // availableMethods is the only source of truth; signup returns
+        // ['otp'] when a code is required and an empty list when it is not.
+        if (resData.data.availableMethods?.includes("otp")) {
           // ── Changed: request OTP before showing the screen ────────
           await requestOtp(values.email);
           setStep(2);

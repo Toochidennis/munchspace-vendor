@@ -313,7 +313,9 @@ export default function LoginPage() {
         return;
       }
 
-      if (data.availableMethods?.includes("otp") || data.requiresOtp) {
+      // availableMethods is the only source of truth for what comes next.
+      // requiresOtp predates it and can disagree with it.
+      if (data.availableMethods?.includes("otp")) {
         await requestOtp();
         setStep("otp");
       } else if (data.accessToken && data.refreshToken) {
