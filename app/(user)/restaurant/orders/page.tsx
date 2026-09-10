@@ -1,6 +1,6 @@
 import OrdersPage from '@/components/pages/orders/Orders'
 import { Metadata } from 'next';
-import React from 'react'
+import React, { Suspense } from 'react'
 
 export const metadata: Metadata = {
   title: "Order Management",
@@ -20,9 +20,14 @@ export const metadata: Metadata = {
   },
 };
 
+// The list keeps its filters in the query string, and useSearchParams cannot
+// be prerendered — without a boundary the whole route opts out of static
+// rendering and the build fails on it.
 const page = () => {
   return (
-    <OrdersPage />
+    <Suspense>
+      <OrdersPage />
+    </Suspense>
   )
 }
 

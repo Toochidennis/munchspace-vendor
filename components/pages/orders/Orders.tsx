@@ -32,6 +32,15 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  ALL_TIME,
+  applyDateRangeParams,
+  applyDateRangeUrlParams,
+  DateRangeFilter,
+  readDateRangeParams,
+  type DateRangeSelection,
+} from "@/components/ui/date-range-filter";
+import { readNumberParam, useUrlFilters } from "@/lib/use-url-filters";
 import Link from "next/link";
 import { toast } from "sonner";
 import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
@@ -178,26 +187,6 @@ type StatusFilter =
   | "cancelled"
   | "returned";
 
-/**
- * "all" is deliberately absent: the orders endpoint lists across every date
- * when `range` is omitted, so all-time is the absence of a filter rather than a
- * preset of its own.
- */
-const rangeMap: Record<string, string> = {
-  last30: "last_30_days",
-  last7: "last_7_days",
-  last90: "last_90_days",
-  today: "today",
-};
-
-type OrderPeriod =
-  | "all"
-  | "today"
-  | "last7"
-  | "last30"
-  | "last90"
-  | "custom";
-
 const getStatusBadgeClass = (status: string) => {
   const s = status.toLowerCase();
   if (s.includes("pending")) return "bg-blue-100 text-blue-700 border-blue-200";
@@ -220,18 +209,67 @@ const getStatusBadgeClass = (status: string) => {
 //  Component
 // ────────────────────────────────────────────────
 
-export default function OrdersPage() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [period, setPeriod] = useState<OrderPeriod>("last30");
-  const [customRange, setCustomRange] = useState<DateRange | undefined>();
-  const [rangePickerOpen, setRangePickerOpen] = useState(false);
+type OrderFilters = {
+  statusFilter: StatusFilter;
+  search: string;
+  dateSelection: DateRangeSelection;
+  currentPage: number;
+  itemsPerPage: number;
+};
 
-  // The API rejects a half-open custom range — startDate and endDate must be
-  // sent together — so there is nothing to ask for until both ends are picked.
-  const customRangeReady = Boolean(customRange?.from && customRange?.to);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+export default function OrdersPage() {
+  // Filters live in the URL so opening an order and coming back restores the
+  // list the vendor had, instead of remounting it at the defaults.
+  const [filters, setFilters] = useUrlFilters<OrderFilters>({
+    parse: (params) => ({
+      statusFilter: (params.get("status") ?? "all") as StatusFilter,
+      search: params.get("q") ?? "",
+      dateSelection: readDateRangeParams(params, { preset: "last_30_days" }),
+      currentPage: readNumberParam(params, "page", 1),
+      itemsPerPage: readNumberParam(params, "limit", 20),
+    }),
+    serialize: (value, params) => {
+      if (value.statusFilter !== "all") params.set("status", value.statusFilter);
+      if (value.search) params.set("q", value.search);
+      if (value.currentPage > 1) params.set("page", String(value.currentPage));
+      if (value.itemsPerPage !== 20) params.set("limit", String(value.itemsPerPage));
+      applyDateRangeUrlParams(params, value.dateSelection);
+    },
+  });
+
+  const { statusFilter, search, dateSelection, currentPage, itemsPerPage } =
+    filters;
+
+  const setStatusFilter = (next: StatusFilter) =>
+    setFilters((f) => ({ ...f, statusFilter: next, currentPage: 1 }));
+  const setDateSelection = (next: DateRangeSelection) =>
+    setFilters((f) => ({ ...f, dateSelection: next, currentPage: 1 }));
+  const setCurrentPage = (next: number | ((previous: number) => number)) =>
+    setFilters((f) => ({
+      ...f,
+      currentPage: typeof next === "function" ? next(f.currentPage) : next,
+    }));
+  const setItemsPerPage = (next: number) =>
+    setFilters((f) => ({ ...f, itemsPerPage: next, currentPage: 1 }));
+
+  // Search filters the page already fetched rather than the request, so it
+  // needs no debounce to spare the API — only to keep every keystroke out of
+  // the address bar.
+  const [searchTerm, setSearchTerm] = useState(search);
+
+  useEffect(() => {
+    if (searchTerm === search) return;
+
+    const handler = setTimeout(() => {
+      setFilters((f) => ({ ...f, search: searchTerm }));
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm, search, setFilters]);
+
+  // All time is the absence of any date bound, which is what the orders
+  // endpoint returns when `range` is omitted.
+  const isAllTime =
+    !dateSelection.preset && !dateSelection.startDate && !dateSelection.endDate;
   const [showSearchMobile, setShowSearchMobile] = useState(false);
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -260,20 +298,11 @@ export default function OrdersPage() {
   useEffect(() => {
     const BUSINESS_ID = getBusinessId();
 
-    // Nothing to ask for yet — the list stays on the previous result while the
-    // vendor is still picking the second date.
-    if (period === "custom" && !customRangeReady) {
-      setLoading(false);
-      return;
-    }
-
     const fetchOrders = async () => {
       setLoading(true);
       setFetchNetworkError(null);
 
       try {
-        const apiPeriod = rangeMap[period];
-
         let apiGroup: string;
         switch (statusFilter) {
           case "all":
@@ -307,14 +336,9 @@ export default function OrdersPage() {
           group: apiGroup,
         });
 
-        if (period === "custom") {
-          // Both or neither: sending one alone is a 400, and sending neither
-          // would silently widen to all time. endDate is inclusive server-side.
-          query.set("startDate", format(customRange!.from!, "yyyy-MM-dd"));
-          query.set("endDate", format(customRange!.to!, "yyyy-MM-dd"));
-        } else if (apiPeriod) {
-          query.set("range", apiPeriod);
-        }
+        // Sends the custom pair together or the preset alone, and nothing at
+        // all for All time — one bound on its own is a 400 server-side.
+        applyDateRangeParams(query, dateSelection);
 
         const url = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders?${query}`;
         const response = await authenticatedFetch(url);
@@ -386,9 +410,7 @@ export default function OrdersPage() {
 
     fetchOrders();
   }, [
-    period,
-    customRange,
-    customRangeReady,
+    dateSelection,
     statusFilter,
     currentPage,
     itemsPerPage,
@@ -475,6 +497,21 @@ export default function OrdersPage() {
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
+  // Rows carry the current filters through to the detail page, which needs
+  // them twice over: to scope its previous/next links to this list, and so
+  // that coming back lands on the list as it was.
+  const detailHref = (id: string) => {
+    const params = new URLSearchParams();
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (search) params.set("q", search);
+    if (currentPage > 1) params.set("page", String(currentPage));
+    if (itemsPerPage !== 20) params.set("limit", String(itemsPerPage));
+    applyDateRangeUrlParams(params, dateSelection);
+
+    const query = params.toString();
+    return `/restaurant/orders/${id}${query ? `?${query}` : ""}`;
+  };
+
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(Number(value));
     setCurrentPage(1);
@@ -558,46 +595,13 @@ export default function OrdersPage() {
     totalItems === 0 &&
     statusFilter === "all" &&
     searchTerm === "" &&
-    period === "all";
+    isAllTime;
   const showFilteredEmpty =
     !loading &&
     (totalItems === 0 || filteredOrders.length === 0) &&
     !showFullEmptyState &&
     !fetchNetworkError;
 
-  const customRangePicker = (
-    <Popover open={rangePickerOpen} onOpenChange={setRangePickerOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className={cn(
-            "justify-start border-gray-200 font-normal",
-            !customRangeReady && "text-muted-foreground",
-          )}
-        >
-          {customRange?.from && customRange?.to
-            ? `${format(customRange.from, "d MMM yyyy")} – ${format(customRange.to, "d MMM yyyy")}`
-            : "Pick dates"}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="end">
-        <Calendar
-          mode="range"
-          selected={customRange}
-          onSelect={(next) => {
-            setCustomRange(next);
-            setCurrentPage(1);
-            if (next?.from && next?.to) setRangePickerOpen(false);
-          }}
-          // Orders cannot be placed in the future, so offering those days only
-          // invites an empty result.
-          disabled={{ after: new Date() }}
-          numberOfMonths={2}
-          autoFocus
-        />
-      </PopoverContent>
-    </Popover>
-  );
 
   const PaginationControls = () => (
     <div className="flex items-center justify-center mx-2 gap-5 text-sm mt-auto pt-6">
@@ -721,29 +725,14 @@ export default function OrdersPage() {
                   className="pl-10 w-80"
                 />
               </div>
-              <Select
-                value={period}
-                onValueChange={(v) => {
-                  setPeriod(v as typeof period);
+              <DateRangeFilter
+                value={dateSelection}
+                onChange={(next) => {
+                  setDateSelection(next);
                   setCurrentPage(1);
-                  // Choosing "Custom range" only holds the request; the dates
-                  // still have to be picked, so open the calendar with it.
-                  setRangePickerOpen(v === "custom");
                 }}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="last7">Last 7 days</SelectItem>
-                  <SelectItem value="last30">Last 30 days</SelectItem>
-                  <SelectItem value="last90">Last 90 days</SelectItem>
-                  <SelectItem value="all">All time</SelectItem>
-                  <SelectItem value="custom">Custom range</SelectItem>
-                </SelectContent>
-              </Select>
-              {period === "custom" && customRangePicker}
+                align="end"
+              />
             </div>
             <button
               className={cn(
@@ -768,29 +757,15 @@ export default function OrdersPage() {
                   className="pl-10 h-12"
                 />
               </div>
-              <Select
-                value={period}
-                onValueChange={(v) => {
-                  setPeriod(v as typeof period);
+              <DateRangeFilter
+                value={dateSelection}
+                onChange={(next) => {
+                  setDateSelection(next);
                   setCurrentPage(1);
-                  // Choosing "Custom range" only holds the request; the dates
-                  // still have to be picked, so open the calendar with it.
-                  setRangePickerOpen(v === "custom");
                 }}
-              >
-                <SelectTrigger className="h-12">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="last7">Last 7 days</SelectItem>
-                  <SelectItem value="last30">Last 30 days</SelectItem>
-                  <SelectItem value="last90">Last 90 days</SelectItem>
-                  <SelectItem value="all">All time</SelectItem>
-                  <SelectItem value="custom">Custom range</SelectItem>
-                </SelectContent>
-              </Select>
-              {period === "custom" && customRangePicker}
+                align="start"
+                triggerClassName="h-12 w-full"
+              />
             </div>
           )}
 
@@ -841,12 +816,12 @@ export default function OrdersPage() {
                       ? "No orders in the selected time range."
                       : `No ${statusFilter} orders in the selected time range.`}
                 </p>
-                {period !== "all" && (
+                {!isAllTime && (
                   <Button
                     variant="outline"
                     className="mt-6 border-gray-200"
                     onClick={() => {
-                      setPeriod("all");
+                      setDateSelection(ALL_TIME);
                       setCurrentPage(1);
                     }}
                   >
@@ -968,7 +943,7 @@ export default function OrdersPage() {
                               </TableCell>
                               <TableCell className="text-right py-6">
                                 <Link
-                                  href={`/restaurant/orders/${order.orderId}`}
+                                  href={detailHref(order.orderId)}
                                 >
                                   <Button variant="outline" size="sm">
                                     View Details
@@ -1022,7 +997,7 @@ export default function OrdersPage() {
                                 )}
                             </div>
                             <Link
-                              href={`/restaurant/orders/${order.orderId}`}
+                              href={detailHref(order.orderId)}
                               className="font-medium"
                             >
                               {order.orderCode}

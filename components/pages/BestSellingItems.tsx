@@ -11,6 +11,14 @@ import {
 
 import { Input } from "@/components/ui/input";
 import {
+  applyDateRangeParams,
+  applyDateRangeUrlParams,
+  DateRangeFilter,
+  readDateRangeParams,
+  type DateRangeSelection,
+} from "@/components/ui/date-range-filter";
+import { readNumberParam, useUrlFilters } from "@/lib/use-url-filters";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -91,19 +99,55 @@ async function authenticatedFetch(
 //  Component
 // ────────────────────────────────────────────────
 
+type BestSellingFilters = {
+  search: string;
+  dateSelection: DateRangeSelection;
+  currentPage: number;
+  itemsPerPage: number;
+};
+
 export default function BestSellingItemsPage() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [period, setPeriod] = useState<
-    | "today"
-    | "last_7_days"
-    | "last_30_days"
-    | "last_6_months"
-    | "this_month"
-    | "last_month"
-    | "this_year"
-  >("last_30_days");
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  // Filters live in the URL so navigating away and back restores the view the
+  // vendor had, instead of remounting it at the defaults.
+  const [filters, setFilters] = useUrlFilters<BestSellingFilters>({
+    parse: (params) => ({
+      search: params.get("q") ?? "",
+      dateSelection: readDateRangeParams(params, { preset: "last_30_days" }),
+      currentPage: readNumberParam(params, "page", 1),
+      itemsPerPage: readNumberParam(params, "limit", 10),
+    }),
+    serialize: (value, params) => {
+      if (value.search) params.set("q", value.search);
+      if (value.currentPage > 1) params.set("page", String(value.currentPage));
+      if (value.itemsPerPage !== 10) params.set("limit", String(value.itemsPerPage));
+      applyDateRangeUrlParams(params, value.dateSelection);
+    },
+  });
+
+  const { search, dateSelection, currentPage, itemsPerPage } = filters;
+
+  const setDateSelection = (next: DateRangeSelection) =>
+    setFilters((f) => ({ ...f, dateSelection: next, currentPage: 1 }));
+  const setCurrentPage = (next: number | ((previous: number) => number)) =>
+    setFilters((f) => ({
+      ...f,
+      currentPage: typeof next === "function" ? next(f.currentPage) : next,
+    }));
+  const setItemsPerPage = (next: number) =>
+    setFilters((f) => ({ ...f, itemsPerPage: next, currentPage: 1 }));
+
+  // Search narrows the page already fetched, so the debounce is only about
+  // keeping every keystroke out of the address bar.
+  const [searchTerm, setSearchTerm] = useState(search);
+
+  useEffect(() => {
+    if (searchTerm === search) return;
+
+    const handler = setTimeout(() => {
+      setFilters((f) => ({ ...f, search: searchTerm }));
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm, search, setFilters]);
 
   const [items, setItems] = useState<any[]>([]);
   const [totalItems, setTotalItems] = useState(0);
@@ -125,7 +169,14 @@ export default function BestSellingItemsPage() {
       }
 
       try {
-        const url = `${API_BASE}/vendors/me/businesses/${businessId}/analytics/best-selling?range=${period}&page=${currentPage}&limit=${itemsPerPage}`;
+        const params = applyDateRangeParams(
+          new URLSearchParams({
+            page: String(currentPage),
+            limit: String(itemsPerPage),
+          }),
+          dateSelection,
+        );
+        const url = `${API_BASE}/vendors/me/businesses/${businessId}/analytics/best-selling?${params.toString()}`;
         const res = await authenticatedFetch(url);
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -157,7 +208,7 @@ export default function BestSellingItemsPage() {
     };
 
     fetchBestSelling();
-  }, [period, currentPage, itemsPerPage]);
+  }, [dateSelection, currentPage, itemsPerPage]);
 
   // ────────────────────────────────────────────────
   //  Improved search: safe, checks actual fields, future-proof for name
@@ -291,26 +342,18 @@ export default function BestSellingItemsPage() {
             />
           </div>
 
-          <Select
-            value={period}
-            onValueChange={(value) => {
-              setPeriod(value as typeof period);
+          <DateRangeFilter
+            value={dateSelection}
+            onChange={(next) => {
+              setDateSelection(next);
+              // A narrower window can leave the current page past the end of
+              // the results, which reads as an empty table.
               setCurrentPage(1);
             }}
-          >
-            <SelectTrigger className="md:w-40 bg-white border-gray-300 text-gray-900">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="last_7_days">Last 7 days</SelectItem>
-              <SelectItem value="last_30_days">Last 30 days</SelectItem>
-              <SelectItem value="last_6_months">Last 6 months</SelectItem>
-              <SelectItem value="this_month">This month</SelectItem>
-              <SelectItem value="last_month">Last month</SelectItem>
-              <SelectItem value="this_year">This year</SelectItem>
-            </SelectContent>
-          </Select>
+            align="end"
+            triggerClassName="md:w-auto bg-white border-gray-300 text-gray-900"
+            allowAllTime={false}
+          />
         </div>
 
         {/* Table */}

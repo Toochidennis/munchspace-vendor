@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useMemo, useState, useEffect } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 import { toast } from "sonner";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { refreshAccessToken } from "@/app/lib/api";
@@ -168,6 +167,42 @@ export default function OrderDetailsPage() {
   const orderId = params?.slug;
   const router = useRouter();
 
+  /**
+   * Steps back through history rather than pushing the bare list path, so the
+   * filters the vendor had are still on the URL when they land. Falls back to
+   * the plain list when this page was opened directly and there is nothing to
+   * go back to.
+   */
+  // Only the parameters that scope the neighbour queries. Paging and the free
+  // text box belong to the list and mean nothing to this endpoint.
+  const searchParams = useSearchParams();
+  const listFilterQuery = useMemo(() => {
+    const forwarded = new URLSearchParams();
+    for (const key of ["status", "range", "startDate", "endDate"]) {
+      const value = searchParams.get(key);
+      if (value) forwarded.set(key === "status" ? "group" : key, value);
+    }
+    return forwarded.toString();
+  }, [searchParams]);
+
+  // Kept on the address when stepping between orders, so the walk survives and
+  // going back still returns to the list as it was filtered.
+  const siblingHref = useCallback(
+    (id: string) =>
+      `/restaurant/orders/${id}${
+        searchParams.toString() ? `?${searchParams.toString()}` : ""
+      }`,
+    [searchParams],
+  );
+
+  const goBackToOrders = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/restaurant/orders");
+  }, [router]);
+
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchNetworkError, setFetchNetworkError] = useState<string | null>(
@@ -284,7 +319,12 @@ export default function OrderDetailsPage() {
       setFetchNetworkError(null);
 
       try {
-        const url = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}`;
+        // The list's filters travel on the query string. Passing them on is
+        // what makes previousOrderId and nextOrderId walk the list the vendor
+        // came from rather than every order the business has.
+        const url = `${API_BASE}/vendors/me/businesses/${BUSINESS_ID}/orders/${orderId}${
+          listFilterQuery ? `?${listFilterQuery}` : ""
+        }`;
         const response = await authenticatedFetch(url);
 
         if (!response.ok) {
@@ -318,7 +358,7 @@ export default function OrderDetailsPage() {
     };
 
     fetchOrder();
-  }, [orderId]);
+  }, [orderId, listFilterQuery]);
 
   if (fetchNetworkError) {
     return (
@@ -458,11 +498,28 @@ export default function OrderDetailsPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center p-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-500 mb-5 w-full mt-14 md:mt-0 max-w-3xl">
-        <Link href="/restaurant/orders">Orders</Link>
-        <span>/</span>
-        <span className="text-gray-900 font-medium">{displayData.id}</span>
+      {/* Back + Breadcrumb */}
+      <div className="w-full max-w-3xl mt-14 md:mt-0">
+        <button
+          type="button"
+          onClick={goBackToOrders}
+          className="flex items-center gap-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900 mb-3"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back to orders
+        </button>
+
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-5">
+          <button
+            type="button"
+            onClick={goBackToOrders}
+            className="transition-colors hover:text-gray-900"
+          >
+            Orders
+          </button>
+          <span>/</span>
+          <span className="text-gray-900 font-medium">{displayData.id}</span>
+        </div>
       </div>
 
       <Card className="w-full max-w-3xl bg-white rounded-2xl pb-0 gap-0">
@@ -643,7 +700,7 @@ export default function OrderDetailsPage() {
             disabled={!previousOrderId}
             onClick={() =>
               previousOrderId &&
-              router.push(`/restaurant/orders/${previousOrderId}`)
+              router.push(siblingHref(previousOrderId))
             }
           >
             <ChevronLeft className="h-4 w-4" />
@@ -655,7 +712,7 @@ export default function OrderDetailsPage() {
             className="gap-2"
             disabled={!nextOrderId}
             onClick={() =>
-              nextOrderId && router.push(`/restaurant/orders/${nextOrderId}`)
+              nextOrderId && router.push(siblingHref(nextOrderId))
             }
           >
             Next Order

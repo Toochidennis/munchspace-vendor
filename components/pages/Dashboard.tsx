@@ -37,15 +37,16 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import {
+  applyDateRangeParams,
+  applyDateRangeUrlParams,
+  DateRangeFilter,
+  readDateRangeParams,
+  type DateRangeSelection,
+} from "@/components/ui/date-range-filter";
+import { useUrlFilters } from "@/lib/use-url-filters";
 import Link from "next/link";
 import {
   getAccessToken,
@@ -180,15 +181,22 @@ async function authenticatedFetch(
 
 export default function DashboardPage() {
   const [firstName, setFirstName] = useState<string | null>(null);
-  const [period, setPeriod] = useState<
-    | "today"
-    | "last_7_days"
-    | "last_30_days"
-    | "last_6_months"
-    | "this_month"
-    | "last_month"
-    | "this_year"
-  >("last_30_days");
+  // The window lives in the URL, so following a link out of the dashboard and
+  // coming back returns to the period the vendor had chosen.
+  const [filters, setFilters] = useUrlFilters<{
+    dateSelection: DateRangeSelection;
+  }>({
+    parse: (params) => ({
+      dateSelection: readDateRangeParams(params, { preset: "last_30_days" }),
+    }),
+    serialize: (value, params) => {
+      applyDateRangeUrlParams(params, value.dateSelection);
+    },
+  });
+
+  const { dateSelection } = filters;
+  const setDateSelection = (next: DateRangeSelection) =>
+    setFilters({ dateSelection: next });
 
   const [isPublished, setIsPublished] = useState<boolean | null>(null);
   const [toggling, setToggling] = useState(false);
@@ -265,7 +273,11 @@ export default function DashboardPage() {
       }
 
       try {
-        const url = `${API_BASE}/vendors/me/businesses/${businessId}/analytics/dashboard?range=${period}`;
+        const params = applyDateRangeParams(
+          new URLSearchParams(),
+          dateSelection,
+        );
+        const url = `${API_BASE}/vendors/me/businesses/${businessId}/analytics/dashboard?${params.toString()}`;
         const res = await authenticatedFetch(url);
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -338,7 +350,7 @@ export default function DashboardPage() {
     };
 
     fetchDashboard();
-  }, [period]);
+  }, [dateSelection]);
 
   // Toggle Online / Offline using PATCH
   const toggleOnlineStatus = async () => {
@@ -550,23 +562,16 @@ export default function DashboardPage() {
 
         {/* Period Filter - Right aligned */}
         <div className="flex justify-end">
-          <Select
-            value={period}
-            onValueChange={(value) => setPeriod(value as any)}
-          >
-            <SelectTrigger className="w-full md:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="last_7_days">Last 7 days</SelectItem>
-              <SelectItem value="last_30_days">Last 30 days</SelectItem>
-              <SelectItem value="last_6_months">Last 6 months</SelectItem>
-              <SelectItem value="this_month">This month</SelectItem>
-              <SelectItem value="last_month">Last month</SelectItem>
-              <SelectItem value="this_year">This year</SelectItem>
-            </SelectContent>
-          </Select>
+          <DateRangeFilter
+            value={dateSelection}
+            onChange={setDateSelection}
+            align="end"
+            className="w-full md:w-auto"
+            // The analytics query declares `range` with a default, so sending
+            // nothing means thirty days rather than everything. Offering All
+            // time here would label a window it does not actually fetch.
+            allowAllTime={false}
+          />
         </div>
 
         {/* Store Traffic + KPI Cards */}

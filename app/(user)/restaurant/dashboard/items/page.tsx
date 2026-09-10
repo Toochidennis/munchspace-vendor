@@ -1,6 +1,6 @@
 import BestSellingItemsPage from '@/components/pages/BestSellingItems'
 import { Metadata } from 'next';
-import React from 'react'
+import React, { Suspense } from 'react'
 
 export const metadata: Metadata = {
   title: "Best Selling Items",
@@ -19,9 +19,13 @@ export const metadata: Metadata = {
   },
 };
 
+// The screen keeps its filters in the query string, and useSearchParams
+// cannot be prerendered — without a boundary the build fails on this route.
 const page = () => {
   return (
-    <BestSellingItemsPage />
+    <Suspense>
+      <BestSellingItemsPage />
+    </Suspense>
   )
 }
 

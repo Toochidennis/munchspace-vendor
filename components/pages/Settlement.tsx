@@ -27,13 +27,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
   Form,
@@ -65,6 +58,14 @@ import { getAccessToken, getBusinessId, logout } from "@/app/lib/auth";
 import CustomModal from "@/components/layout/CustomModal";
 import SupportModal from "@/components/support/SupportModal";
 import { readApiError, refreshAccessToken } from "@/app/lib/api";
+import {
+  applyDateRangeParams,
+  applyDateRangeUrlParams,
+  DateRangeFilter,
+  readDateRangeParams,
+  type DateRangeSelection,
+} from "@/components/ui/date-range-filter";
+import { readNumberParam, useUrlFilters } from "@/lib/use-url-filters";
 
 // ────────────────────────────────────────────────
 //  Constants from .env
@@ -170,8 +171,50 @@ interface SettlementAccount {
 //  Component
 // ────────────────────────────────────────────────
 
+type SettlementFilters = {
+  activeTab: "earnings" | "payout_history" | "payout";
+  earningsDateRange: DateRangeSelection;
+  earningsPage: number;
+  payoutsPage: number;
+};
+
 export default function EarningsPage() {
-  const [activeTab, setActiveTab] = useState<"earnings" | "payout_history" | "payout">("earnings");
+  // Tab, window and both page numbers live in the URL, so leaving the screen
+  // and coming back returns to what the vendor was looking at.
+  const [filters, setFilters] = useUrlFilters<SettlementFilters>({
+    parse: (params) => ({
+      activeTab: (params.get("tab") ??
+        "earnings") as SettlementFilters["activeTab"],
+      earningsDateRange: readDateRangeParams(params, {
+        preset: "last_30_days",
+      }),
+      earningsPage: readNumberParam(params, "earningsPage", 1),
+      payoutsPage: readNumberParam(params, "payoutsPage", 1),
+    }),
+    serialize: (value, params) => {
+      if (value.activeTab !== "earnings") params.set("tab", value.activeTab);
+      if (value.earningsPage > 1)
+        params.set("earningsPage", String(value.earningsPage));
+      if (value.payoutsPage > 1)
+        params.set("payoutsPage", String(value.payoutsPage));
+      applyDateRangeUrlParams(params, value.earningsDateRange);
+    },
+  });
+
+  const { activeTab, earningsDateRange, earningsPage, payoutsPage } = filters;
+
+  const setActiveTab = (next: SettlementFilters["activeTab"]) =>
+    setFilters((f) => ({ ...f, activeTab: next }));
+  const setEarningsPage = (next: number | ((previous: number) => number)) =>
+    setFilters((f) => ({
+      ...f,
+      earningsPage: typeof next === "function" ? next(f.earningsPage) : next,
+    }));
+  const setPayoutsPage = (next: number | ((previous: number) => number)) =>
+    setFilters((f) => ({
+      ...f,
+      payoutsPage: typeof next === "function" ? next(f.payoutsPage) : next,
+    }));
   const [account, setAccount] = useState<SettlementAccount | null>(null);
   const [banks, setBanks] = useState<BankOption[]>([]);
   const [isLoadingBanks, setIsLoadingBanks] = useState(true);
@@ -189,14 +232,12 @@ export default function EarningsPage() {
   const [earningsSummary, setEarningsSummary] = useState<any>(null);
   const [earningsData, setEarningsData] = useState<any[]>([]);
   const [earningsMeta, setEarningsMeta] = useState<any>(null);
-  const [earningsPage, setEarningsPage] = useState(1);
-  const [earningsDateRange, setEarningsDateRange] = useState("last_30_days");
+
   const [isLoadingEarnings, setIsLoadingEarnings] = useState(false);
 
   // Payout history state
   const [payoutsData, setPayoutsData] = useState<any[]>([]);
   const [payoutsMeta, setPayoutsMeta] = useState<any>(null);
-  const [payoutsPage, setPayoutsPage] = useState(1);
   const [isLoadingPayouts, setIsLoadingPayouts] = useState(false);
 
   // Cashout state
@@ -285,7 +326,13 @@ export default function EarningsPage() {
       setIsLoadingEarnings(true);
       try {
         const res = await authenticatedFetch(
-          `${API_BASE}/vendors/me/businesses/${businessId}/financials/earnings?page=${earningsPage}&limit=10&dateRange=${earningsDateRange}`
+          `${API_BASE}/vendors/me/businesses/${businessId}/financials/earnings?${applyDateRangeParams(
+            new URLSearchParams({
+              page: String(earningsPage),
+              limit: "10",
+            }),
+            earningsDateRange,
+          ).toString()}`
         );
         const json = await res.json();
         if (json.success && json.data) {
@@ -726,17 +773,18 @@ export default function EarningsPage() {
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
               <div className="flex justify-between items-center p-5 border-b border-gray-100">
                 <h3 className="text-lg font-bold text-gray-900">History</h3>
-                <Select value={earningsDateRange} defaultValue="last_30_days" onValueChange={setEarningsDateRange}>
-                  <SelectTrigger className="w-[160px] h-9">
-                    <SelectValue placeholder="Date range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="last_7_days">Last 7 days</SelectItem>
-                    <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                    <SelectItem value="last_90_days">Last 90 days</SelectItem>
-                    <SelectItem value="all_time">All time</SelectItem>
-                  </SelectContent>
-                </Select>
+                <DateRangeFilter
+                  value={earningsDateRange}
+                  onChange={(next) =>
+                    setFilters((f) => ({
+                      ...f,
+                      earningsDateRange: next,
+                      earningsPage: 1,
+                    }))
+                  }
+                  align="end"
+                  triggerClassName="h-9"
+                />
               </div>
               
               <Table>
