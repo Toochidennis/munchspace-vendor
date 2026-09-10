@@ -40,8 +40,22 @@ export function useUrlFilters<T>(config: {
     [queryString],
   );
 
+  // Writes within one tick have to compose, not overwrite. A handler that
+  // changes a filter and returns to page one calls the setter twice before any
+  // re-render, and if the second resolved against what the URL still said it
+  // would rebuild the address from the pre-change value and undo the first —
+  // the filter would appear to do nothing at all.
+  //
+  // So this tracks the value as written rather than as rendered, and only
+  // re-syncs to the URL once the URL is the thing that moved: a back
+  // navigation, or a link opened with parameters already on it.
   const valueRef = React.useRef(value);
-  valueRef.current = value;
+  const syncedQueryRef = React.useRef(queryString);
+
+  if (syncedQueryRef.current !== queryString) {
+    syncedQueryRef.current = queryString;
+    valueRef.current = value;
+  }
 
   const setValue = React.useCallback(
     (next: T | ((previous: T) => T)) => {
@@ -49,6 +63,10 @@ export function useUrlFilters<T>(config: {
         typeof next === "function"
           ? (next as (previous: T) => T)(valueRef.current)
           : next;
+
+      // Recorded before the navigation, so a second call in the same tick
+      // builds on this one.
+      valueRef.current = resolved;
 
       const params = new URLSearchParams();
       configRef.current.serialize(resolved, params);

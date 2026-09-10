@@ -344,12 +344,9 @@ export default function BestSellingItemsPage() {
 
           <DateRangeFilter
             value={dateSelection}
-            onChange={(next) => {
-              setDateSelection(next);
-              // A narrower window can leave the current page past the end of
-              // the results, which reads as an empty table.
-              setCurrentPage(1);
-            }}
+            // setDateSelection already returns to the first page: a narrower
+            // window can leave the current one past the end of the results.
+            onChange={setDateSelection}
             align="end"
             triggerClassName="md:w-auto bg-white border-gray-300 text-gray-900"
             allowAllTime={false}

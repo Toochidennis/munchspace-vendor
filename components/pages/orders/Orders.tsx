@@ -727,10 +727,7 @@ export default function OrdersPage() {
               </div>
               <DateRangeFilter
                 value={dateSelection}
-                onChange={(next) => {
-                  setDateSelection(next);
-                  setCurrentPage(1);
-                }}
+                onChange={setDateSelection}
                 align="end"
               />
             </div>
@@ -759,10 +756,7 @@ export default function OrdersPage() {
               </div>
               <DateRangeFilter
                 value={dateSelection}
-                onChange={(next) => {
-                  setDateSelection(next);
-                  setCurrentPage(1);
-                }}
+                onChange={setDateSelection}
                 align="start"
                 triggerClassName="h-12 w-full"
               />
