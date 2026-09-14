@@ -1,6 +1,13 @@
 // app/lib/api.ts (remains as previously provided)
-import { getAccessToken, logout, setAccessToken } from "@/app/lib/auth";
+import {
+  getAccessToken,
+  getRefreshToken,
+  logout,
+  setAccessToken,
+  setRefreshToken,
+} from "@/app/lib/auth";
 import { isSessionRenewable } from "@/app/lib/session";
+import { AUTH_BASE } from "@/app/lib/auth-session";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
@@ -13,7 +20,12 @@ async function rawFetch(endpoint: string, options: RequestInit = {}) {
     ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
-  return fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  // Absolute URLs pass through, so auth (on /v2) still gets the token and retry.
+  const url = /^https?:\/\//.test(endpoint)
+    ? endpoint
+    : `${API_BASE}${endpoint}`;
+
+  return fetch(url, { ...options, headers });
 }
 
 export async function apiFetch(
@@ -42,9 +54,7 @@ export async function apiFetch(
 }
 
 export async function refreshAccessToken(): Promise<string | null> {
-  const cookies = document.cookie.split("; ");
-  const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
-  const refreshToken = refreshCookie ? refreshCookie.split("=")[1] : null;
+  const refreshToken = getRefreshToken();
 
   if (!refreshToken) {
     logout();
@@ -58,7 +68,7 @@ export async function refreshAccessToken(): Promise<string | null> {
   }
 
   try {
-    const response = await fetch(`${API_BASE}/auth/token/refresh`, {
+    const response = await fetch(`${AUTH_BASE}/tokens/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
       body: JSON.stringify({ refreshToken }),
@@ -70,9 +80,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 
     setAccessToken(accessToken);
     if (newRefreshToken) {
-      document.cookie = `refreshToken=${newRefreshToken}; path=/; secure; samesite=strict; max-age=${
-        60 * 60 * 24 * 30
-      }`;
+      setRefreshToken(newRefreshToken);
     }
     return accessToken;
   } catch (err) {

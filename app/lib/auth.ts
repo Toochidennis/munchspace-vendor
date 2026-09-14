@@ -1,10 +1,27 @@
 import Cookies from "js-cookie";
 import { clearSession, sessionExpiry } from "@/app/lib/session";
 import { currentReturnTo, loginUrlWithReturnTo } from "@/app/lib/return-to";
+import { AUTH_BASE } from "@/app/lib/auth-session";
 
-// Same base every other request uses. Hardcoding dev here meant logout hit
-// dev no matter which environment the app was pointed at.
-const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
+/** One place, so the attribute string cannot drift between call sites. */
+const REFRESH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+export function setRefreshToken(token: string) {
+  document.cookie = `refreshToken=${token}; path=/; secure; samesite=strict; max-age=${REFRESH_COOKIE_MAX_AGE_SECONDS}`;
+}
+
+export function getRefreshToken(): string | null {
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith("refreshToken="));
+
+  return match ? match.split("=")[1] : null;
+}
+
+export function clearRefreshToken() {
+  document.cookie =
+    "refreshToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+}
 
 export function setFirstName(name: string | null) {
   if (name) {
@@ -184,19 +201,16 @@ export async function logout(
   localStorage.removeItem("admin");
 
   // Extract refresh token from cookie to send to backend
-  const cookies = document.cookie.split("; ");
-  const refreshCookie = cookies.find((row) => row.startsWith("refreshToken="));
-  const refreshToken = refreshCookie ? refreshCookie.split("=")[1] : null;
+  const refreshToken = getRefreshToken();
 
   // Clear refresh token and access token cookies client-side
-  document.cookie =
-    "refreshToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  clearRefreshToken();
   document.cookie =
     "accessToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
   if (refreshToken) {
     try {
-      await fetch(`${API_BASE}/auth/token/revoke`, {
+      await fetch(`${AUTH_BASE}/tokens/revoke`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

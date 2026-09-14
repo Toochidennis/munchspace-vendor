@@ -25,10 +25,15 @@ import {
   setBusinessId,
   setFirstName,
   setDisplayName,
+  setRefreshToken,
 } from "@/app/lib/auth";
-
-const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+import {
+  isComplete,
+  requestCode,
+  startSignup,
+  submitCode,
+  type AuthSessionState,
+} from "@/app/lib/auth-session";
 
 // Registration schema (updated to include phone)
 const registerSchema = z
@@ -76,6 +81,10 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [savedEmail, setSavedEmail] = useState("");
+
+  // The signup session. Every step after the first names it, so the server
+  // never has to infer from the account which flow is in progress.
+  const sessionRef = useRef<string>("");
   const [otpError, setOtpError] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const [currentWaitTime, setCurrentWaitTime] = useState(60);
@@ -158,37 +167,44 @@ export default function RegisterPage() {
   };
 
   // ── New helper: request OTP ───────────────────────────────────────
-  async function requestOtp(email?: string) {
-    const identifier = email || savedEmail;
-    try {
-      const res = await fetch(`${API_BASE}/auth/otp/request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({ identifier }),
-      });
+  async function requestOtp() {
+    if (!sessionRef.current) return false;
 
-      if (res.status >= 500) {
-        setOtpError(SERVER_ERROR_MESSAGE);
-        return false;
-      }
+    const result = await requestCode(sessionRef.current);
 
-      if (!res.ok) {
-        const err = (await parseApiResponse(res)) || {};
-        console.warn("OTP request failed:", err.message || res.status);
-        return false;
-      } else {
-        setResendCooldown(60);
-        setCurrentWaitTime(60);
-        setOtp(["", "", "", "", "", ""]);
-        return true;
-      }
-    } catch (err) {
-      console.warn("OTP request network error", err);
+    if (!result.ok) {
+      console.warn("Code request failed:", result.message);
+      setOtpError(result.message);
       return false;
     }
+
+    setResendCooldown(60);
+    setCurrentWaitTime(60);
+    setOtp(["", "", "", "", "", ""]);
+    return true;
+  }
+
+  /**
+   * Stores everything a completed signup hands back. Both the "no code needed"
+   * path and the code path end here, so the two cannot drift apart.
+   */
+  function persistSignIn(
+    state: AuthSessionState & { accessToken: string; refreshToken: string },
+  ) {
+    if (state.vendor?.businessId) {
+      setBusinessId(state.vendor.businessId);
+      hasBusiness(true);
+    } else {
+      setBusinessId(null);
+      hasBusiness(null);
+    }
+
+    if (state.firstName) setFirstName(state.firstName);
+    if (state.displayName) setDisplayName(state.displayName);
+
+    startSession();
+    setAccessToken(state.accessToken);
+    setRefreshToken(state.refreshToken);
   }
 
   async function onRegisterSubmit(values: RegisterValues) {
@@ -202,79 +218,46 @@ export default function RegisterPage() {
       normalizedPhone = "+234" + normalizedPhone;
     }
 
-    try {
-      const response = await fetch(`${API_BASE}/auth/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
-          phone: normalizedPhone,
-          password: values.password,
-        }),
-      });
+    const result = await startSignup({
+      firstName: values.firstName,
+      lastName: values.lastName,
+      email: values.email,
+      phone: normalizedPhone,
+      password: values.password,
+    });
 
-      if (response.status >= 500) {
-        form.setError("root", {
-          message: SERVER_ERROR_MESSAGE,
-        });
+    setIsLoading(false);
+
+    if (!result.ok) {
+      // A registration that was started but never verified is resumed by the
+      // server rather than refused, so a conflict here means another account
+      // genuinely owns one of these. The server names which, so the error can
+      // land on the field the person has to change.
+      if (result.status === 409) {
+        const field = /phone/i.test(result.message) ? "phone" : "email";
+        form.setError(field, { message: result.message });
         return;
       }
 
-      const resData = await parseApiResponse(response);
-
-      if (response.status === 201 && resData?.success && resData?.data) {
-        setSavedEmail(values.email);
-
-        // availableMethods is the only source of truth; signup returns
-        // ['otp'] when a code is required and an empty list when it is not.
-        if (resData.data.availableMethods?.includes("otp")) {
-          // ── Changed: request OTP before showing the screen ────────
-          await requestOtp(values.email);
-          setStep(2);
-        } else {
-          const { accessToken, refreshToken } = resData.data;
-
-          if (resData.data.vendor?.businessId) {
-            setBusinessId(resData.data.vendor.businessId);
-            hasBusiness(true);
-          } else {
-            setBusinessId(null);
-            hasBusiness(null);
-          }
-          if (resData.data.firstName) setFirstName(resData.data.firstName);
-          if (resData.data.displayName)
-            setDisplayName(resData.data.displayName);
-          startSession();
-          setAccessToken(accessToken);
-          document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
-            60 * 60 * 24 * 30
-          }`;
-
-          setStep(3);
-        }
-      } else if (response.status === 400) {
-        form.setError("root", {
-          message: resData?.message || "Invalid input data.",
-        });
-      } else if (response.status === 401) {
-        form.setError("root", { message: "Invalid or missing API key." });
-      } else if (response.status === 409) {
-        form.setError("email", { message: "User already exists." });
-      } else {
-        form.setError("root", {
-          message: resData?.message || "An unexpected error occurred.",
-        });
-      }
-    } catch (error) {
-      form.setError("root", { message: "Network error. Please try again." });
-    } finally {
-      setIsLoading(false);
+      form.setError("root", { message: result.message });
+      return;
     }
+
+    const state = result.data;
+
+    if (state.sessionToken) sessionRef.current = state.sessionToken;
+    setSavedEmail(values.email);
+
+    // Verification switched off means there is nothing to collect and the
+    // account is signed in already.
+    if (isComplete(state)) {
+      persistSignIn(state);
+      setStep(3);
+      return;
+    }
+
+    await requestOtp();
+    setStep(2);
   }
 
   async function handleResendOtp() {
@@ -296,64 +279,30 @@ export default function RegisterPage() {
     const code = otp.join("");
     if (code.length !== 6) return;
 
+    if (!sessionRef.current) {
+      setOtpError("Session expired. Please start again.");
+      return;
+    }
+
     setIsLoading(true);
     setOtpError("");
 
-    try {
-      const response = await fetch(`${API_BASE}/auth/otp/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          identifier: savedEmail,
-          otp: code,
-        }),
-      });
+    const result = await submitCode(sessionRef.current, code);
 
-      if (response.status >= 500) {
-        setOtpError(SERVER_ERROR_MESSAGE);
-        return;
-      }
+    setIsLoading(false);
 
-      if (response.status === 200) {
-        const res = await parseApiResponse(response);
-
-
-        if (!res?.data) {
-          setOtpError("An error occurred during verification.");
-          return;
-        }
-
-        const { accessToken, refreshToken } = res.data;
-
-        if (res.data.vendor?.businessId) {
-          setBusinessId(res.data.vendor.businessId);
-          hasBusiness(true);
-        } else {
-          setBusinessId(null);
-          hasBusiness(null);
-        }
-        if (res.data.firstName) setFirstName(res.data.firstName);
-        if (res.data.displayName) setDisplayName(res.data.displayName);
-        startSession();
-        setAccessToken(accessToken);
-        document.cookie = `refreshToken=${refreshToken}; path=/; secure; samesite=strict; max-age=${
-          60 * 60 * 24 * 30
-        }`;
-
-        window.location.href = "/restaurant/dashboard";
-      } else if (response.status === 400) {
-        setOtpError("Invalid or expired OTP.");
-      } else {
-        setOtpError("An error occurred during verification.");
-      }
-    } catch (error) {
-      setOtpError("Network error. Please try again.");
-    } finally {
-      setIsLoading(false);
+    if (!result.ok) {
+      setOtpError(result.message);
+      return;
     }
+
+    if (!isComplete(result.data)) {
+      setOtpError("An error occurred during verification.");
+      return;
+    }
+
+    persistSignIn(result.data);
+    window.location.href = "/restaurant/dashboard";
   }
 
   return (

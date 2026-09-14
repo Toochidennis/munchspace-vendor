@@ -26,10 +26,16 @@ import {
   setBusinessId,
   setFirstName,
   setDisplayName,
+  setRefreshToken,
 } from "@/app/lib/auth";
-
-const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+import {
+  isComplete,
+  requestCode,
+  startLogin,
+  submitCode,
+  submitPassword,
+  type AuthSessionState,
+} from "@/app/lib/auth-session";
 
 // ── Schemas ────────────────────────────────────────────────
 const emailSchema = z.object({
@@ -44,14 +50,6 @@ type EmailValues = z.infer<typeof emailSchema>;
 type PasswordValues = z.infer<typeof passwordSchema>;
 
 const SERVER_ERROR_MESSAGE = "Something went wrong try again later";
-
-async function parseApiResponse(res: Response) {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
 
 function maskIdentifier(identifier: string) {
   if (!identifier) return "";
@@ -76,6 +74,11 @@ export default function LoginPage() {
 
   // Use useRef to store identifier persistently across renders
   const identifierRef = useRef<string>("");
+
+  // The session this sign-in belongs to. Every step after the first names it,
+  // so the server never has to work out from the account which flow is in
+  // progress — that guesswork is what used to strand people mid-login.
+  const sessionRef = useRef<string>("");
 
   const [savedIdentifier, setSavedIdentifier] = useState(""); // kept for UI display
   const [noPasswordMessage, setNoPasswordMessage] = useState("");
@@ -164,97 +167,66 @@ export default function LoginPage() {
     setOtpError("");
     setAuthError("");
 
-    try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({ identifier: values.identifier }),
-      });
+    const result = await startLogin(values.identifier);
 
-      if (res.status >= 500) {
-        emailForm.setError("root", {
-          message: SERVER_ERROR_MESSAGE,
-        });
-        return;
-      }
+    setIsLoading(false);
 
-      if (res.status === 401 || res.status === 403) {
-        const apiRes = await parseApiResponse(res);
-        emailForm.setError("root", {
-          message:
-            apiRes?.message ||
-            "You do not have access to the admin page. Please contact support.",
-        });
-        return;
-      }
-
-      const apiRes = await parseApiResponse(res);
-
-      if (!apiRes?.success || !apiRes?.data) {
-        const errorMessage = apiRes?.message?.toLowerCase().includes("invalid")
-          ? "Please enter a valid email address or phone number."
-          : apiRes?.message ||
-            "An unexpected error occurred. Please try again.";
-
-        emailForm.setError("root", { message: errorMessage });
-        return;
-      }
-
-      const data = apiRes.data;
-
-      if (data?.admin === false && !data?.vendor) {
-        emailForm.setError("root", {
-          message:
-            data.message ||
-            "You do not have access to the admin page. Please contact support.",
-        });
-        return;
-      }
-
-      // *** IMPORTANT: Save identifier immediately ***
-      saveIdentifier(values.identifier);
-
-      if (data.availableMethods) {
-        if (data.availableMethods.includes("password")) {
-          setStep("password");
-        } else if (data.availableMethods.includes("otp")) {
-          await requestOtp();
-          setStep("otp");
-        } else {
-          emailForm.setError("root", {
-            message: "No supported authentication method available.",
-          });
-        }
-      } else if (data.accessToken && data.refreshToken) {
-        completeSignIn(data);
-      } else if (!data.hasPassword) {
-        setNoPasswordMessage(
-          "You were registered as a customer. Please reset your password to set a new one.",
-        );
-      } else {
-        emailForm.setError("root", {
-          message: "Unexpected response from server. Please try again.",
-        });
-      }
-    } catch (err) {
-      emailForm.setError("root", {
-        message:
-          "Unable to connect to the server. Please check your internet connection.",
-      });
-    } finally {
-      setIsLoading(false);
+    if (!result.ok) {
+      emailForm.setError("root", { message: result.message });
+      return;
     }
+
+    const state = result.data;
+
+    if (!state.sessionToken) {
+      emailForm.setError("root", {
+        message: "Unexpected response from server. Please try again.",
+      });
+      return;
+    }
+
+    sessionRef.current = state.sessionToken;
+    saveIdentifier(values.identifier);
+
+    await advance(state);
+  }
+
+  /**
+   * Renders whatever the server says comes next.
+   *
+   * The screen deliberately holds no opinion about the order of the steps. If
+   * the server starts asking for something else — a code where it used to take
+   * a password, a provider sign-in — this follows it without a release.
+   */
+  async function advance(state: AuthSessionState) {
+    if (isComplete(state)) {
+      completeSignIn(state);
+      return;
+    }
+
+    const { availableFactors } = state.next;
+
+    if (availableFactors.includes("PASSWORD")) {
+      setStep("password");
+      return;
+    }
+
+    if (availableFactors.includes("OTP")) {
+      await requestOtp();
+      setStep("otp");
+      return;
+    }
+
+    emailForm.setError("root", {
+      message: "No supported authentication method available.",
+    });
   }
 
   async function onPasswordSubmit(values: PasswordValues) {
     setIsLoading(true);
+    setAuthError("");
 
-    const currentIdentifier = getIdentifier();
-
-    if (!currentIdentifier) {
+    if (!sessionRef.current) {
       passwordForm.setError("root", {
         message:
           "Session error. Please go back and enter your email/phone again.",
@@ -263,118 +235,41 @@ export default function LoginPage() {
       return;
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/auth/login/password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          identifier: currentIdentifier,
-          password: values.password,
-        }),
-      });
+    const result = await submitPassword(sessionRef.current, values.password);
 
-      if (res.status === 401 || res.status === 403) {
-        const apiRes = await parseApiResponse(res);
-        passwordForm.setError("root", {
-          message:
-            apiRes?.message ||
-            "You do not have access to the admin page. Please contact support.",
-        });
-        return;
-      }
+    setIsLoading(false);
 
-      if (res.status >= 500) {
-        passwordForm.setError("root", {
-          message: SERVER_ERROR_MESSAGE,
-        });
-        return;
-      }
-
-      const apiRes = await parseApiResponse(res);
-
-      if (!apiRes?.success || !apiRes?.data) {
-        passwordForm.setError("root", {
-          message: apiRes?.message || "Incorrect password. Please try again.",
-        });
-        return;
-      }
-
-      const data = apiRes.data;
-
-      if (data?.admin === false && !data?.vendor) {
-        passwordForm.setError("root", {
-          message:
-            data.message ||
-            "You do not have access to the admin page. Please contact support.",
-        });
-        return;
-      }
-
-      // availableMethods is the only source of truth for what comes next.
-      // requiresOtp predates it and can disagree with it.
-      if (data.availableMethods?.includes("otp")) {
-        await requestOtp();
-        setStep("otp");
-      } else if (data.accessToken && data.refreshToken) {
-        completeSignIn(data);
-      } else {
-        completeSignIn(data);
-      }
-    } catch {
-      passwordForm.setError("root", {
-        message: "Network error. Please try again.",
-      });
-    } finally {
-      setIsLoading(false);
+    if (!result.ok) {
+      passwordForm.setError("root", { message: result.message });
+      return;
     }
+
+    await advance(result.data);
   }
 
   async function requestOtp() {
-    const currentIdentifier = getIdentifier();
-
-    if (!currentIdentifier) {
+    if (!sessionRef.current) {
       setOtpError("Session expired. Please go back and try again.");
       return;
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/auth/otp/request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({ identifier: currentIdentifier }),
-      });
+    const result = await requestCode(sessionRef.current);
 
-      if (res.status >= 500) {
-        setOtpError(SERVER_ERROR_MESSAGE);
-        return;
-      }
-
-      const apiRes = await parseApiResponse(res);
-
-      if (!apiRes?.success) {
-        setOtpError(apiRes?.message || "Failed to send verification code.");
-      } else {
-        setResendCooldown(60);
-        setCurrentWaitTime(60);
-        setOtp(["", "", "", "", "", ""]);
-      }
-    } catch {
-      setOtpError("Failed to request verification code. Please try again.");
+    if (!result.ok) {
+      setOtpError(result.message);
+      return;
     }
+
+    setResendCooldown(60);
+    setCurrentWaitTime(60);
+    setOtp(["", "", "", "", "", ""]);
   }
 
   async function onOtpSubmit() {
     const code = otp.join("");
     if (code.length !== 6) return;
 
-    const currentIdentifier = getIdentifier();
-    if (!currentIdentifier) {
+    if (!sessionRef.current) {
       setOtpError("Session error. Please restart the login process.");
       return;
     }
@@ -382,56 +277,28 @@ export default function LoginPage() {
     setIsLoading(true);
     setOtpError("");
 
-    try {
-      const res = await fetch(`${API_BASE}/auth/otp/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          identifier: currentIdentifier,
-          otp: code,
-        }),
-      });
+    const result = await submitCode(sessionRef.current, code);
 
-      if (res.status >= 500) {
-        setOtpError(SERVER_ERROR_MESSAGE);
-        return;
-      }
+    setIsLoading(false);
 
-      const apiRes = await parseApiResponse(res);
-
-      if (!apiRes?.success || !apiRes?.data) {
-        setOtpError(
-          apiRes?.message ||
-            "Invalid or expired code. Please check and try again.",
-        );
-        return;
-      }
-
-      if (apiRes.data?.admin === false && !apiRes.data?.vendor) {
-        setOtpError(
-          apiRes.data?.message ||
-            "You do not have access to the admin page. Please contact support.",
-        );
-        return;
-      }
-
-      completeSignIn(apiRes.data);
-    } catch {
-      setOtpError("Network error. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  function completeSignIn(data: any) {
-    if (!data.accessToken || !data.refreshToken) {
-      console.warn("Missing tokens in final response");
+    if (!result.ok) {
+      setOtpError(result.message);
       return;
     }
 
+    if (!isComplete(result.data)) {
+      // More to prove before tokens are issued — follow the server rather than
+      // assuming the code was the last step.
+      await advance(result.data);
+      return;
+    }
+
+    completeSignIn(result.data);
+  }
+
+  function completeSignIn(
+    data: AuthSessionState & { accessToken: string; refreshToken: string },
+  ) {
     // Signing in is the one moment the session clock starts. Refreshing later
     // never resets it, so the session ends a fixed time after sign-in.
     startSession();
@@ -445,7 +312,7 @@ export default function LoginPage() {
       setFirstName(data.firstName);
     }
 
-    document.cookie = `refreshToken=${data.refreshToken}; path=/; secure; samesite=strict; max-age=${60 * 60 * 24 * 30}`;
+    setRefreshToken(data.refreshToken);
 
     if (data.vendor?.hasBusiness && data.vendor?.businessId) {
       setBusinessId(data.vendor.businessId);

@@ -20,10 +20,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { readApiError } from "@/app/lib/api";
-
-const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+import { setPassword } from "@/app/lib/auth-session";
 
 // Password validation schema
 const formSchema = z
@@ -90,30 +87,20 @@ function ResetPasswordContent() {
     }
 
     setIsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/auth/password/reset`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          token: token,
-          newPassword: values.newPassword,
-        }),
-      });
 
-      if (response.ok) {
-        setPasswordChanged(true);
-        toast.success("Password reset successful!");
-      } else {
-        toast.error(await readApiError(response, "Failed to reset password."));
-      }
-    } catch (error) {
-      toast.error("Network error. Please try again.");
-    } finally {
-      setIsLoading(false);
+    // The token in the link is the recovery session itself. Possession of it
+    // is the proof, which is why nothing else is sent.
+    const result = await setPassword(token, values.newPassword);
+
+    setIsLoading(false);
+
+    if (!result.ok) {
+      toast.error(result.message);
+      return;
     }
+
+    setPasswordChanged(true);
+    toast.success("Password reset successful!");
   }
 
   return (

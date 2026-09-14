@@ -56,6 +56,7 @@ import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 import { useStore } from "../context/StoreContext";
 import { Skeleton } from "../ui/skeleton";
 import { getApiErrorMessage, readApiError, refreshAccessToken } from "@/app/lib/api";
+import { changePassword } from "@/app/lib/auth-session";
 
 // ────────────────────────────────────────────────
 //  Constants from .env
@@ -758,20 +759,13 @@ const StoreDetails = () => {
       const token = getAccessToken();
       if (!token) throw new Error("Authentication required");
 
-      const res = await authenticatedFetch(`${API_BASE}/auth/password/change`, {
-        method: "POST",
-        body: JSON.stringify({
-          currentPassword: values.currentPassword,
-          newPassword: values.newPassword,
-        }),
-      });
+      const result = await changePassword(
+        token,
+        values.currentPassword,
+        values.newPassword,
+      );
 
-      const data = await res.json();
-
-      if (!res.ok)
-        throw new Error(
-          getApiErrorMessage(data, "Failed to update password", res.status),
-        );
+      if (!result.ok) throw new Error(result.message);
 
       toast.success("Password updated successfully");
       logout();

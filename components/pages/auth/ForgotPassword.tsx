@@ -19,9 +19,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
-
-const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
-const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
+import { startRecovery } from "@/app/lib/auth-session";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
@@ -42,30 +40,22 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(values: FormValues) {
     setIsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/auth/password/forgot`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": API_KEY,
-        },
-        body: JSON.stringify({
-          identifier: values.email,
-        }),
-      });
 
-      if (response.ok) {
-        setEmailSent(true);
-        toast.success("Reset link sent successfully");
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.message || "Failed to send reset link.");
-      }
-    } catch (error) {
-      toast.error("Network error. Please try again.");
-    } finally {
-      setIsLoading(false);
+    const result = await startRecovery(values.email);
+
+    setIsLoading(false);
+
+    // The server answers the same way whether or not the address is
+    // registered, so there is nothing here to branch on: showing anything
+    // other than the confirmation would turn this screen into a way of
+    // finding out which addresses have accounts.
+    if (!result.ok) {
+      toast.error(result.message);
+      return;
     }
+
+    setEmailSent(true);
+    toast.success("Reset link sent successfully");
   }
 
   return (
