@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ShoppingBag,
   Menu as MenuIcon,
+  Star,
   DollarSign,
   Settings,
   Globe,
@@ -73,6 +74,12 @@ export default function RestaurantSidebar() {
       label: "Menu",
       href: "/restaurant/menu",
       active: pathname.startsWith("/restaurant/menu"),
+    },
+    {
+      icon: Star,
+      label: "Reviews",
+      href: "/restaurant/reviews",
+      active: pathname.startsWith("/restaurant/reviews"),
     },
   ];
 
