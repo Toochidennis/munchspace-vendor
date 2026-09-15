@@ -300,7 +300,7 @@ export default function OperationsSettings() {
   }
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-6">
       <Card className="p-3 md:p-8 border-gray-100 shadow-none">
         <SectionHeading
           title="Ordering"
@@ -466,8 +466,8 @@ export default function OperationsSettings() {
         </p>
       </Card>
 
-      <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/95 backdrop-blur px-4 py-3 md:px-8">
-        <div className="mx-auto flex max-w-5xl items-center justify-end gap-3">
+      <div className="sticky bottom-0 border-t border-gray-200 bg-white/95 px-1 py-3 backdrop-blur">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {dirty && (
             <span className="text-sm text-gray-500 mr-auto">
               You have unsaved changes

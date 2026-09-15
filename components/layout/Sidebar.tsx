@@ -281,8 +281,8 @@ export default function RestaurantSidebar() {
           >
             <Card
               className={cn(
-                "absolute -top-29 w-full p-3 py-3 text-slate-500 hidden",
-                collapsed && "p-1.5 -top-26",
+                "absolute bottom-full mb-2 w-full p-3 py-3 text-slate-500 hidden",
+                collapsed && "p-1.5",
                 showMore && "block",
               )}
             >
@@ -474,7 +474,7 @@ export default function RestaurantSidebar() {
               >
                 <Card
                   className={cn(
-                    "absolute -top-29 w-full p-3 py-3 text-slate-500 hidden",
+                    "absolute bottom-full mb-2 w-full p-3 py-3 text-slate-500 hidden",
                     showMore && "block",
                   )}
                 >
