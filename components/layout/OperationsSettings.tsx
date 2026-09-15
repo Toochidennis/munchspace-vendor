@@ -482,7 +482,7 @@ export default function OperationsSettings() {
             Discard
           </Button>
           <Button
-            className="rounded-full"
+            className="rounded-full bg-munchprimary hover:bg-munchprimaryDark"
             onClick={save}
             disabled={saving || !dirty}
           >

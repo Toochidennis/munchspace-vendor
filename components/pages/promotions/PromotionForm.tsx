@@ -220,6 +220,15 @@ export default function PromotionForm({
               </Select>
             </div>
 
+            {values.type === "FREE_DELIVERY" && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 sm:col-span-2">
+                <p className="text-sm text-amber-900">
+                  The rider is still paid the full delivery fee, and it comes
+                  out of what you earn on the order.
+                </p>
+              </div>
+            )}
+
             {values.type !== "FREE_DELIVERY" && (
               <div>
                 <Label htmlFor="promo-value">
@@ -382,7 +391,11 @@ export default function PromotionForm({
           >
             Cancel
           </Button>
-          <Button className="rounded-full" onClick={submit} disabled={saving}>
+          <Button
+            className="rounded-full bg-munchprimary hover:bg-munchprimaryDark"
+            onClick={submit}
+            disabled={saving}
+          >
             {saving ? "Saving…" : editing ? "Save changes" : "Create promotion"}
           </Button>
         </div>

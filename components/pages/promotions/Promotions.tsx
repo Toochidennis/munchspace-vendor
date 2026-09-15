@@ -216,7 +216,7 @@ export default function Promotions() {
             </p>
           </div>
           <Button
-            className="rounded-full"
+            className="rounded-full bg-munchprimary hover:bg-munchprimaryDark"
             onClick={() => {
               setEditing(null);
               setFormOpen(true);
@@ -243,7 +243,7 @@ export default function Promotions() {
               every qualifying order.
             </p>
             <Button
-              className="mx-auto mt-5 w-fit rounded-full"
+              className="mx-auto mt-5 w-fit rounded-full bg-munchprimary hover:bg-munchprimaryDark"
               onClick={() => {
                 setEditing(null);
                 setFormOpen(true);
@@ -370,7 +370,8 @@ export default function Promotions() {
               Keep it
             </Button>
             <Button
-              className="rounded-full bg-red-600 hover:bg-red-700"
+              variant="destructive"
+              className="rounded-full"
               onClick={() => deleting && remove(deleting)}
               disabled={removing}
             >
