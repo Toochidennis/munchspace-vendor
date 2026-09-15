@@ -75,7 +75,12 @@ const timeOfDay = new Intl.DateTimeFormat("en-NG", {
 const dayHeading = new Intl.DateTimeFormat("en-NG", {
   weekday: "long",
   day: "numeric",
-  month: "long",
+  month: "short",
+});
+
+const dateOnly = new Intl.DateTimeFormat("en-NG", {
+  day: "numeric",
+  month: "short",
 });
 
 function dayKey(iso: string) {
@@ -88,8 +93,14 @@ function relativeDay(iso: string) {
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
 
-  if (target.toDateString() === today.toDateString()) return "Today";
-  if (target.toDateString() === tomorrow.toDateString()) return "Tomorrow";
+  // The date rides along so a vendor reading a board of bookings knows which
+  // Sunday is meant.
+  if (target.toDateString() === today.toDateString()) {
+    return `Today · ${dateOnly.format(target)}`;
+  }
+  if (target.toDateString() === tomorrow.toDateString()) {
+    return `Tomorrow · ${dateOnly.format(target)}`;
+  }
   return dayHeading.format(target);
 }
 

@@ -67,6 +67,8 @@ type Settings = {
   maxOrderPerDay: number;
   timezone: string;
   serviceOperations: ServiceOperationSetting[];
+  /** Shortest horizon that still reaches every opening day. */
+  recommendedHorizonMinutes: number | null;
 };
 
 const LEAD_CHOICES = [
@@ -136,11 +138,14 @@ function MinutesChoice({
   choices,
   onChange,
   disabled,
+  minimum,
 }: {
   value: number;
   choices: { minutes: number; label: string }[];
   onChange: (minutes: number) => void;
   disabled?: boolean;
+  /** Choices below this cannot reach the next opening day, so they are shut off. */
+  minimum?: number | null;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -148,7 +153,14 @@ function MinutesChoice({
         <button
           key={choice.minutes}
           type="button"
-          disabled={disabled}
+          disabled={
+            disabled || (minimum != null && choice.minutes < minimum)
+          }
+          title={
+            minimum != null && choice.minutes < minimum
+              ? "Too short to reach your next opening day"
+              : undefined
+          }
           onClick={() => onChange(choice.minutes)}
           className={`rounded-full border px-4 py-1.5 text-sm transition-colors disabled:opacity-50 ${
             value === choice.minutes
@@ -392,8 +404,18 @@ export default function OperationsSettings() {
               <MinutesChoice
                 value={settings.maxPreOrderTime}
                 choices={HORIZON_CHOICES}
+                minimum={settings.recommendedHorizonMinutes}
                 onChange={(minutes) => update({ maxPreOrderTime: minutes })}
               />
+              {settings.recommendedHorizonMinutes != null &&
+                settings.recommendedHorizonMinutes > 1440 && (
+                  <p className="mt-2 text-sm text-amber-700">
+                    You are closed for up to{" "}
+                    {Math.round(settings.recommendedHorizonMinutes / 1440)} days
+                    at a stretch, so anything shorter leaves customers unable to
+                    book at all for most of the week.
+                  </p>
+                )}
             </div>
 
             {settings.serviceOperations.length > 0 && (
