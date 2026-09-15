@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/popover";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
+import { orderStatusLabel } from "@/lib/order-status";
 
 // ────────────────────────────────────────────────
 //  Custom Modal Component
@@ -908,7 +909,7 @@ export default function OrdersPage() {
                                       getStatusBadgeClass(order.status),
                                     )}
                                   >
-                                    {order.status.replace(/_/g, " ")}
+                                    {orderStatusLabel(order.status)}
                                   </Badge>
                                   {!order.status
                                     .toLowerCase()
@@ -966,7 +967,7 @@ export default function OrdersPage() {
                                   )[1],
                                 )}
                               >
-                                {order.status.replace(/_/g, " ")}
+                                {orderStatusLabel(order.status)}
                               </div>
                               {!order.status.toLowerCase().includes("cancel") &&
                                 !order.status

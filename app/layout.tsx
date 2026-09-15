@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Rubik, Inter } from "next/font/google";
 import "./globals.css";
 import ClientWrapper from "@/components/layout/ClientWrapper";
@@ -15,6 +15,9 @@ const rubik = Rubik({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://vendor.munchspace.io",
+  ),
   title: {
     template: "%s | Munch Space",
     default: "Munchspace | Premium Restaurant Vendor Platform",
@@ -28,7 +31,6 @@ export const metadata: Metadata = {
     "Restaurant Management Software",
   ],
   authors: [{ name: "Munchspace" }],
-  viewport: "width=device-width, initial-scale=1",
   robots: "index, follow",
   openGraph: {
     type: "website",
@@ -55,6 +57,11 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -63,10 +70,6 @@ export default function RootLayout({
   
   return (
     <html lang="en">
-      <head>
-        {/* Essential for mobile responsiveness */}
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </head>
       <body
         className={`${rubik.variable} ${inter.variable} antialiased overflow-x-hidden max-w-500 mx-auto w-screen`}
       >

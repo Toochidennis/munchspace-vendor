@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { orderStatusLabel } from "@/lib/order-status";
 
 // ────────────────────────────────────────────────
 //  Constants
@@ -478,9 +479,12 @@ export default function OrderDetailsPage() {
 
   const displayData = {
     id: order.orderCode,
-    status: order.status.replace(/_/g, " "),
+    status: orderStatusLabel(order.status),
     orderedDateInWords: formatDateInWords(order.placedAt), // ← Changed to words
     orderDate: new Date(order.placedAt).toLocaleString(),
+    scheduledFor: order.scheduledFor
+      ? new Date(order.scheduledFor).toLocaleString()
+      : null,
     totalPrice: formatPrice(order.totals.total),
     paymentOption: order.payment?.channel || "N/A",
     orderChannel: order.orderChannel || "N/A",
@@ -604,6 +608,14 @@ export default function OrderDetailsPage() {
                     {displayData.orderDate}
                   </p>
                 </div>
+                {displayData.scheduledFor && (
+                  <div>
+                    <p className="text-gray-500">Booked for</p>
+                    <p className="font-medium text-gray-900">
+                      {displayData.scheduledFor}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <p className="text-gray-500">Total Price</p>
                   <p className="font-medium text-gray-900">

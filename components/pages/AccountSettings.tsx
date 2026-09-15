@@ -43,6 +43,7 @@ import StorePreview from "@/components/layout/StorePreview";
 import KycVerification from "@/components/layout/KycVerification";
 import Charges from "@/components/layout/Charges";
 import StoreDetails from "@/components/layout/StoreDetails";
+import OperationsSettings from "@/components/layout/OperationsSettings";
 
 // Charges tab section
 interface Charge {
@@ -120,6 +121,12 @@ export default function AccountSettingsPage() {
                 KYC Verification
               </TabsTrigger>
               <TabsTrigger
+                value="operations"
+                className="px-2 md:px-4 data-[state=active]:text-munchprimary data-[state=active]:font-medium data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-1 md:pb-2 rounded-none text-base font-normal"
+              >
+                Operations
+              </TabsTrigger>
+              <TabsTrigger
                 value="charges"
                 className="px-2 md:px-4 data-[state=active]:text-munchprimary data-[state=active]:font-medium data-[state=active]:border-b-2 data-[state=active]:border-munchprimary pb-1 md:pb-2 rounded-none text-base font-normal"
               >
@@ -139,6 +146,9 @@ export default function AccountSettingsPage() {
           </TabsContent>
           <TabsContent value="kyc" className="mt-5 space-y-12">
             <KycVerification />
+          </TabsContent>
+          <TabsContent value="operations" className="mt-5 space-y-12">
+            <OperationsSettings />
           </TabsContent>
           <TabsContent value="charges" className="mt-5 space-y-12">
             <Charges />

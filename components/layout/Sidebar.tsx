@@ -8,6 +8,8 @@ import {
   ShoppingBag,
   Menu as MenuIcon,
   Star,
+  CalendarClock,
+  Tag,
   DollarSign,
   Settings,
   Globe,
@@ -70,10 +72,22 @@ export default function RestaurantSidebar() {
       active: pathname.startsWith("/restaurant/orders"),
     },
     {
+      icon: CalendarClock,
+      label: "Preorders",
+      href: "/restaurant/preorders",
+      active: pathname.startsWith("/restaurant/preorders"),
+    },
+    {
       icon: MenuIcon,
       label: "Menu",
       href: "/restaurant/menu",
       active: pathname.startsWith("/restaurant/menu"),
+    },
+    {
+      icon: Tag,
+      label: "Promotions",
+      href: "/restaurant/promotions",
+      active: pathname.startsWith("/restaurant/promotions"),
     },
     {
       icon: Star,
