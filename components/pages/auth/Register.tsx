@@ -115,6 +115,7 @@ export default function RegisterPage() {
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const autoSubmittedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -125,6 +126,17 @@ export default function RegisterPage() {
 
     return () => clearInterval(timer);
   }, [resendCooldown]);
+
+  // Verifies the moment the sixth digit lands. The button stays for anyone who
+  // reaches for it, and a rejected code re-arms as soon as a digit changes.
+  useEffect(() => {
+    const code = otp.join("");
+    if (step !== 2 || code.length !== 6 || isLoading) return;
+    if (autoSubmittedRef.current === code) return;
+    autoSubmittedRef.current = code;
+    void onOtpSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otp, step, isLoading]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -181,6 +193,7 @@ export default function RegisterPage() {
     setResendCooldown(60);
     setCurrentWaitTime(60);
     setOtp(["", "", "", "", "", ""]);
+    autoSubmittedRef.current = null;
     return true;
   }
 
@@ -289,17 +302,20 @@ export default function RegisterPage() {
 
     const result = await submitCode(sessionRef.current, code);
 
-    setIsLoading(false);
-
     if (!result.ok) {
+      setIsLoading(false);
       setOtpError(result.message);
       return;
     }
 
     if (!isComplete(result.data)) {
+      setIsLoading(false);
       setOtpError("An error occurred during verification.");
       return;
     }
+
+    // Stays busy through the page load that follows, so the form cannot be
+    // touched again after the code has already been accepted.
 
     persistSignIn(result.data);
     window.location.href = "/restaurant/dashboard";
@@ -669,6 +685,7 @@ export default function RegisterPage() {
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
+                    disabled={isLoading}
                   />
                 ))}
               </div>

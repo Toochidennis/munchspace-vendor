@@ -89,6 +89,7 @@ export default function LoginPage() {
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const autoSubmittedRef = useRef<string | null>(null);
 
   const emailForm = useForm<EmailValues>({
     resolver: zodResolver(emailSchema),
@@ -108,6 +109,17 @@ export default function LoginPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, [resendCooldown]);
+
+  // Verifies the moment the sixth digit lands. The button stays for anyone who
+  // reaches for it, and a rejected code re-arms as soon as a digit changes.
+  useEffect(() => {
+    const code = otp.join("");
+    if (step !== "otp" || code.length !== 6 || isLoading) return;
+    if (autoSubmittedRef.current === code) return;
+    autoSubmittedRef.current = code;
+    void onOtpSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otp, step, isLoading]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -169,9 +181,8 @@ export default function LoginPage() {
 
     const result = await startLogin(values.identifier);
 
-    setIsLoading(false);
-
     if (!result.ok) {
+      setIsLoading(false);
       emailForm.setError("root", { message: result.message });
       return;
     }
@@ -179,6 +190,7 @@ export default function LoginPage() {
     const state = result.data;
 
     if (!state.sessionToken) {
+      setIsLoading(false);
       emailForm.setError("root", {
         message: "Unexpected response from server. Please try again.",
       });
@@ -200,6 +212,10 @@ export default function LoginPage() {
    */
   async function advance(state: AuthSessionState) {
     if (isComplete(state)) {
+      // Deliberately leaves the busy state on. completeSignIn hands off to a
+      // full page load, which takes long enough that clearing it here would
+      // give back a live form for a second — long enough to retype a code
+      // that already worked.
       completeSignIn(state);
       return;
     }
@@ -208,15 +224,18 @@ export default function LoginPage() {
 
     if (availableFactors.includes("PASSWORD")) {
       setStep("password");
+      setIsLoading(false);
       return;
     }
 
     if (availableFactors.includes("OTP")) {
       await requestOtp();
       setStep("otp");
+      setIsLoading(false);
       return;
     }
 
+    setIsLoading(false);
     emailForm.setError("root", {
       message: "No supported authentication method available.",
     });
@@ -237,9 +256,8 @@ export default function LoginPage() {
 
     const result = await submitPassword(sessionRef.current, values.password);
 
-    setIsLoading(false);
-
     if (!result.ok) {
+      setIsLoading(false);
       passwordForm.setError("root", { message: result.message });
       return;
     }
@@ -263,6 +281,7 @@ export default function LoginPage() {
     setResendCooldown(60);
     setCurrentWaitTime(60);
     setOtp(["", "", "", "", "", ""]);
+    autoSubmittedRef.current = null;
   }
 
   async function onOtpSubmit() {
@@ -279,9 +298,8 @@ export default function LoginPage() {
 
     const result = await submitCode(sessionRef.current, code);
 
-    setIsLoading(false);
-
     if (!result.ok) {
+      setIsLoading(false);
       setOtpError(result.message);
       return;
     }
@@ -577,6 +595,7 @@ export default function LoginPage() {
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
+                    disabled={isLoading}
                   />
                 ))}
               </div>
