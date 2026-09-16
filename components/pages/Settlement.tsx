@@ -154,6 +154,7 @@ interface CashoutQuote {
     | "BELOW_MINIMUM"
     | "PAYOUT_IN_PROGRESS"
     | "ACCOUNT_CHANGE_HOLD"
+    | "TEMPORARILY_UNAVAILABLE"
     | null;
   holdUntil: string | null;
 }
@@ -722,6 +723,13 @@ export default function EarningsPage() {
                 </div>
               </div>
 
+              {earningsSummary?.payoutScheduleLabel && (
+                <p className="text-sm text-gray-500 mt-4">
+                  {earningsSummary.payoutScheduleLabel}. Money from an order is
+                  ready to be paid 24 hours after it is completed.
+                </p>
+              )}
+
               {/* Cash out. Only shown once the API says it is configured — a
                   button that always fails is worse than no button. */}
               {cashoutQuote && cashoutQuote.reason !== "CASHOUT_UNAVAILABLE" && (
@@ -743,6 +751,8 @@ export default function EarningsPage() {
                           "A payout is already on its way to your bank. You can cash out again once it lands."
                         ) : cashoutQuote.reason === "BELOW_MINIMUM" ? (
                           `You need at least ₦${(cashoutQuote.minimumAmount || 0).toLocaleString()} cleared to cash out. Scheduled payouts are unaffected.`
+                        ) : cashoutQuote.reason === "TEMPORARILY_UNAVAILABLE" ? (
+                          "Cashing out is paused for a few minutes. Your earnings are safe and your scheduled payout is unaffected."
                         ) : (
                           <>
                             ₦{cashoutQuote.availableAmount.toLocaleString()}{" "}
