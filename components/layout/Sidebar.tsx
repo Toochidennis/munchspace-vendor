@@ -275,13 +275,13 @@ export default function RestaurantSidebar() {
             onMouseEnter={() => setShowMore(true)}
             onMouseLeave={() => setShowMore(false)}
             className={cn(
-              "flex items-center gap-3 pt-4",
+              "relative flex items-center gap-3 pt-4",
               collapsed && "flex-col gap-2",
             )}
           >
             <Card
               className={cn(
-                "absolute bottom-full mb-2 w-full p-3 py-3 text-slate-500 hidden",
+                "absolute bottom-full w-full p-3 py-3 text-slate-500 hidden",
                 collapsed && "p-1.5",
                 showMore && "block",
               )}
