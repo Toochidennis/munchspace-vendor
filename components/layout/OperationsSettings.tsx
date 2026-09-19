@@ -65,6 +65,8 @@ type Settings = {
   minPreOrderTime: number;
   maxPreOrderTime: number;
   maxOrderPerDay: number;
+  /** Kilometres by road. Zero means no limit. Null until an address is set. */
+  deliveryRadius: number | null;
   timezone: string;
   serviceOperations: ServiceOperationSetting[];
   /** Shortest horizon that still reaches every opening day. */
@@ -263,6 +265,9 @@ export default function OperationsSettings() {
             minPreOrderTime: settings.minPreOrderTime,
             maxPreOrderTime: settings.maxPreOrderTime,
             maxOrderPerDay: settings.maxOrderPerDay,
+            ...(settings.deliveryRadius === null
+              ? {}
+              : { deliveryRadius: settings.deliveryRadius }),
             serviceOperations: settings.serviceOperations.map((operation) => ({
               serviceOperationId: operation.serviceOperationId,
               preparationTime: operation.preparationTime ?? undefined,
@@ -486,6 +491,40 @@ export default function OperationsSettings() {
         <p className="text-sm text-gray-500 mt-3 max-w-xl">
           Once a day is full, its pre-order times stop being offered.
         </p>
+      </Card>
+
+      <Card className="p-3 md:p-8 border-gray-100 shadow-none">
+        <SectionHeading
+          title="Delivery range"
+          description="How far you are willing to send an order, measured by road rather than in a straight line."
+        />
+        {settings.deliveryRadius === null ? (
+          <p className="text-sm text-gray-500 max-w-xl">
+            Set your restaurant address before choosing how far you deliver.
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              <Input
+                id="delivery-radius"
+                type="number"
+                min={0}
+                max={100}
+                value={settings.deliveryRadius}
+                onChange={(event) =>
+                  update({ deliveryRadius: Number(event.target.value) })
+                }
+                className="h-11 w-32 rounded-md"
+              />
+              <span className="text-sm text-gray-500">km</span>
+            </div>
+            <p className="text-sm text-gray-500 mt-3 max-w-xl">
+              {settings.deliveryRadius === 0
+                ? "No limit: you will be offered every delivery, however far away."
+                : `An address further than ${settings.deliveryRadius}km by road cannot check out. Set this to 0 to lift the limit.`}
+            </p>
+          </>
+        )}
       </Card>
 
       <div className="sticky bottom-0 border-t border-gray-200 bg-white/95 px-1 py-3 backdrop-blur">
