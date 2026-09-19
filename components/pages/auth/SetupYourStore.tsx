@@ -172,6 +172,13 @@ const setupSchema = z.object({
   streetName: z.string().min(1, "Street name is required."),
   city: z.string().min(1, "City is required."),
   postalCode: z.string().optional(),
+  deliveryRadius: z
+    .string()
+    .min(1, "Delivery range is required.")
+    .refine((value) => {
+      const km = Number(value);
+      return Number.isInteger(km) && km >= 0 && km <= 100;
+    }, "Enter a whole number of kilometres, 0 to 100."),
   latitude: z
     .number()
     .refine(isPickedOnMap, "Select your store's location on the map."),
@@ -248,6 +255,7 @@ export default function SetupStorePage() {
       streetName: "",
       city: "",
       postalCode: "",
+      deliveryRadius: "5",
       latitude: 0,
       longitude: 0,
       businessType: "",
@@ -510,6 +518,7 @@ export default function SetupStorePage() {
         "state",
         "lga",
         "streetName",
+        "deliveryRadius",
         "city",
         "latitude",
         "longitude",
@@ -578,6 +587,7 @@ export default function SetupStorePage() {
           longitude: Number(values.longitude),
         };
         formData.append("address", JSON.stringify(addressObj));
+        formData.append("deliveryRadius", values.deliveryRadius);
 
         if (selectedImageFile) {
           formData.append("image", selectedImageFile);
@@ -1659,6 +1669,39 @@ export default function SetupStorePage() {
                       )}
                     />
                   </div>
+
+                  <FormField
+                    control={form.control}
+                    name="deliveryRadius"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-normal text-slate-500">
+                          How far will you deliver?
+                        </FormLabel>
+                        <FormControl>
+                          <div className="flex items-center gap-3">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              placeholder="e.g. 5"
+                              className="h-12 w-32 placeholder:text-slate-400"
+                              {...field}
+                            />
+                            <span className="text-sm text-slate-500">
+                              km by road
+                            </span>
+                          </div>
+                        </FormControl>
+                        <p className="text-sm text-slate-500">
+                          {Number(field.value) === 0
+                            ? "No limit: you will be offered every delivery, however far away."
+                            : "An address further than this cannot check out. Enter 0 for no limit, and change it any time in settings."}
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <FormField
                     control={form.control}
