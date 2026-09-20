@@ -360,7 +360,13 @@ export default function LoginPage() {
 
   // ── Render (UI remains mostly the same) ─────────────────────
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
+    <div className="relative min-h-screen grid md:grid-cols-2">
+      {/* Mobile: pinned to the page, so it stays at the top instead of
+          drifting down with the vertically centred form. */}
+      <Link href="/" className="absolute left-5 top-5 z-20 md:hidden">
+        <Image src="/images/logo.svg" width={100} height={75} alt="logo" />
+      </Link>
+
       {/* Left: Hero Image - unchanged */}
       <div className="w-full relative hidden md:block">
         <div className="fixed w-1/2 pe-5">
@@ -386,16 +392,6 @@ export default function LoginPage() {
       {/* Right: Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
         <div className="w-full max-w-md space-y-8">
-          <Link href="/">
-            <Image
-              src="/images/logo.svg"
-              width={100}
-              height={75}
-              alt="logo"
-              className="md:hidden"
-            />
-          </Link>
-
           {/* EMAIL STEP */}
           {step === "email" && (
             /* ... same as before ... */
