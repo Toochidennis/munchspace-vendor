@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/command";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { EarningsOverview } from "@/components/settlement/EarningsOverview";
 import Image from "next/image";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -173,7 +174,7 @@ interface SettlementAccount {
 // ────────────────────────────────────────────────
 
 type SettlementFilters = {
-  activeTab: "earnings" | "payout_history" | "payout";
+  activeTab: "overview" | "earnings" | "payout_history" | "payout";
   earningsDateRange: DateRangeSelection;
   earningsPage: number;
   payoutsPage: number;
@@ -651,6 +652,17 @@ export default function EarningsPage() {
 
         <div className="flex gap-8 border-b border-gray-200 mt-10">
           <button
+            onClick={() => setActiveTab("overview")}
+            className={cn(
+              "pb-2 font-medium transition-colors",
+              activeTab === "overview"
+                ? "text-orange-600 border-b-2 border-orange-600"
+                : "text-gray-500 hover:text-gray-900",
+            )}
+          >
+            Overview
+          </button>
+          <button
             onClick={() => setActiveTab("earnings")}
             className={cn(
               "pb-2 font-medium transition-colors",
@@ -684,6 +696,14 @@ export default function EarningsPage() {
             Payout Accounts
           </button>
         </div>
+
+        {activeTab === "overview" && businessId && (
+          <EarningsOverview
+            businessId={businessId}
+            apiBase={API_BASE}
+            fetcher={authenticatedFetch}
+          />
+        )}
 
         {activeTab === "earnings" && (
           <div className="mt-6 space-y-6">
