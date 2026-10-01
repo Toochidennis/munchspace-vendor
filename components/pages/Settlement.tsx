@@ -750,6 +750,27 @@ export default function EarningsPage() {
                 </p>
               )}
 
+              {/* Set by Munchspace, not editable here. */}
+              {earningsSummary?.commission && (
+                <div className="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-3">
+                  <p className="text-sm font-medium text-gray-900">
+                    {earningsSummary.commission.paidBy === "customer"
+                      ? "Commission: paid by customers"
+                      : "Commission: taken from your earnings"}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    {earningsSummary.commission.label}{" "}
+                    <button
+                      type="button"
+                      onClick={() => setIsSupportOpen(true)}
+                      className="text-blue-500 hover:underline"
+                    >
+                      Questions about this?
+                    </button>
+                  </p>
+                </div>
+              )}
+
               {/* Cash out. Only shown once the API says it is configured — a
                   button that always fails is worse than no button. */}
               {cashoutQuote && cashoutQuote.reason !== "CASHOUT_UNAVAILABLE" && (
