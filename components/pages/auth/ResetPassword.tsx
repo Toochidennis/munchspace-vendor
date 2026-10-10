@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { setPassword } from "@/app/lib/auth-session";
+import AuthHero from "./AuthHero";
 
 // Password validation schema
 const formSchema = z
@@ -365,22 +366,7 @@ function ResetPasswordContent() {
 export default function ResetPasswordPage() {
   return (
     <div className="min-h-dvh grid md:grid-cols-2">
-      <div className="w-full relative hidden md:block">
-        <Image
-          src={"/images/logo.svg"}
-          width={100}
-          height={75}
-          alt="logo"
-          className="hidden md:block absolute ms-5 mt-5"
-        />
-        <Image
-          src={"/images/auth/hero.png"}
-          width={500}
-          height={900}
-          alt="hero"
-          className="object-cover h-full w-full max-h-screen"
-        />
-      </div>
+      <AuthHero />
 
       {/* ──── Suspense boundary ──── */}
       <Suspense

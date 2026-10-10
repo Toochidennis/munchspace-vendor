@@ -34,6 +34,7 @@ import {
   submitCode,
   type AuthSessionState,
 } from "@/app/lib/auth-session";
+import AuthHero from "./AuthHero";
 
 // Registration schema (updated to include phone)
 const registerSchema = z
@@ -323,27 +324,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">
-      {/* Left Side: Large Image */}
-      <div className="w-full relative hidden md:block">
-        <div className="fixed w-1/2 pe-5">
-          <Link href="/">
-            <Image
-              src={"/images/logo.svg"}
-              width={100}
-              height={75}
-              alt="logo"
-              className="hidden md:block absolute z-20 ms-5 mt-5"
-            />
-          </Link>
-          <Image
-            src={"/images/auth/hero.png"}
-            width={500}
-            height={900}
-            alt="hero"
-            className="object-cover h-full max-h-screen w-full"
-          />
-        </div>
-      </div>
+      <AuthHero />
 
       {/* Right Side: Multi-Step Form */}
       <div className="w-full flex items-center justify-center bg-background px-8">
