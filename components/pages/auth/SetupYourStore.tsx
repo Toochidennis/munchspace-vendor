@@ -56,6 +56,12 @@ import {
   logout,
 } from "@/app/lib/auth";
 import { getApiErrorMessage, refreshAccessToken } from "@/app/lib/api";
+import AuthHero from "./AuthHero";
+import {
+  MAX_DELIVERY_RADIUS_KM,
+  MIN_DELIVERY_RADIUS_KM,
+  deliveryRadiusError,
+} from "@/app/lib/delivery-radius";
 
 // ────────────────────────────────────────────────
 //  Authenticated Fetch (same as in orders page)
@@ -175,10 +181,10 @@ const setupSchema = z.object({
   deliveryRadius: z
     .string()
     .min(1, "Delivery range is required.")
-    .refine((value) => {
-      const km = Number(value);
-      return Number.isInteger(km) && km >= 0 && km <= 100;
-    }, "Enter a whole number of kilometres, 0 to 100."),
+    .superRefine((value, ctx) => {
+      const message = deliveryRadiusError(Number(value));
+      if (message) ctx.addIssue({ code: "custom", message });
+    }),
   latitude: z
     .number()
     .refine(isPickedOnMap, "Select your store's location on the map."),
@@ -255,7 +261,7 @@ export default function SetupStorePage() {
       streetName: "",
       city: "",
       postalCode: "",
-      deliveryRadius: "5",
+      deliveryRadius: String(MIN_DELIVERY_RADIUS_KM),
       latitude: 0,
       longitude: 0,
       businessType: "",
@@ -685,27 +691,7 @@ export default function SetupStorePage() {
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">
-      {/* Left Background */}
-      <div className="w-full relative hidden md:block">
-        <div className="fixed w-1/2 pe-5">
-          <Link href="/">
-            <Image
-              src={"/images/logo.svg"}
-              width={100}
-              height={75}
-              alt="logo"
-              className="hidden md:block absolute z-20 ms-5 mt-5"
-            />
-          </Link>
-          <Image
-            src={"/images/auth/hero.png"}
-            width={500}
-            height={900}
-            alt="hero"
-            className="object-cover h-full max-h-screen w-full"
-          />
-        </div>
-      </div>
+      <AuthHero />
 
       {/* Right Form */}
       <div className="flex items-center justify-center p-4 md:p-8 mt-10">
@@ -1682,9 +1668,10 @@ export default function SetupStorePage() {
                           <div className="flex items-center gap-3">
                             <Input
                               type="number"
-                              min={0}
-                              max={100}
-                              placeholder="e.g. 5"
+                              min={MIN_DELIVERY_RADIUS_KM}
+                              max={MAX_DELIVERY_RADIUS_KM}
+                              step={1}
+                              placeholder={`e.g. ${MIN_DELIVERY_RADIUS_KM}`}
                               className="h-12 w-32 placeholder:text-slate-400"
                               {...field}
                             />
@@ -1694,9 +1681,9 @@ export default function SetupStorePage() {
                           </div>
                         </FormControl>
                         <p className="text-sm text-slate-500">
-                          {Number(field.value) === 0
-                            ? "No limit: you will be offered every delivery, however far away."
-                            : "An address further than this cannot check out. Enter 0 for no limit, and change it any time in settings."}
+                          An address further than this cannot check out. The
+                          minimum is {MIN_DELIVERY_RADIUS_KM}km, and you can
+                          change it any time in settings.
                         </p>
                         <FormMessage />
                       </FormItem>

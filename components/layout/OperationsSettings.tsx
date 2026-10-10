@@ -10,6 +10,11 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAccessToken, getBusinessId } from "@/app/lib/auth";
 import { readApiError, refreshAccessToken } from "@/app/lib/api";
+import {
+  MAX_DELIVERY_RADIUS_KM,
+  MIN_DELIVERY_RADIUS_KM,
+  deliveryRadiusError,
+} from "@/app/lib/delivery-radius";
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_URL || "";
 const API_KEY = process.env.NEXT_PUBLIC_MUNCHSPACE_API_KEY || "";
@@ -240,11 +245,21 @@ export default function OperationsSettings() {
     setDirty(true);
   };
 
+  const radiusError =
+    settings?.deliveryRadius == null
+      ? null
+      : deliveryRadiusError(settings.deliveryRadius);
+
   const save = async () => {
     if (!settings) return;
 
     if (settings.minPreOrderTime >= settings.maxPreOrderTime) {
       toast.error("The earliest pre-order time must be sooner than the latest");
+      return;
+    }
+
+    if (radiusError) {
+      toast.error(radiusError);
       return;
     }
 
@@ -508,8 +523,10 @@ export default function OperationsSettings() {
               <Input
                 id="delivery-radius"
                 type="number"
-                min={0}
-                max={100}
+                min={MIN_DELIVERY_RADIUS_KM}
+                max={MAX_DELIVERY_RADIUS_KM}
+                step={1}
+                aria-invalid={!!radiusError}
                 value={settings.deliveryRadius}
                 onChange={(event) =>
                   update({ deliveryRadius: Number(event.target.value) })
@@ -518,11 +535,16 @@ export default function OperationsSettings() {
               />
               <span className="text-sm text-gray-500">km</span>
             </div>
-            <p className="text-sm text-gray-500 mt-3 max-w-xl">
-              {settings.deliveryRadius === 0
-                ? "No limit: you will be offered every delivery, however far away."
-                : `An address further than ${settings.deliveryRadius}km by road cannot check out. Set this to 0 to lift the limit.`}
-            </p>
+            {radiusError ? (
+              <p className="text-sm text-munchred mt-3 max-w-xl">
+                {radiusError}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500 mt-3 max-w-xl">
+                An address further than {settings.deliveryRadius}km by road
+                cannot check out. The minimum is {MIN_DELIVERY_RADIUS_KM}km.
+              </p>
+            )}
           </>
         )}
       </Card>
